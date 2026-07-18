@@ -1,0 +1,322 @@
+// GeduSuite — Prisma schema
+// Phase 0: multi-tenancy (Workspace, User, Membership) + NextAuth adapter tables.
+// Later phases add Product, Purchase, Order, Partner, Treasury, etc.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  OWNER
+  PARTNER
+  MANAGER
+  STAFF
+}
+
+// ── Multi-tenancy core ──────────────────────────────────────────────
+
+model Workspace {
+  id         String   @id @default(cuid())
+  name       String
+  slug       String   @unique // used in /[workspace]/... routes
+  logoUrl    String?
+  themeColor String?
+  createdAt  DateTime @default(now())
+
+  memberships   Membership[]
+  invites       Invite[]
+  suppliers     Supplier[]
+  products      Product[]
+  purchases     Purchase[]
+  notifications Notification[]
+  customers     Customer[]
+  orders        Order[]
+  returns       Return[]
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime? // required by NextAuth adapter
+  image         String?
+  passwordHash  String? // null for OAuth-only users
+  createdAt     DateTime  @default(now())
+
+  accounts    Account[]
+  sessions    Session[]
+  memberships Membership[]
+}
+
+model Membership {
+  id          String   @id @default(cuid())
+  userId      String
+  workspaceId String
+  role        Role     @default(STAFF)
+  permissions Json? // per-module granular overrides on top of the role matrix
+  invitedBy   String? // userId of the inviter (null for the founding OWNER)
+  createdAt   DateTime @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  heldOrders Order[] @relation("OrderHeldBy")
+
+  @@unique([userId, workspaceId])
+  @@index([workspaceId])
+}
+
+model Invite {
+  id          String    @id @default(cuid())
+  email       String
+  workspaceId String
+  role        Role      @default(STAFF)
+  token       String    @unique
+  invitedBy   String // userId of the inviter
+  acceptedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([email, workspaceId])
+  @@index([workspaceId])
+}
+
+// ── NextAuth adapter tables ─────────────────────────────────────────
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ── Phase 1: Products & Purchases ───────────────────────────────────
+
+model Supplier {
+  id          String   @id @default(cuid())
+  workspaceId String
+  name        String
+  address     String?
+  phone       String?
+  notes       String?
+  createdAt   DateTime @default(now())
+
+  workspace Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  purchases Purchase[]
+
+  @@index([workspaceId])
+}
+
+model Product {
+  id                String   @id @default(cuid())
+  workspaceId       String
+  name              String
+  category          String?
+  sku               String? // optional product-level SKU
+  barcode           String?
+  imageUrl          String? // stored as a data URI (Phase 1); blob storage later
+  expiryTracked     Boolean  @default(false)
+  lowStockThreshold Int      @default(5) // applies to each variant
+  createdAt         DateTime @default(now())
+
+  workspace Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  variants  ProductVariant[]
+
+  @@index([workspaceId])
+}
+
+model ProductVariant {
+  id        String  @id @default(cuid())
+  productId String
+  size      String?
+  color     String?
+  sku       String?
+
+  product    Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  purchases  Purchase[]
+  orderItems OrderItem[]
+
+  @@index([productId])
+}
+
+model Purchase {
+  id               String    @id @default(cuid())
+  workspaceId      String
+  supplierId       String?
+  productVariantId String
+  date             DateTime  @default(now())
+  unitCost         Decimal   @db.Decimal(12, 2)
+  quantity         Int
+  expiryDate       DateTime?
+  createdAt        DateTime  @default(now())
+
+  workspace      Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  supplier       Supplier?      @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  productVariant ProductVariant @relation(fields: [productVariantId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([productVariantId])
+  @@index([supplierId])
+}
+
+enum NotificationType {
+  LOW_STOCK
+  EXPIRY
+  OVERDUE_PAYMENT
+  NEW_ORDER
+  GENERAL
+}
+
+model Notification {
+  id          String           @id @default(cuid())
+  workspaceId String
+  type        NotificationType
+  message     String
+  dedupeKey   String? // stable key so recurring alerts upsert instead of duplicating
+  read        Boolean          @default(false)
+  createdAt   DateTime         @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, dedupeKey])
+  @@index([workspaceId])
+}
+
+// ── Phase 2: Customers, Orders, Returns ─────────────────────────────
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+enum DeliveryType {
+  SELF
+  COURIER
+}
+
+enum PaymentMethod {
+  CASH
+  BKASH
+  NAGAD
+  COURIER_COLLECTION
+  OTHER
+}
+
+enum PaymentStatus {
+  PAID
+  UNPAID
+  PARTIAL
+}
+
+model Customer {
+  id          String   @id @default(cuid())
+  workspaceId String
+  name        String
+  phone       String?
+  address     String?
+  notes       String?
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  orders    Order[]
+
+  @@index([workspaceId])
+}
+
+model Order {
+  id            String        @id @default(cuid())
+  workspaceId   String
+  customerId    String?
+  date          DateTime      @default(now())
+  status        OrderStatus   @default(PENDING)
+  deliveryType  DeliveryType  @default(SELF)
+  deliveryCharge Decimal      @default(0) @db.Decimal(12, 2)
+  paymentMethod PaymentMethod @default(CASH)
+  paymentStatus PaymentStatus @default(UNPAID)
+  packagingCost Decimal       @default(0) @db.Decimal(12, 2)
+  giftCost      Decimal       @default(0) @db.Decimal(12, 2)
+  discount      Decimal       @default(0) @db.Decimal(12, 2) // order-level discount
+  heldByMembershipId String? // which partner/member currently holds this order's cash
+  notes         String?
+  createdAt     DateTime      @default(now())
+
+  workspace Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  customer  Customer?   @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  heldBy    Membership? @relation("OrderHeldBy", fields: [heldByMembershipId], references: [id], onDelete: SetNull)
+  items     OrderItem[]
+
+  @@index([workspaceId])
+  @@index([customerId])
+  @@index([status])
+}
+
+model OrderItem {
+  id               String  @id @default(cuid())
+  orderId          String
+  productVariantId String
+  unitPrice        Decimal @db.Decimal(12, 2)
+  unitCost         Decimal @db.Decimal(12, 2) // snapshot of cost at sale time
+  quantity         Int
+  discount         Decimal @default(0) @db.Decimal(12, 2) // line-total discount
+
+  order          Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productVariant ProductVariant @relation(fields: [productVariantId], references: [id], onDelete: Restrict)
+  returns        Return[]
+
+  @@index([orderId])
+  @@index([productVariantId])
+}
+
+model Return {
+  id           String   @id @default(cuid())
+  workspaceId  String
+  orderItemId  String
+  quantity     Int
+  reason       String?
+  refundAmount Decimal  @default(0) @db.Decimal(12, 2)
+  date         DateTime @default(now())
+  createdAt    DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  orderItem OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([orderItemId])
+}

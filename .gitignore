@@ -23,6 +23,12 @@ yarn-error.log*
 # Prisma
 prisma/*.db
 
+# Serwist / PWA generated service worker
+public/sw.js
+public/sw.js.map
+public/swe-worker-*.js
+
 # IDE
 .vscode/
 .idea/
+tsconfig.tsbuildinfo
