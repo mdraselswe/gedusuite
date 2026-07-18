@@ -63,6 +63,130 @@ Serwist (PWA / service worker) · hosted free on Vercel.
   gift, computed on returns-adjusted quantities. Profit columns are shown only to
   roles with `reports` view.
 
+## Phase 3 — what's built
+
+- `Partner`, `PartnerTxn`, `TreasuryEntry` models + enums.
+- Partners (`/[workspace]/partners`): promote a member to partner, set profit-share %,
+  per-partner ledger (`/[workspace]/partners/[id]`) with a transaction log
+  (investment / expense / withdrawal / deposit-to-treasury). Balances (invested,
+  withdrawn, expenses, net capital) are **derived from the txn log**, never stored.
+- Central Treasury (`/[workspace]/treasury`): running balance = IN − OUT, manual
+  entries, filter by direction/partner. A `DEPOSIT_TO_TREASURY` partner txn
+  auto-creates a linked IN entry (deleting the txn cascades the entry).
+- Overdue receivables: orders unpaid/partial past 7 days are flagged with the amount
+  and which partner holds the cash — surfaced on the treasury page and dashboard,
+  reconciled into `OVERDUE_PAYMENT` notifications.
+- Partner-wise profit share on the dashboard: `profitSharePercent × total business
+  net profit` (net profit summed from Phase 2 orders).
+- RBAC: partner finance is OWNER-full / PARTNER add-own (row-level) / MANAGER view /
+  STAFF none; treasury is OWNER-full / PARTNER+MANAGER view / STAFF none.
+
+## Phase 4 — what's built
+
+- `InternalPurchase` model + `ExpenseCategory` enum (office supplies / packaging /
+  equipment / utilities / other) — deliberately separate from the sales-product
+  `Purchase` model, no shared references.
+- CRUD at `/[workspace]/internal-purchases`: date, item, description, supplier/shop,
+  unit cost, quantity, category; category filter + total-spend summary.
+- RBAC-gated by the `internal-purchases` module (STAFF add / MANAGER+PARTNER edit /
+  OWNER full).
+
+## Phase 5 — what's built
+
+- Reports (`/[workspace]/reports`, gated by `reports` view): custom date-range filter,
+  KPI cards (revenue / net profit / orders / avg order), a Recharts sales-&-profit-by-day
+  bar chart, best-selling + slow-moving product tables, and partner profit-share
+  (`src/lib/reports.ts`).
+- Exports: **Excel** as a CSV download and **PDF** via the browser print dialog
+  (print-styled; app chrome hidden with `print:hidden`).
+- Printable **invoice/receipt** per order (`/[workspace]/sales/orders/[id]/invoice`),
+  linked from the orders list.
+- **Notification center** (`/[workspace]/notifications`) listing all workspace
+  notifications with mark-read / mark-all-read, plus an unread bell badge in the header.
+  Wires up the `Notification` records created in Phases 1 & 3 (low stock, expiry,
+  overdue payment, new order).
+
+> "Excel" export is CSV (opens in Excel/Sheets); PDF is browser print-to-PDF — both
+> dependency-free. Swap in `xlsx`/`jspdf` later if pixel-perfect files are needed.
+
+## Phase 6 — what's built
+
+- `BackupLog` + `BackupSetting` models; Settings › Backup page
+  (`/[workspace]/settings/backup`, `backup` module — OWNER full / PARTNER view).
+- **JSON backup** ("Backup Now"): serializes the full workspace (suppliers, products,
+  variants, purchases, customers, orders, items, returns, partners, partner txns,
+  treasury, internal purchases) to a downloadable JSON file, logged to `BackupLog`
+  (last 10 snapshots kept in-DB for recoverability). `src/lib/backup.ts`.
+- **Restore**: upload JSON → validate + preview per-table counts → choose **Merge**
+  (insert new ids only) or **Overwrite** (clear + replace) → a safety snapshot is taken
+  automatically first → applied in one transaction (FK-safe order; dangling member/user
+  refs nulled/skipped).
+- **Google Sheets sync** + **Drive JSON upload** via `googleapis` (`src/lib/google.ts`),
+  one human-readable tab per module. **Env-gated**: set `GOOGLE_SERVICE_ACCOUNT_JSON`
+  (full service-account key) and share the target Sheet/Drive folder with that
+  account's email. Without it the UI shows "Not configured" and JSON backup/restore
+  still work.
+- Every backup/restore is written to `BackupLog` (success/failed); failures raise a
+  `GENERAL` notification so the Owner sees them.
+
+> **Not yet:** scheduled/cron backups (needs Vercel Cron wiring) and protected-range
+> locking on the Sheet. The manual "Backup Now" / "Sync" actions are in place; a cron
+> route can call the same actions later.
+
+## Environment (updated)
+
+```bash
+DATABASE_URL="postgresql://…"
+NEXTAUTH_SECRET="…"
+NEXTAUTH_URL="http://localhost:3000"
+GOOGLE_CLIENT_ID="…"            # NextAuth Google sign-in
+GOOGLE_CLIENT_SECRET="…"
+# Optional — enables Sheets/Drive backup (Phase 6):
+GOOGLE_SERVICE_ACCOUNT_JSON='{"type":"service_account",...}'
+```
+
+## Phase 7 — what's built
+
+- **Theming**: light/dark/system via `next-themes` + four color presets
+  (indigo/green/rose/amber) as CSS-variable overrides (`html[data-preset]`). Saved
+  **per user** (`User.theme`/`colorPreset`) and applied server-side (no flash) from
+  the root layout. Settings › Appearance (`/[workspace]/settings/appearance`).
+- **Bangla / English**: `User.locale` + a dictionary (`src/lib/i18n.ts`); the app
+  shell (nav) is translated server-side, toggled from Appearance. The dictionary is
+  scaffolding — extend `en`/`bn` together to localize more strings.
+- **Offline**: an offline indicator banner (online/offline events) and a service-worker
+  document fallback to `/offline`. (A full offline **write queue** in IndexedDB is not
+  implemented — with a Server-Actions data layer that needs a round-trip, a generic
+  replay queue is a substantial subsystem; the app is read-cached offline and warns
+  before writes fail.)
+- **Search** added to Products, Suppliers, and Orders lists (Customers, Treasury,
+  Internal already had search/filter).
+
+## Deployment (Vercel + Neon, free tier)
+
+1. **Neon**: create a project, copy the pooled connection string → this is
+   `DATABASE_URL`. (Migrations run automatically on deploy — the `build` script runs
+   `prisma migrate deploy` before `next build`.)
+2. **Vercel**: "Add New… → Project", import the GitHub repo. Framework preset is
+   detected as Next.js. No `vercel.json` is needed.
+3. **Environment variables** (Vercel → Project → Settings → Environment Variables),
+   set for Production (and Preview):
+   - `DATABASE_URL` — Neon pooled string
+   - `NEXTAUTH_SECRET` — `openssl rand -base64 32`
+   - `NEXTAUTH_URL` — `https://suite.gedushop.com` (your production URL)
+   - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` — from the Google Cloud OAuth client;
+     add `https://suite.gedushop.com/api/auth/callback/google` as an authorized redirect
+   - `GOOGLE_SERVICE_ACCOUNT_JSON` — optional, for Sheets/Drive backup
+4. **Deploy**. Every push to the default branch ships; each PR gets a preview URL.
+5. **Custom domain**: Vercel → Domains → add `suite.gedushop.com`. In Hostinger's DNS
+   Zone Editor add a `CNAME` record `suite` → `cname.vercel-dns.com`. Vercel issues the
+   HTTPS certificate automatically. Update `NEXTAUTH_URL` and the Google redirect URI to
+   the final domain.
+
+> Build uses webpack (`next build --webpack`) because Serwist (PWA) doesn't support
+> Turbopack yet — this is already wired into the `build` script, nothing to configure
+> on Vercel.
+
 ## Prerequisites
 
 - Node.js 20+ (tested on 22)
