@@ -126,9 +126,27 @@ export async function updateProduct(
 export async function deleteProduct(slug: string, id: string): Promise<ActionResult> {
   const gate = await requireAccess(slug, "products", "edit");
   if (!gate.ok) return gate;
-  await prisma.product.deleteMany({
+
+  const product = await prisma.product.findFirst({
     where: { id, workspaceId: gate.access.workspaceId },
+    select: { id: true },
   });
+  if (!product) return { ok: false, error: "Product not found" };
+
+  // ProductVariant -> OrderItem is a RESTRICT fk: a variant that's ever been
+  // sold can't be deleted (and Product delete cascades to variants), so check
+  // first instead of letting the DB throw.
+  const soldCount = await prisma.orderItem.count({
+    where: { productVariant: { productId: id } },
+  });
+  if (soldCount > 0) {
+    return {
+      ok: false,
+      error: "This product has been sold in past orders and can't be deleted. Remove unsold variants instead, or keep it for order history.",
+    };
+  }
+
+  await prisma.product.delete({ where: { id } });
   revalidatePath(`/${slug}/products`);
   return { ok: true };
 }
@@ -186,6 +204,16 @@ export async function deleteVariant(
     select: { id: true },
   });
   if (!variant) return { ok: false, error: "Variant not found" };
+
+  // ProductVariant -> OrderItem is a RESTRICT fk: block with a clear message
+  // instead of letting the raw DB constraint error surface.
+  const soldCount = await prisma.orderItem.count({ where: { productVariantId: variantId } });
+  if (soldCount > 0) {
+    return {
+      ok: false,
+      error: "This variant has been sold in past orders and can't be deleted — it's kept for order history.",
+    };
+  }
 
   await prisma.productVariant.delete({ where: { id: variantId } });
   revalidatePath(`/${slug}/products`);
