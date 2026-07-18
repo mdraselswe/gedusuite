@@ -25,7 +25,12 @@ const OrderSchema = z.object({
   deliveryType: z.enum(["SELF", "COURIER"]),
   deliveryCharge: z.coerce.number().nonnegative().default(0),
   // Blank/omitted = assume it exactly equals deliveryCharge (pass-through).
-  deliveryCost: z.coerce.number().nonnegative().optional().or(z.literal("").transform(() => undefined)),
+  // Must strip "" before z.coerce.number() — Number("") is 0, not NaN, so an
+  // empty field was silently coercing to a real 0 instead of "not provided".
+  deliveryCost: z.preprocess(
+    (v) => (v === "" || v == null ? undefined : v),
+    z.coerce.number().nonnegative().optional(),
+  ),
   paymentMethod: z.enum(["CASH", "BKASH", "NAGAD", "COURIER_COLLECTION", "OTHER"]),
   paymentStatus: z.enum(["PAID", "UNPAID", "PARTIAL"]),
   packagingCost: z.coerce.number().nonnegative().default(0),
