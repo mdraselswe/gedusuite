@@ -86,105 +86,106 @@ export async function createOrder(
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
   const d = parsed.data;
-
-  // Validate all variants belong to this workspace.
   const variantIds = d.items.map((i) => i.productVariantId);
-  const validVariants = await prisma.productVariant.findMany({
-    where: { id: { in: variantIds }, product: { workspaceId } },
-    select: { id: true },
-  });
+
+  // These 5 checks are all independent (none needs another's result) but were
+  // previously awaited one after another — over a long-haul DB connection that
+  // serializes ~300ms/round-trip into 1.5s+ before any real work starts.
+  // Run them concurrently; total time = the slowest one, not the sum.
+  const [validVariants, customer, heldByMember, stock, costs] = await Promise.all([
+    prisma.productVariant.findMany({
+      where: { id: { in: variantIds }, product: { workspaceId } },
+      select: { id: true },
+    }),
+    d.customerId
+      ? prisma.customer.findFirst({ where: { id: d.customerId, workspaceId }, select: { id: true } })
+      : Promise.resolve(null),
+    d.heldByMembershipId
+      ? prisma.membership.findFirst({
+          where: { id: d.heldByMembershipId, workspaceId },
+          select: { id: true },
+        })
+      : Promise.resolve(null),
+    variantStockMap(workspaceId),
+    latestCosts(workspaceId, variantIds),
+  ]);
+
   if (validVariants.length !== new Set(variantIds).size) {
     return { ok: false, error: "One or more product variants are invalid" };
   }
-
-  // Validate customer / held-by membership belong to the workspace.
-  let customerId: string | null = null;
-  if (d.customerId) {
-    const c = await prisma.customer.findFirst({
-      where: { id: d.customerId, workspaceId },
-      select: { id: true },
-    });
-    if (!c) return { ok: false, error: "Customer not found" };
-    customerId = c.id;
+  if (d.customerId && !customer) return { ok: false, error: "Customer not found" };
+  if (d.heldByMembershipId && !heldByMember) {
+    return { ok: false, error: "Selected member is invalid" };
   }
-  let heldByMembershipId: string | null = null;
-  if (d.heldByMembershipId) {
-    const m = await prisma.membership.findFirst({
-      where: { id: d.heldByMembershipId, workspaceId },
-      select: { id: true },
-    });
-    if (!m) return { ok: false, error: "Selected member is invalid" };
-    heldByMembershipId = m.id;
-  }
+  const customerId = customer?.id ?? null;
+  const heldByMembershipId = heldByMember?.id ?? null;
 
   // Never allow selling more than is currently in stock — server-side guard for
   // every order (not just consuming ones), with a clear, product-named error.
-  {
-    const stock = await variantStockMap(workspaceId);
-    const need = new Map<string, number>();
-    for (const it of d.items) {
-      need.set(it.productVariantId, (need.get(it.productVariantId) ?? 0) + it.quantity);
-    }
-    const short = [...need.entries()].filter(([vid, qty]) => (stock.get(vid) ?? 0) < qty);
-    if (short.length > 0) {
-      const labels = await prisma.productVariant.findMany({
-        where: { id: { in: short.map(([vid]) => vid) } },
-        select: {
-          id: true,
-          size: true,
-          color: true,
-          product: { select: { name: true } },
-        },
-      });
-      const byId = new Map(labels.map((v) => [v.id, v]));
-      const msg = short
-        .map(([vid, qty]) => {
-          const v = byId.get(vid);
-          const extra = v ? [v.size, v.color].filter(Boolean).join(" / ") : "";
-          const name = v ? `${v.product.name}${extra ? ` (${extra})` : ""}` : "item";
-          return `${name}: need ${qty}, ${stock.get(vid) ?? 0} in stock`;
-        })
-        .join("; ");
-      return { ok: false, error: `Not enough stock — ${msg}` };
-    }
+  const need = new Map<string, number>();
+  for (const it of d.items) {
+    need.set(it.productVariantId, (need.get(it.productVariantId) ?? 0) + it.quantity);
+  }
+  const short = [...need.entries()].filter(([vid, qty]) => (stock.get(vid) ?? 0) < qty);
+  if (short.length > 0) {
+    const labels = await prisma.productVariant.findMany({
+      where: { id: { in: short.map(([vid]) => vid) } },
+      select: {
+        id: true,
+        size: true,
+        color: true,
+        product: { select: { name: true } },
+      },
+    });
+    const byId = new Map(labels.map((v) => [v.id, v]));
+    const msg = short
+      .map(([vid, qty]) => {
+        const v = byId.get(vid);
+        const extra = v ? [v.size, v.color].filter(Boolean).join(" / ") : "";
+        const name = v ? `${v.product.name}${extra ? ` (${extra})` : ""}` : "item";
+        return `${name}: need ${qty}, ${stock.get(vid) ?? 0} in stock`;
+      })
+      .join("; ");
+    return { ok: false, error: `Not enough stock — ${msg}` };
   }
 
-  const costs = await latestCosts(workspaceId, variantIds);
-
-  const order = await prisma.order.create({
-    data: {
-      workspaceId,
-      customerId,
-      date: d.date,
-      status: d.status as OrderStatus,
-      deliveryType: d.deliveryType,
-      deliveryCharge: d.deliveryCharge,
-      paymentMethod: d.paymentMethod,
-      paymentStatus: d.paymentStatus,
-      packagingCost: d.packagingCost,
-      giftCost: d.giftCost,
-      discount: d.discount,
-      heldByMembershipId,
-      notes: d.notes?.trim() || null,
-      items: {
-        create: d.items.map((it) => ({
-          productVariantId: it.productVariantId,
-          unitPrice: it.unitPrice,
-          unitCost: costs.get(it.productVariantId) ?? 0,
-          quantity: it.quantity,
-          discount: it.discount,
-        })),
+  // Batched in one round trip (array-form $transaction) since the notification
+  // doesn't need the order's generated id.
+  const [order] = await prisma.$transaction([
+    prisma.order.create({
+      data: {
+        workspaceId,
+        customerId,
+        date: d.date,
+        status: d.status as OrderStatus,
+        deliveryType: d.deliveryType,
+        deliveryCharge: d.deliveryCharge,
+        paymentMethod: d.paymentMethod,
+        paymentStatus: d.paymentStatus,
+        packagingCost: d.packagingCost,
+        giftCost: d.giftCost,
+        discount: d.discount,
+        heldByMembershipId,
+        notes: d.notes?.trim() || null,
+        items: {
+          create: d.items.map((it) => ({
+            productVariantId: it.productVariantId,
+            unitPrice: it.unitPrice,
+            unitCost: costs.get(it.productVariantId) ?? 0,
+            quantity: it.quantity,
+            discount: it.discount,
+          })),
+        },
       },
-    },
-  });
-
-  await prisma.notification.create({
-    data: {
-      workspaceId,
-      type: "NEW_ORDER",
-      message: `New order recorded (${d.items.length} item${d.items.length > 1 ? "s" : ""})`,
-    },
-  });
+    }),
+    prisma.notification.create({
+      data: {
+        workspaceId,
+        type: "NEW_ORDER",
+        message: `New order recorded (${d.items.length} item${d.items.length > 1 ? "s" : ""})`,
+      },
+    }),
+  ]);
 
   revalidatePath(`/${slug}/sales/orders`);
   revalidatePath(`/${slug}/dashboard`);

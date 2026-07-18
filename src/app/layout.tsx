@@ -3,7 +3,7 @@ import { Anek_Bangla, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/providers";
 import { auth } from "@/lib/session";
-import { prisma } from "@/lib/prisma";
+import { getUserPrefs } from "@/lib/user-prefs";
 import { isLocale, type Locale } from "@/lib/i18n";
 
 // Anek Bangla renders Bangla + Latin in one visual rhythm — primary UI font
@@ -43,10 +43,7 @@ export default async function RootLayout({
   let locale: Locale = "en";
   const session = await auth();
   if (session?.user?.id) {
-    const u = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { theme: true, colorPreset: true, locale: true },
-    });
+    const u = await getUserPrefs(session.user.id);
     if (u) {
       theme = u.theme;
       preset = u.colorPreset;

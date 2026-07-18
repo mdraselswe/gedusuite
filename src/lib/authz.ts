@@ -17,20 +17,18 @@ export type WorkspaceAccess = {
  */
 export async function workspaceAccess(slug: string): Promise<WorkspaceAccess | null> {
   const user = await requireUser();
-  const workspace = await prisma.workspace.findUnique({
-    where: { slug },
-    select: { id: true },
-  });
-  if (!workspace) return null;
-
-  const membership = await prisma.membership.findUnique({
-    where: { userId_workspaceId: { userId: user.id, workspaceId: workspace.id } },
+  // Single round trip (was 2 sequential queries): filter membership directly by
+  // the workspace's slug via the relation instead of looking up the workspace
+  // id first. Every server action calls this, so this halves its DB latency.
+  const membership = await prisma.membership.findFirst({
+    where: { userId: user.id, workspace: { slug } },
+    select: { workspaceId: true, role: true, permissions: true },
   });
   if (!membership) return null;
 
   return {
     userId: user.id,
-    workspaceId: workspace.id,
+    workspaceId: membership.workspaceId,
     role: membership.role,
     permissions: membership.permissions,
   };

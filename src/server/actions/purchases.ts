@@ -38,23 +38,20 @@ export async function createPurchase(
   const d = parsed.data;
   const workspaceId = gate.access.workspaceId;
 
-  // Validate the variant belongs to this workspace.
-  const variant = await prisma.productVariant.findFirst({
-    where: { id: d.productVariantId, product: { workspaceId } },
-    select: { id: true },
-  });
-  if (!variant) return { ok: false, error: "Product variant not found" };
-
-  // Validate supplier (if given) belongs to this workspace.
-  let supplierId: string | null = null;
-  if (d.supplierId) {
-    const supplier = await prisma.supplier.findFirst({
-      where: { id: d.supplierId, workspaceId },
+  // Variant + supplier checks are independent — run concurrently instead of
+  // one after another (each round trip costs real time over a remote DB).
+  const [variant, supplier] = await Promise.all([
+    prisma.productVariant.findFirst({
+      where: { id: d.productVariantId, product: { workspaceId } },
       select: { id: true },
-    });
-    if (!supplier) return { ok: false, error: "Supplier not found" };
-    supplierId = supplier.id;
-  }
+    }),
+    d.supplierId
+      ? prisma.supplier.findFirst({ where: { id: d.supplierId, workspaceId }, select: { id: true } })
+      : Promise.resolve(null),
+  ]);
+  if (!variant) return { ok: false, error: "Product variant not found" };
+  if (d.supplierId && !supplier) return { ok: false, error: "Supplier not found" };
+  const supplierId = supplier?.id ?? null;
 
   await prisma.purchase.create({
     data: {

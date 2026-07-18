@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { requireMembership, auth } from "@/lib/session";
+import { requireMembership } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { can } from "@/lib/rbac";
+import { getUserPrefs } from "@/lib/user-prefs";
 import { translate, isLocale, type Locale } from "@/lib/i18n";
 import { SignOutButton } from "@/components/sign-out-button";
 
@@ -14,27 +15,25 @@ export default async function WorkspaceLayout({
   params: Promise<{ workspace: string }>;
 }) {
   const { workspace: slug } = await params;
-  const { membership } = await requireMembership(slug);
+  const { user, membership } = await requireMembership(slug);
 
-  const [workspace, session] = await Promise.all([
+  // Was 3 sequential DB round trips (workspace -> locale -> notif count) on
+  // every navigation; each round trip costs ~300ms over a long-haul network
+  // link, so this alone was adding ~600ms of pure latency per page. Run them
+  // concurrently, and reuse getUserPrefs (React cache()) so the root layout's
+  // identical user-prefs query isn't fetched twice per request.
+  const [workspace, dbUser, unread] = await Promise.all([
     prisma.workspace.findUnique({ where: { slug }, select: { name: true } }),
-    auth(),
+    getUserPrefs(user.id),
+    prisma.notification.count({
+      where: { workspaceId: membership.workspaceId, read: false },
+    }),
   ]);
   if (!workspace) notFound();
 
-  let locale: Locale = "en";
-  if (session?.user?.id) {
-    const u = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { locale: true },
-    });
-    if (u && isLocale(u.locale)) locale = u.locale;
-  }
+  const rawLocale = dbUser?.locale;
+  const locale: Locale = isLocale(rawLocale) ? rawLocale : "en";
   const t = (k: Parameters<typeof translate>[1]) => translate(locale, k);
-
-  const unread = await prisma.notification.count({
-    where: { workspaceId: membership.workspaceId, read: false },
-  });
 
   const role = membership.role;
   const nav = [
