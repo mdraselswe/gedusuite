@@ -26,18 +26,6 @@ import {
 } from "@/components/ui/table";
 import type { Report } from "@/lib/reports";
 
-function downloadCsv(filename: string, rows: (string | number)[][]) {
-  const csv = rows
-    .map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(","))
-    .join("\n");
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
 
 export function ReportView({
   slug,
@@ -63,29 +51,84 @@ export function ReportView({
     router.push(`/${slug}/reports?from=${f}&to=${t}`);
   }
 
-  function exportCsv() {
-    const rows: (string | number)[][] = [
+  async function exportExcel() {
+    const XLSX = await import("xlsx");
+    const wb = XLSX.utils.book_new();
+    const summary = XLSX.utils.aoa_to_sheet([
       ["GeduSuite report", `${from} to ${to}`],
       [],
-      ["KPIs"],
       ["Revenue", report.kpis.revenue],
       ["Net profit", report.kpis.profit],
       ["Orders", report.kpis.orders],
       ["Avg order value", report.kpis.avgOrder],
-      [],
-      ["Sales & profit by day"],
-      ["Date", "Sales", "Profit"],
-      ...report.series.map((s) => [s.date, s.sales, s.profit]),
-      [],
-      ["Product performance"],
-      ["Product", "Qty sold", "Revenue", "Profit"],
-      ...report.products.map((p) => [p.name, p.qty, p.revenue, p.profit]),
-      [],
-      ["Partner profit share"],
-      ["Partner", "Percent", "Amount"],
-      ...report.partnerShares.map((p) => [p.name, p.percent, p.amount]),
-    ];
-    downloadCsv(`gedusuite-report-${from}_${to}.csv`, rows);
+    ]);
+    XLSX.utils.book_append_sheet(wb, summary, "Summary");
+    XLSX.utils.book_append_sheet(
+      wb,
+      XLSX.utils.json_to_sheet(report.series),
+      "Sales by day",
+    );
+    XLSX.utils.book_append_sheet(
+      wb,
+      XLSX.utils.json_to_sheet(
+        report.products.map((p) => ({
+          Product: p.name,
+          Qty: p.qty,
+          Revenue: p.revenue,
+          Profit: p.profit,
+        })),
+      ),
+      "Products",
+    );
+    if (report.partnerShares.length) {
+      XLSX.utils.book_append_sheet(
+        wb,
+        XLSX.utils.json_to_sheet(report.partnerShares),
+        "Partner shares",
+      );
+    }
+    XLSX.writeFile(wb, `gedusuite-report-${from}_${to}.xlsx`);
+  }
+
+  async function exportPdf() {
+    const { jsPDF } = await import("jspdf");
+    const autoTable = (await import("jspdf-autotable")).default;
+    const doc = new jsPDF();
+    doc.setFontSize(16);
+    doc.text("GeduSuite report", 14, 18);
+    doc.setFontSize(10);
+    doc.text(`${from} to ${to}`, 14, 25);
+
+    autoTable(doc, {
+      startY: 32,
+      head: [["Metric", "Value"]],
+      body: [
+        ["Revenue", report.kpis.revenue.toFixed(2)],
+        ["Net profit", report.kpis.profit.toFixed(2)],
+        ["Orders", String(report.kpis.orders)],
+        ["Avg order value", report.kpis.avgOrder.toFixed(2)],
+      ],
+    });
+    autoTable(doc, {
+      head: [["Product", "Qty", "Revenue", "Profit"]],
+      body: report.products.map((p) => [
+        p.name,
+        String(p.qty),
+        p.revenue.toFixed(2),
+        p.profit.toFixed(2),
+      ]),
+    });
+    if (report.partnerShares.length) {
+      autoTable(doc, {
+        head: [["Partner", "Share %", "Amount"]],
+        body: report.partnerShares.map((p) => [
+          p.name,
+          p.percent.toFixed(2),
+          p.amount.toFixed(2),
+        ]),
+      });
+    }
+    doc.save(`gedusuite-report-${from}_${to}.pdf`);
   }
 
   const kpis: [string, string | number][] = [
@@ -110,11 +153,11 @@ export function ReportView({
           <Button type="submit">Apply</Button>
         </form>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={exportCsv}>
-            Export Excel (CSV)
+          <Button variant="outline" onClick={exportExcel}>
+            Export Excel
           </Button>
-          <Button variant="outline" onClick={() => window.print()}>
-            Export PDF (print)
+          <Button variant="outline" onClick={exportPdf}>
+            Export PDF
           </Button>
         </div>
       </div>

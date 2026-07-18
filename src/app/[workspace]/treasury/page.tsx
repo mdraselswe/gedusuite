@@ -3,6 +3,7 @@ import { workspaceAccess } from "@/lib/authz";
 import { can } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
 import { treasuryBalance, refreshOverdueAlerts } from "@/lib/finance";
+import { serverT } from "@/lib/session";
 import { TreasuryManager } from "@/components/treasury/treasury-manager";
 
 export default async function TreasuryPage({
@@ -53,7 +54,7 @@ export default async function TreasuryPage({
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <div className="flex items-baseline justify-between">
-        <h1 className="text-2xl font-bold">Treasury</h1>
+        <h1 className="text-2xl font-bold">{(await serverT())("treasury")}</h1>
         <span className="text-sm text-muted-foreground">
           Balance: <span className="text-lg font-bold text-foreground">{balance.toFixed(2)}</span>
         </span>

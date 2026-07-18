@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
+import { useSession } from "next-auth/react";
 import { toast } from "sonner";
 import { updatePreferences } from "@/server/actions/preferences";
 import { Button } from "@/components/ui/button";
@@ -31,6 +32,7 @@ export function AppearanceForm({
 }) {
   const router = useRouter();
   const { setTheme } = useTheme();
+  const { update } = useSession();
   const [theme, setThemeState] = useState(initial.theme);
   const [preset, setPreset] = useState(initial.colorPreset);
   const [locale, setLocale] = useState<"en" | "bn">(initial.locale);
@@ -55,6 +57,7 @@ export function AppearanceForm({
     setLoading(false);
     if (!res.ok) return toast.error(res.error);
     toast.success("Saved");
+    await update(); // refresh JWT locale so server-translated UI updates
     router.refresh(); // re-render server-translated UI (nav) for locale change
   }
 

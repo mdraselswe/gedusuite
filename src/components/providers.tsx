@@ -6,6 +6,7 @@ import { ThemeProvider, useTheme } from "next-themes";
 import { Toaster } from "@/components/ui/sonner";
 import { InstallPrompt } from "@/components/install-prompt";
 import { OfflineBanner } from "@/components/offline-banner";
+import { OutboxSync } from "@/components/outbox-sync";
 import { translate, type Locale, type MsgKey } from "@/lib/i18n";
 
 type Prefs = { theme: string; preset: string; locale: Locale };
@@ -49,6 +50,7 @@ export function Providers({
           {children}
           <InstallPrompt />
           <OfflineBanner />
+          <OutboxSync />
           <Toaster richColors position="top-center" />
         </PreferencesContext.Provider>
       </ThemeProvider>

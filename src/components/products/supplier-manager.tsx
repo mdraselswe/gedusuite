@@ -152,7 +152,7 @@ export function SupplierManager({
           <DialogHeader>
             <DialogTitle>{editing ? "Edit supplier" : "Add supplier"}</DialogTitle>
           </DialogHeader>
-          <form onSubmit={onSubmit} className="space-y-4">
+          <form key={editing?.id ?? "new"} onSubmit={onSubmit} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="s-name">Name</Label>
               <Input id="s-name" name="name" required defaultValue={editing?.name ?? ""} />

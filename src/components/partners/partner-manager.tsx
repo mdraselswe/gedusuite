@@ -204,7 +204,7 @@ export function PartnerManager({
           <DialogHeader>
             <DialogTitle>Edit {editing?.name}</DialogTitle>
           </DialogHeader>
-          <form onSubmit={onEdit} className="space-y-4">
+          <form key={editing?.id ?? "new"} onSubmit={onEdit} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="e-share">Profit share %</Label>
               <Input

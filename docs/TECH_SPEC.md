@@ -142,3 +142,47 @@ data grows across months of purchases/sales/customers. When that happens,
 Neon's paid tier starts small (a few dollars/month) rather than requiring
 a full re-architecture — a decision to make later, with real usage data,
 not now.
+
+## 10. UI/UX & Typography Standards (Retrofit Required)
+
+This section was missing from the original plan, which is why the first
+implementation pass came out visually basic. Apply this to all existing and
+future screens.
+
+**Typography — bilingual font pairing**
+Do not rely on Tailwind's default font stack for Bangla text — it falls back
+to inconsistent system fonts that clash visually with the Latin/English text
+next to them (different weight, height, rhythm).
+
+Use **Anek Bangla** (Google Fonts, free, variable font) as the primary UI
+font — it's purpose-built to render Bangla and Latin script in the same
+visual rhythm, so mixed Bangla/English sentences (very common in this app:
+"স্ট্যাটাস: Pending", "মোট: ৳৫০০") look like one coherent typeface instead of
+two fonts awkwardly stitched together.
+```css
+/* globals.css or tailwind config */
+font-family: 'Anek Bangla', sans-serif;
+```
+Fallback pairing if Anek Bangla doesn't cover a need: `Noto Sans Bengali` +
+`Noto Sans` (Google explicitly designs these as metrically compatible).
+
+**Responsive — mobile-first, not desktop-retrofitted**
+- Build every screen mobile-first: base Tailwind classes target the
+  smallest screen, then layer `sm:`/`md:`/`lg:` for larger viewports —
+  not the other way around.
+- Minimum touch target size 44×44px for buttons/tappable rows (this is a
+  PWA meant to be used on phones during a sale, not just a desktop admin panel).
+- Test explicitly at three widths before calling a screen done: 375px
+  (small phone), 768px (tablet), 1280px (desktop). Don't assume — resize
+  and look.
+- Tables (product lists, order lists, transaction logs) need a mobile
+  fallback — a data table that requires horizontal scrolling on a 375px
+  screen is not acceptable; switch to a stacked card layout below `md:`.
+
+**Visual polish baseline**
+- Consistent spacing scale (Tailwind's default scale is fine — just use it
+  consistently, don't mix arbitrary pixel values with Tailwind spacing units).
+- Every interactive element needs a visible hover/active/focus state.
+- Empty states (no products yet, no orders yet) get a simple illustration
+  or icon + short message, not a blank white area.
+

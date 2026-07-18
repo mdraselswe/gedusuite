@@ -1,11 +1,13 @@
 import { redirect } from "next/navigation";
 import { workspaceAccess } from "@/lib/authz";
+import { serverT } from "@/lib/session";
 import { can } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
 import { variantStockMap } from "@/lib/inventory";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ProductManager } from "@/components/products/product-manager";
 import { SupplierManager } from "@/components/products/supplier-manager";
+import { StockAdjustmentManager } from "@/components/products/stock-adjustment-manager";
 
 export default async function ProductsPage({
   params,
@@ -24,7 +26,7 @@ export default async function ProductsPage({
     canEdit: can(access.role, "products", "edit", access.permissions),
   };
 
-  const [products, suppliers, stock] = await Promise.all([
+  const [products, suppliers, stock, adjustments] = await Promise.all([
     prisma.product.findMany({
       where: { workspaceId: access.workspaceId },
       include: { variants: true },
@@ -35,6 +37,16 @@ export default async function ProductsPage({
       orderBy: { name: "asc" },
     }),
     variantStockMap(access.workspaceId),
+    prisma.stockAdjustment.findMany({
+      where: { workspaceId: access.workspaceId },
+      orderBy: { date: "desc" },
+      take: 100,
+      include: {
+        productVariant: {
+          select: { size: true, color: true, product: { select: { name: true } } },
+        },
+      },
+    }),
   ]);
 
   const productData = products.map((p) => ({
@@ -55,19 +67,53 @@ export default async function ProductsPage({
     })),
   }));
 
+  const variantOptions = products.flatMap((p) =>
+    p.variants.map((v) => ({
+      id: v.id,
+      label:
+        p.name +
+        ([v.size, v.color].filter(Boolean).length
+          ? ` (${[v.size, v.color].filter(Boolean).join(" / ")})`
+          : ""),
+      stock: stock.get(v.id) ?? 0,
+    })),
+  );
+
+  const adjustmentRows = adjustments.map((a) => ({
+    id: a.id,
+    date: a.date.toISOString().slice(0, 10),
+    product:
+      a.productVariant.product.name +
+      ([a.productVariant.size, a.productVariant.color].filter(Boolean).length
+        ? ` (${[a.productVariant.size, a.productVariant.color].filter(Boolean).join(" / ")})`
+        : ""),
+    type: a.type,
+    delta: a.delta,
+    reason: a.reason,
+  }));
+
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <h1 className="text-2xl font-bold">Products & Suppliers</h1>
+      <h1 className="text-2xl font-bold">{(await serverT())("productsSuppliers")}</h1>
       <Tabs defaultValue="products">
         <TabsList>
           <TabsTrigger value="products">Products</TabsTrigger>
           <TabsTrigger value="suppliers">Suppliers</TabsTrigger>
+          <TabsTrigger value="adjustments">Stock adjustments</TabsTrigger>
         </TabsList>
         <TabsContent value="products" className="pt-4">
           <ProductManager slug={slug} products={productData} perms={perms} />
         </TabsContent>
         <TabsContent value="suppliers" className="pt-4">
           <SupplierManager slug={slug} suppliers={suppliers} perms={perms} />
+        </TabsContent>
+        <TabsContent value="adjustments" className="pt-4">
+          <StockAdjustmentManager
+            slug={slug}
+            variantOptions={variantOptions}
+            adjustments={adjustmentRows}
+            canEdit={perms.canEdit}
+          />
         </TabsContent>
       </Tabs>
     </div>

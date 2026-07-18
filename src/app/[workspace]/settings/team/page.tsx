@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { can } from "@/lib/rbac";
 import { revokeInvite } from "@/server/actions/team";
 import { InviteForm } from "./invite-form";
+import { serverT } from "@/lib/session";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -33,7 +34,7 @@ export default async function TeamPage({
   return (
     <div className="mx-auto max-w-3xl space-y-8">
       <div>
-        <h1 className="text-2xl font-bold">Team</h1>
+        <h1 className="text-2xl font-bold">{(await serverT())("team")}</h1>
         <p className="text-sm text-muted-foreground">
           Invite people and assign roles.
         </p>

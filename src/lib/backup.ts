@@ -40,6 +40,7 @@ export async function buildSnapshot(workspaceId: string): Promise<Snapshot> {
     prisma.return.findMany({ where: { workspaceId } }),
     prisma.internalPurchase.findMany({ where: { workspaceId } }),
   ]);
+  const stockAdjustments = await prisma.stockAdjustment.findMany({ where: { workspaceId } });
 
   // JSON.stringify serializes Prisma Decimal → numeric string and Date → ISO,
   // both of which Prisma accepts back as inputs on restore.
@@ -56,6 +57,7 @@ export async function buildSnapshot(workspaceId: string): Promise<Snapshot> {
     orderItems,
     returns,
     internalPurchases,
+    stockAdjustments,
   } as unknown as Snapshot["tables"];
 
   return {
@@ -152,6 +154,7 @@ export async function restoreSnapshot(
   const orderItems = rows("orderItems");
   const returns = force(rows("returns"));
   const internalPurchases = force(rows("internalPurchases"));
+  const stockAdjustments = force(rows("stockAdjustments"));
 
   const inserted: SnapshotCounts = {};
 
@@ -165,6 +168,7 @@ export async function restoreSnapshot(
         await tx.treasuryEntry.deleteMany({ where: { workspaceId } });
         await tx.partnerTxn.deleteMany({ where: { workspaceId } });
         await tx.partner.deleteMany({ where: { workspaceId } });
+        await tx.stockAdjustment.deleteMany({ where: { workspaceId } });
         await tx.purchase.deleteMany({ where: { workspaceId } });
         await tx.productVariant.deleteMany({ where: { product: { workspaceId } } });
         await tx.product.deleteMany({ where: { workspaceId } });
@@ -201,6 +205,7 @@ export async function restoreSnapshot(
       await insert("orderItems", tx.orderItem, orderItems);
       await insert("returns", tx.return, returns);
       await insert("internalPurchases", tx.internalPurchase, internalPurchases);
+      await insert("stockAdjustments", tx.stockAdjustment, stockAdjustments);
     },
     { timeout: 30_000 },
   );

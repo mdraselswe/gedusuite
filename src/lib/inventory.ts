@@ -17,7 +17,7 @@ export const STOCK_CONSUMING_STATUSES = [
 export async function variantStockMap(
   workspaceId: string,
 ): Promise<Map<string, number>> {
-  const [purchased, sold, returns] = await Promise.all([
+  const [purchased, sold, returns, adjustments] = await Promise.all([
     prisma.purchase.groupBy({
       by: ["productVariantId"],
       where: { workspaceId },
@@ -40,6 +40,11 @@ export async function variantStockMap(
       },
       select: { quantity: true, orderItem: { select: { productVariantId: true } } },
     }),
+    prisma.stockAdjustment.groupBy({
+      by: ["productVariantId"],
+      where: { workspaceId },
+      _sum: { delta: true },
+    }),
   ]);
 
   const map = new Map<string, number>();
@@ -50,6 +55,10 @@ export async function variantStockMap(
   for (const r of returns) {
     const vid = r.orderItem.productVariantId;
     map.set(vid, (map.get(vid) ?? 0) + r.quantity);
+  }
+  // Manual adjustments: signed delta (damaged/lost/gift negative, correction either way).
+  for (const r of adjustments) {
+    map.set(r.productVariantId, (map.get(r.productVariantId) ?? 0) + (r._sum.delta ?? 0));
   }
   return map;
 }

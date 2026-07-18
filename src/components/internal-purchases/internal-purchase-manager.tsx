@@ -194,7 +194,7 @@ export function InternalPurchaseManager({
           <DialogHeader>
             <DialogTitle>{editing ? "Edit entry" : "Add internal purchase"}</DialogTitle>
           </DialogHeader>
-          <form onSubmit={onSubmit} className="space-y-4">
+          <form key={editing?.id ?? "new"} onSubmit={onSubmit} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="ip-name">Item name</Label>
               <Input id="ip-name" name="itemName" required defaultValue={editing?.itemName ?? ""} />

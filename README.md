@@ -97,17 +97,13 @@ Serwist (PWA / service worker) · hosted free on Vercel.
   KPI cards (revenue / net profit / orders / avg order), a Recharts sales-&-profit-by-day
   bar chart, best-selling + slow-moving product tables, and partner profit-share
   (`src/lib/reports.ts`).
-- Exports: **Excel** as a CSV download and **PDF** via the browser print dialog
-  (print-styled; app chrome hidden with `print:hidden`).
+- Exports: native **Excel (.xlsx)** via SheetJS and **PDF** via jsPDF + autotable.
 - Printable **invoice/receipt** per order (`/[workspace]/sales/orders/[id]/invoice`),
   linked from the orders list.
 - **Notification center** (`/[workspace]/notifications`) listing all workspace
   notifications with mark-read / mark-all-read, plus an unread bell badge in the header.
   Wires up the `Notification` records created in Phases 1 & 3 (low stock, expiry,
   overdue payment, new order).
-
-> "Excel" export is CSV (opens in Excel/Sheets); PDF is browser print-to-PDF — both
-> dependency-free. Swap in `xlsx`/`jspdf` later if pixel-perfect files are needed.
 
 ## Phase 6 — what's built
 
@@ -128,10 +124,9 @@ Serwist (PWA / service worker) · hosted free on Vercel.
   still work.
 - Every backup/restore is written to `BackupLog` (success/failed); failures raise a
   `GENERAL` notification so the Owner sees them.
-
-> **Not yet:** scheduled/cron backups (needs Vercel Cron wiring) and protected-range
-> locking on the Sheet. The manual "Backup Now" / "Sync" actions are in place; a cron
-> route can call the same actions later.
+- **Scheduled backups**: `vercel.json` runs `/api/cron/backup` daily (02:00) — it JSON-
+  backs-up every workspace with `autoJson` enabled (optionally to Drive), protected by
+  `CRON_SECRET`. Google Sheet tabs are created as **protected ranges** (view-only).
 
 ## Environment (updated)
 
@@ -154,13 +149,24 @@ GOOGLE_SERVICE_ACCOUNT_JSON='{"type":"service_account",...}'
 - **Bangla / English**: `User.locale` + a dictionary (`src/lib/i18n.ts`); the app
   shell (nav) is translated server-side, toggled from Appearance. The dictionary is
   scaffolding — extend `en`/`bn` together to localize more strings.
-- **Offline**: an offline indicator banner (online/offline events) and a service-worker
-  document fallback to `/offline`. (A full offline **write queue** in IndexedDB is not
-  implemented — with a Server-Actions data layer that needs a round-trip, a generic
-  replay queue is a substantial subsystem; the app is read-cached offline and warns
-  before writes fail.)
+- **Offline**: offline indicator banner + service-worker document fallback (`/offline`),
+  plus an **offline write queue** — mutations made offline are stored in IndexedDB
+  (`src/lib/offline-queue.ts`) and replayed against `/api/mutations` on reconnect
+  (`OutboxSync`). Wired for purchase and customer creation; other forms adopt it by
+  calling `submitOrQueue(actionType, slug, payload)` (dispatcher map in
+  `src/app/api/mutations/route.ts`).
 - **Search** added to Products, Suppliers, and Orders lists (Customers, Treasury,
   Internal already had search/filter).
+- **Bangla/English** now covers the app shell + every page title (server-translated via
+  session locale); form/table strings are localized incrementally via the same
+  dictionary (`t()` from `usePreferences()` / `serverT()`).
+
+## Post-plan additions
+
+- **Stock adjustments / damaged report** (`StockAdjustment` model): record
+  damaged / lost / gift / correction against a variant; feeds the derived stock
+  (`Products › Stock adjustments` tab) and is included in JSON backup/restore.
+- `CRON_SECRET` env var (optional) — protects the scheduled backup route.
 
 ## Deployment (Vercel + Neon, free tier)
 

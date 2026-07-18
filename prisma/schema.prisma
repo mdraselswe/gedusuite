@@ -43,6 +43,7 @@ model Workspace {
   internalPurchases InternalPurchase[]
   backupLogs    BackupLog[]
   backupSetting BackupSetting?
+  stockAdjustments StockAdjustment[]
 }
 
 model User {
@@ -176,9 +177,10 @@ model ProductVariant {
   color     String?
   sku       String?
 
-  product    Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
-  purchases  Purchase[]
-  orderItems OrderItem[]
+  product     Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
+  purchases   Purchase[]
+  orderItems  OrderItem[]
+  adjustments StockAdjustment[]
 
   @@index([productId])
 }
@@ -469,4 +471,30 @@ model BackupSetting {
   updatedAt     DateTime @updatedAt
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+// ── Extra: Stock adjustments (damaged / lost / gift / correction) ────
+
+enum StockAdjustmentType {
+  DAMAGED
+  LOST
+  GIFT
+  CORRECTION
+}
+
+model StockAdjustment {
+  id               String              @id @default(cuid())
+  workspaceId      String
+  productVariantId String
+  type             StockAdjustmentType
+  delta            Int // signed change to stock (negative removes, positive adds)
+  reason           String?
+  date             DateTime            @default(now())
+  createdAt        DateTime            @default(now())
+
+  workspace      Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  productVariant ProductVariant @relation(fields: [productVariantId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([productVariantId])
 }

@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { workspaceAccess } from "@/lib/authz";
+import { serverT } from "@/lib/session";
 import { can } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
 import { computeOrderTotals } from "@/lib/orders";
@@ -106,7 +107,7 @@ export default async function OrdersPage({
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
-      <h1 className="text-2xl font-bold">Sales & Orders</h1>
+      <h1 className="text-2xl font-bold">{(await serverT())("salesOrders")}</h1>
       <OrderManager
         slug={slug}
         variantOptions={variantOptions}

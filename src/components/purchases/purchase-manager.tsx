@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { createPurchase, deletePurchase } from "@/server/actions/purchases";
+import { deletePurchase } from "@/server/actions/purchases";
+import { submitOrQueue } from "@/lib/offline-queue";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -70,13 +71,14 @@ export function PurchaseManager({
     const fd = new FormData(e.currentTarget);
     fd.set("productVariantId", variantId);
     fd.set("supplierId", supplierId === NO_SUPPLIER ? "" : supplierId);
-    const res = await createPurchase(slug, fd);
+    const payload = Object.fromEntries(fd.entries()) as Record<string, unknown>;
+    const res = await submitOrQueue("purchase.create", slug, payload);
     setLoading(false);
     if (!res.ok) {
-      toast.error(res.error);
+      toast.error(res.error ?? "Failed");
       return;
     }
-    toast.success("Purchase recorded");
+    toast.success(res.queued ? "Saved offline — will sync when online" : "Purchase recorded");
     (e.target as HTMLFormElement).reset();
     setVariantId("");
     setSupplierId(NO_SUPPLIER);

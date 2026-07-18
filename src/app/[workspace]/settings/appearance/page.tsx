@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { AppearanceForm } from "@/components/settings/appearance-form";
+import { serverT } from "@/lib/session";
 
 export default async function AppearancePage() {
   const session = await auth();
@@ -14,7 +15,7 @@ export default async function AppearancePage() {
 
   return (
     <div className="mx-auto max-w-lg space-y-6">
-      <h1 className="text-2xl font-bold">Appearance</h1>
+      <h1 className="text-2xl font-bold">{(await serverT())("appearance")}</h1>
       <AppearanceForm
         initial={{
           theme: user?.theme ?? "system",

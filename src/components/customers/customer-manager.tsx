@@ -4,11 +4,8 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import {
-  createCustomer,
-  updateCustomer,
-  deleteCustomer,
-} from "@/server/actions/customers";
+import { updateCustomer, deleteCustomer } from "@/server/actions/customers";
+import { submitOrQueue } from "@/lib/offline-queue";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -72,10 +69,20 @@ export function CustomerManager({
     const fd = new FormData(e.currentTarget);
     const res = editing
       ? await updateCustomer(slug, editing.id, fd)
-      : await createCustomer(slug, fd);
+      : await submitOrQueue(
+          "customer.create",
+          slug,
+          Object.fromEntries(fd.entries()) as Record<string, unknown>,
+        );
     setLoading(false);
-    if (!res.ok) return toast.error(res.error);
-    toast.success(editing ? "Customer updated" : "Customer added");
+    if (!res.ok) return toast.error(res.error ?? "Failed");
+    toast.success(
+      editing
+        ? "Customer updated"
+        : "queued" in res && res.queued
+          ? "Saved offline — will sync when online"
+          : "Customer added",
+    );
     setOpen(false);
     router.refresh();
   }
@@ -193,7 +200,7 @@ export function CustomerManager({
           <DialogHeader>
             <DialogTitle>{editing ? "Edit customer" : "Add customer"}</DialogTitle>
           </DialogHeader>
-          <form onSubmit={onSubmit} className="space-y-4">
+          <form key={editing?.id ?? "new"} onSubmit={onSubmit} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="c-name">Name</Label>
               <Input id="c-name" name="name" required defaultValue={editing?.name ?? ""} />

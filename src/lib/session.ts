@@ -2,9 +2,17 @@ import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import { authOptions } from "@/lib/auth";
 import type { SessionMembership } from "@/lib/auth";
+import { translate, isLocale, type Locale, type MsgKey } from "@/lib/i18n";
 
 export function auth() {
   return getServerSession(authOptions);
+}
+
+/** Server-side translator bound to the signed-in user's locale. */
+export async function serverT(): Promise<(k: MsgKey) => string> {
+  const session = await auth();
+  const locale: Locale = isLocale(session?.user?.locale) ? session!.user!.locale! : "en";
+  return (k) => translate(locale, k);
 }
 
 /** Require a logged-in user; redirect to /login otherwise. */

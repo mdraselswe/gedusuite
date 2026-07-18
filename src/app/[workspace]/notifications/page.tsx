@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { workspaceAccess } from "@/lib/authz";
 import { prisma } from "@/lib/prisma";
 import { NotificationList } from "@/components/notifications/notification-list";
+import { serverT } from "@/lib/session";
 
 export default async function NotificationsPage({
   params,
@@ -28,7 +29,7 @@ export default async function NotificationsPage({
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
-      <h1 className="text-2xl font-bold">Notifications</h1>
+      <h1 className="text-2xl font-bold">{(await serverT())("notifications")}</h1>
       <NotificationList slug={slug} notifications={rows} />
     </div>
   );

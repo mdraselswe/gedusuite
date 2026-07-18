@@ -3,6 +3,7 @@ import { workspaceAccess } from "@/lib/authz";
 import { can } from "@/lib/rbac";
 import { buildReport, parseRange } from "@/lib/reports";
 import { ReportView } from "@/components/reports/report-view";
+import { serverT } from "@/lib/session";
 
 export default async function ReportsPage({
   params,
@@ -25,7 +26,7 @@ export default async function ReportsPage({
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
-      <h1 className="text-2xl font-bold">Reports</h1>
+      <h1 className="text-2xl font-bold">{(await serverT())("reports")}</h1>
       <ReportView
         slug={slug}
         report={report}

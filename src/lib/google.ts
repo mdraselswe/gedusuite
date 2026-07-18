@@ -68,6 +68,25 @@ export async function syncSnapshotToSheets(
       },
     });
     sheetId = created.data.spreadsheetId!;
+
+    // Protect every tab so the human-readable backup can't be edited by accident.
+    const protectRequests = (created.data.sheets ?? [])
+      .filter((s) => s.properties?.sheetId != null)
+      .map((s) => ({
+        addProtectedRange: {
+          protectedRange: {
+            range: { sheetId: s.properties!.sheetId! },
+            description: "GeduSuite backup — view only",
+            warningOnly: true,
+          },
+        },
+      }));
+    if (protectRequests.length) {
+      await sheets.spreadsheets.batchUpdate({
+        spreadsheetId: sheetId,
+        requestBody: { requests: protectRequests },
+      });
+    }
   } else {
     // Ensure every tab exists on the existing spreadsheet.
     const meta = await sheets.spreadsheets.get({ spreadsheetId: sheetId });

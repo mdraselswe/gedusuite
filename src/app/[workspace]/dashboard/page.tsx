@@ -1,4 +1,4 @@
-import { requireMembership } from "@/lib/session";
+import { requireMembership, serverT } from "@/lib/session";
 import { workspaceAccess } from "@/lib/authz";
 import { can } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
@@ -26,6 +26,7 @@ export default async function DashboardPage({
   const { workspace: slug } = await params;
   const { membership } = await requireMembership(slug);
   const workspaceId = membership.workspaceId;
+  const t = await serverT();
 
   const access = await workspaceAccess(slug);
   const canViewPartners =
@@ -69,7 +70,7 @@ export default async function DashboardPage({
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
-      <h1 className="text-2xl font-bold">Dashboard</h1>
+      <h1 className="text-2xl font-bold">{t("dashboard")}</h1>
 
       {(alerts.length > 0 || overdue.length > 0) && (
         <div className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm dark:border-amber-800 dark:bg-amber-950/40">

@@ -3,6 +3,7 @@ import { workspaceAccess } from "@/lib/authz";
 import { can } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
 import { partnerBalances, totalBusinessProfit } from "@/lib/finance";
+import { serverT } from "@/lib/session";
 import { PartnerManager } from "@/components/partners/partner-manager";
 
 export default async function PartnersPage({
@@ -64,7 +65,7 @@ export default async function PartnersPage({
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <div className="flex items-baseline justify-between">
-        <h1 className="text-2xl font-bold">Partners</h1>
+        <h1 className="text-2xl font-bold">{(await serverT())("partners")}</h1>
         <span className="text-sm text-muted-foreground">
           Total business profit: <span className="font-semibold">{profit.toFixed(2)}</span>
         </span>

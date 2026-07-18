@@ -25,6 +25,10 @@ const en = {
   dark: "Dark",
   system: "System",
   save: "Save",
+  productsSuppliers: "Products & Suppliers",
+  salesOrders: "Sales & Orders",
+  internalPurchases: "Internal Purchases",
+  backupRecovery: "Backup & Recovery",
 } as const;
 
 export type MsgKey = keyof typeof en;
@@ -51,6 +55,10 @@ const bn: Record<MsgKey, string> = {
   dark: "ডার্ক",
   system: "সিস্টেম",
   save: "সংরক্ষণ",
+  productsSuppliers: "পণ্য ও সরবরাহকারী",
+  salesOrders: "বিক্রয় ও অর্ডার",
+  internalPurchases: "অভ্যন্তরীণ ক্রয়",
+  backupRecovery: "ব্যাকআপ ও রিকভারি",
 };
 
 const dict: Record<Locale, Record<MsgKey, string>> = { en, bn };

@@ -3,6 +3,7 @@ import { workspaceAccess } from "@/lib/authz";
 import { can } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
 import { InternalPurchaseManager } from "@/components/internal-purchases/internal-purchase-manager";
+import { serverT } from "@/lib/session";
 
 export default async function InternalPurchasesPage({
   params,
@@ -43,7 +44,7 @@ export default async function InternalPurchasesPage({
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <div className="flex items-baseline justify-between">
-        <h1 className="text-2xl font-bold">Internal Purchases</h1>
+        <h1 className="text-2xl font-bold">{(await serverT())("internalPurchases")}</h1>
         <span className="text-sm text-muted-foreground">
           Total spend: <span className="font-semibold">{totalSpend.toFixed(2)}</span>
         </span>

@@ -4,6 +4,7 @@ import { can } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
 import { isGoogleConfigured } from "@/lib/google";
 import { BackupManager } from "@/components/backup/backup-manager";
+import { serverT } from "@/lib/session";
 
 export default async function BackupSettingsPage({
   params,
@@ -39,7 +40,7 @@ export default async function BackupSettingsPage({
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
-      <h1 className="text-2xl font-bold">Backup & Recovery</h1>
+      <h1 className="text-2xl font-bold">{(await serverT())("backupRecovery")}</h1>
       <BackupManager
         slug={slug}
         canManage={canManage}

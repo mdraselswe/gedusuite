@@ -60,7 +60,14 @@ export const authOptions: NextAuthOptions = {
       // Refresh memberships on sign-in and whenever the client calls update()
       // (e.g. right after creating a workspace or accepting an invite).
       if (user || trigger === "update") {
-        if (token.uid) token.memberships = await loadMemberships(token.uid as string);
+        if (token.uid) {
+          token.memberships = await loadMemberships(token.uid as string);
+          const u = await prisma.user.findUnique({
+            where: { id: token.uid as string },
+            select: { locale: true },
+          });
+          token.locale = u?.locale ?? "en";
+        }
       }
       return token;
     },
@@ -69,6 +76,7 @@ export const authOptions: NextAuthOptions = {
         session.user.id = (token.uid as string) ?? "";
         session.user.memberships =
           (token.memberships as SessionMembership[] | undefined) ?? [];
+        session.user.locale = (token.locale as string) ?? "en";
       }
       return session;
     },

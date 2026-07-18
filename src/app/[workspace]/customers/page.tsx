@@ -3,6 +3,7 @@ import { workspaceAccess } from "@/lib/authz";
 import { can } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
 import { computeOrderTotals } from "@/lib/orders";
+import { serverT } from "@/lib/session";
 import { CustomerManager } from "@/components/customers/customer-manager";
 
 export default async function CustomersPage({
@@ -51,7 +52,7 @@ export default async function CustomersPage({
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <h1 className="text-2xl font-bold">Customers</h1>
+      <h1 className="text-2xl font-bold">{(await serverT())("customers")}</h1>
       <CustomerManager slug={slug} customers={rows} perms={perms} />
     </div>
   );
