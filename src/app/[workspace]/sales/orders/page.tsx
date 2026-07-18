@@ -32,9 +32,16 @@ export default async function OrdersPage({
   };
 
   const [products, customers, members, stock, orders] = await Promise.all([
+    // select (not include) — this page never renders images, so skip the
+    // ~1.4MB-max base64 imageUrl column entirely instead of fetching it for
+    // every product just to discard it.
     prisma.product.findMany({
       where: { workspaceId },
-      include: { variants: true },
+      select: {
+        id: true,
+        name: true,
+        variants: { select: { id: true, size: true, color: true } },
+      },
       orderBy: { name: "asc" },
     }),
     prisma.customer.findMany({

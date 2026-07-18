@@ -34,34 +34,38 @@ export async function inviteMember(formData: FormData): Promise<InviteResult> {
   }
   const { slug, email, role } = parsed.data;
 
-  const workspace = await prisma.workspace.findUnique({ where: { slug } });
-  if (!workspace) return { ok: false, error: "Workspace not found" };
+  // Workspace+membership combined into one round trip (was 2 sequential),
+  // run concurrently with the existing-user lookup (independent of it).
+  const [membership, existingUser] = await Promise.all([
+    prisma.membership.findFirst({
+      where: { userId: user.id, workspace: { slug } },
+      select: { workspaceId: true, role: true, permissions: true },
+    }),
+    prisma.user.findUnique({ where: { email }, select: { id: true } }),
+  ]);
+  if (!membership) return { ok: false, error: "Workspace not found" };
 
   // Authorize: only members with full Team access (OWNER) may invite.
-  const membership = await prisma.membership.findUnique({
-    where: { userId_workspaceId: { userId: user.id, workspaceId: workspace.id } },
-  });
-  if (!membership || !can(membership.role, "team", "full", membership.permissions)) {
+  if (!can(membership.role, "team", "full", membership.permissions)) {
     return { ok: false, error: "You do not have permission to invite members" };
   }
+  const workspaceId = membership.workspaceId;
 
-  // Already a member?
-  const existingUser = await prisma.user.findUnique({ where: { email } });
+  // Already a member? (only needs a round trip when the email is a known user)
   if (existingUser) {
     const already = await prisma.membership.findUnique({
-      where: {
-        userId_workspaceId: { userId: existingUser.id, workspaceId: workspace.id },
-      },
+      where: { userId_workspaceId: { userId: existingUser.id, workspaceId } },
+      select: { id: true },
     });
     if (already) return { ok: false, error: "That user is already a member" };
   }
 
   const token = randomBytes(24).toString("hex");
   await prisma.invite.upsert({
-    where: { email_workspaceId: { email, workspaceId: workspace.id } },
+    where: { email_workspaceId: { email, workspaceId } },
     create: {
       email,
-      workspaceId: workspace.id,
+      workspaceId,
       role: role as Role,
       token,
       invitedBy: user.id,

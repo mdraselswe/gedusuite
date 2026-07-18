@@ -48,6 +48,41 @@ type Perms = { canAdd: boolean; canEdit: boolean };
 type VariantDraft = { size: string; color: string; sku: string };
 
 const MAX_IMAGE_BYTES = 1_400_000;
+const IMAGE_MAX_DIMENSION = 480; // px, longest side — plenty for a list thumbnail
+const IMAGE_QUALITY = 0.72;
+
+/**
+ * Downscale + recompress an image client-side before it ever becomes a
+ * stored data URI. Product images were being stored at full upload size
+ * (up to ~1.4MB each) and fetched in full on every Products/Purchases/Sales
+ * page load — with 20+ products that's tens of MB transferred per page view.
+ * Shrinking to a 480px JPEG typically lands at 15-60KB regardless of the
+ * original file size.
+ */
+function downscaleImage(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error);
+    reader.onload = () => {
+      const img = new window.Image();
+      img.onerror = () => reject(new Error("Invalid image"));
+      img.onload = () => {
+        const scale = Math.min(1, IMAGE_MAX_DIMENSION / Math.max(img.width, img.height));
+        const w = Math.round(img.width * scale);
+        const h = Math.round(img.height * scale);
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return reject(new Error("Canvas unsupported"));
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL("image/jpeg", IMAGE_QUALITY));
+      };
+      img.src = String(reader.result);
+    };
+    reader.readAsDataURL(file);
+  });
+}
 
 function variantText(v: { size: string | null; color: string | null }) {
   return [v.size, v.color].filter(Boolean).join(" / ") || "default";
@@ -119,7 +154,7 @@ export function ProductManager({
     setOpen(true);
   }
 
-  function onPickImage(e: React.ChangeEvent<HTMLInputElement>) {
+  async function onPickImage(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > MAX_IMAGE_BYTES) {
@@ -127,9 +162,11 @@ export function ProductManager({
       e.target.value = "";
       return;
     }
-    const reader = new FileReader();
-    reader.onload = () => setImageUrl(String(reader.result));
-    reader.readAsDataURL(file);
+    try {
+      setImageUrl(await downscaleImage(file));
+    } catch {
+      toast.error("Couldn't process that image");
+    }
   }
 
   async function onSubmitProduct(e: React.FormEvent) {

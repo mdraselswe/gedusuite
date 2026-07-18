@@ -23,9 +23,16 @@ export default async function PurchasesPage({
   };
 
   const [products, suppliers, purchases] = await Promise.all([
+    // No `select` here previously meant every product's imageUrl (up to ~1.4MB
+    // base64 each) came along even though this page never renders images.
     prisma.product.findMany({
       where: { workspaceId: access.workspaceId },
-      include: { variants: true },
+      select: {
+        id: true,
+        name: true,
+        expiryTracked: true,
+        variants: { select: { id: true, size: true, color: true } },
+      },
       orderBy: { name: "asc" },
     }),
     prisma.supplier.findMany({

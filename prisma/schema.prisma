@@ -202,6 +202,7 @@ model Purchase {
   productVariant ProductVariant @relation(fields: [productVariantId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId])
+  @@index([workspaceId, date])
   @@index([productVariantId])
   @@index([supplierId])
 }
@@ -296,6 +297,7 @@ model Order {
   items     OrderItem[]
 
   @@index([workspaceId])
+  @@index([workspaceId, date])
   @@index([customerId])
   @@index([status])
 }
@@ -381,6 +383,7 @@ model PartnerTxn {
   treasuryEntry TreasuryEntry?
 
   @@index([workspaceId])
+  @@index([workspaceId, date])
   @@index([partnerId])
 }
 
@@ -401,6 +404,7 @@ model TreasuryEntry {
   partnerTxn  PartnerTxn? @relation(fields: [partnerTxnId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId])
+  @@index([workspaceId, date])
   @@index([partnerId])
 }
 
@@ -430,6 +434,7 @@ model InternalPurchase {
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId])
+  @@index([workspaceId, date])
 }
 
 // ── Phase 6: Backup & Recovery ──────────────────────────────────────
@@ -497,6 +502,7 @@ model StockAdjustment {
   productVariant ProductVariant @relation(fields: [productVariantId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId])
+  @@index([workspaceId, date])
   @@index([productVariantId])
 }
 
