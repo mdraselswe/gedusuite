@@ -15,14 +15,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { DataTable, type Column } from "@/components/ui/data-table";
+import { ArrowLeftRight } from "lucide-react";
 
 type Txn = {
   id: string;
@@ -127,38 +121,43 @@ export function PartnerTxnManager({
 
       <div>
         <h2 className="mb-3 text-lg font-semibold">Transaction log</h2>
-        {txns.length === 0 ? (
-          <p className="py-6 text-center text-sm text-muted-foreground">No transactions.</p>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Date</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Purpose</TableHead>
-                <TableHead className="text-right">Amount</TableHead>
-                {canDelete && <TableHead className="w-16" />}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {txns.map((t) => (
-                <TableRow key={t.id}>
-                  <TableCell>{t.date}</TableCell>
-                  <TableCell>{LABEL[t.type] ?? t.type}</TableCell>
-                  <TableCell>{t.purpose ?? "—"}</TableCell>
-                  <TableCell className="text-right">{t.amount.toFixed(2)}</TableCell>
-                  {canDelete && (
-                    <TableCell>
-                      <Button variant="ghost" size="sm" onClick={() => onDelete(t.id)}>
-                        Delete
-                      </Button>
-                    </TableCell>
-                  )}
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
+        <DataTable
+          rows={txns}
+          rowKey={(t) => t.id}
+          empty={{ icon: ArrowLeftRight, title: "No transactions" }}
+          columns={
+            [
+              { key: "date", header: "Date", cell: (t) => t.date },
+              {
+                key: "type",
+                header: "Type",
+                cardTitle: true,
+                cell: (t) => LABEL[t.type] ?? t.type,
+              },
+              { key: "purpose", header: "Purpose", cell: (t) => t.purpose ?? "—" },
+              {
+                key: "amount",
+                header: "Amount",
+                align: "right",
+                cell: (t) => t.amount.toFixed(2),
+              },
+              ...(canDelete
+                ? [
+                    {
+                      key: "actions",
+                      header: "",
+                      cardFullWidth: true,
+                      cell: (t: Txn) => (
+                        <Button variant="ghost" size="sm" onClick={() => onDelete(t.id)}>
+                          Delete
+                        </Button>
+                      ),
+                    },
+                  ]
+                : []),
+            ] as Column<Txn>[]
+          }
+        />
       </div>
     </div>
   );

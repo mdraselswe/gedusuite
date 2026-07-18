@@ -19,14 +19,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { DataTable, type Column } from "@/components/ui/data-table";
+import { Wallet } from "lucide-react";
 
 type Entry = {
   id: string;
@@ -117,30 +111,32 @@ export function TreasuryManager({
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Customer</TableHead>
-                  <TableHead>Held by</TableHead>
-                  <TableHead className="text-right">Days</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {overdue.map((o) => (
-                  <TableRow key={o.orderId}>
-                    <TableCell>{o.date}</TableCell>
-                    <TableCell>{o.customerName}</TableCell>
-                    <TableCell>{o.heldByName ?? "—"}</TableCell>
-                    <TableCell className="text-right">{o.daysOverdue}</TableCell>
-                    <TableCell className="text-right font-medium text-destructive">
-                      {o.amount.toFixed(2)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <DataTable
+              rows={overdue}
+              rowKey={(o) => o.orderId}
+              empty={{ title: "No overdue payments" }}
+              columns={
+                [
+                  { key: "date", header: "Date", cell: (o) => o.date },
+                  {
+                    key: "customer",
+                    header: "Customer",
+                    cardTitle: true,
+                    cell: (o) => o.customerName,
+                  },
+                  { key: "heldBy", header: "Held by", cell: (o) => o.heldByName ?? "—" },
+                  { key: "days", header: "Days", align: "right", cell: (o) => o.daysOverdue },
+                  {
+                    key: "amount",
+                    header: "Amount",
+                    align: "right",
+                    cell: (o) => (
+                      <span className="font-medium text-destructive">{o.amount.toFixed(2)}</span>
+                    ),
+                  },
+                ] as Column<Overdue>[]
+              }
+            />
           </CardContent>
         </Card>
       )}
@@ -235,53 +231,54 @@ export function TreasuryManager({
             </SelectContent>
           </Select>
         </div>
-        {filtered.length === 0 ? (
-          <p className="py-6 text-center text-sm text-muted-foreground">No entries.</p>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Date</TableHead>
-                <TableHead>Dir</TableHead>
-                <TableHead>Source</TableHead>
-                <TableHead>Partner</TableHead>
-                <TableHead>Note</TableHead>
-                <TableHead className="text-right">Amount</TableHead>
-                {canManage && <TableHead className="w-16" />}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.map((e) => (
-                <TableRow key={e.id}>
-                  <TableCell>{e.date}</TableCell>
-                  <TableCell>
-                    <Badge variant={e.type === "IN" ? "secondary" : "outline"}>{e.type}</Badge>
-                  </TableCell>
-                  <TableCell>{e.source}</TableCell>
-                  <TableCell>{e.partnerName ?? "—"}</TableCell>
-                  <TableCell>{e.note ?? "—"}</TableCell>
-                  <TableCell
-                    className={`text-right font-medium ${e.type === "IN" ? "text-green-600" : "text-destructive"}`}
-                  >
+        <DataTable
+          rows={filtered}
+          rowKey={(e) => e.id}
+          empty={{ icon: Wallet, title: "No entries" }}
+          columns={
+            [
+              { key: "date", header: "Date", cell: (e) => e.date },
+              {
+                key: "dir",
+                header: "Dir",
+                cell: (e) => (
+                  <Badge variant={e.type === "IN" ? "secondary" : "outline"}>{e.type}</Badge>
+                ),
+              },
+              { key: "source", header: "Source", cardTitle: true, cell: (e) => e.source },
+              { key: "partner", header: "Partner", cell: (e) => e.partnerName ?? "—" },
+              { key: "note", header: "Note", cell: (e) => e.note ?? "—" },
+              {
+                key: "amount",
+                header: "Amount",
+                align: "right",
+                cell: (e) => (
+                  <span className={e.type === "IN" ? "text-green-600" : "text-destructive"}>
                     {e.type === "IN" ? "+" : "−"}
                     {e.amount.toFixed(2)}
-                  </TableCell>
-                  {canManage && (
-                    <TableCell>
-                      {e.fromDeposit ? (
-                        <span className="text-xs text-muted-foreground">deposit</span>
-                      ) : (
-                        <Button variant="ghost" size="sm" onClick={() => onDelete(e.id)}>
-                          Delete
-                        </Button>
-                      )}
-                    </TableCell>
-                  )}
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
+                  </span>
+                ),
+              },
+              ...(canManage
+                ? [
+                    {
+                      key: "actions",
+                      header: "",
+                      cardFullWidth: true,
+                      cell: (e: Entry) =>
+                        e.fromDeposit ? (
+                          <span className="text-xs text-muted-foreground">from deposit</span>
+                        ) : (
+                          <Button variant="ghost" size="sm" onClick={() => onDelete(e.id)}>
+                            Delete
+                          </Button>
+                        ),
+                    },
+                  ]
+                : []),
+            ] as Column<Entry>[]
+          }
+        />
       </div>
     </div>
   );

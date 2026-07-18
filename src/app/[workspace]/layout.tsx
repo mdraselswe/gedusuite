@@ -58,37 +58,44 @@ export default async function WorkspaceLayout({
 
   return (
     <div className="flex min-h-screen flex-col">
-      <header className="flex items-center justify-between border-b px-4 py-3 print:hidden">
-        <div className="flex items-center gap-6">
-          <Link href={`/${slug}/dashboard`} className="font-bold">
+      <header className="sticky top-0 z-30 border-b bg-background print:hidden">
+        <div className="flex items-center justify-between gap-2 px-4 py-3">
+          <Link href={`/${slug}/dashboard`} className="truncate font-bold">
             {workspace.name}
           </Link>
-          <nav className="hidden gap-4 text-sm text-muted-foreground sm:flex">
-            {nav.map((n) => (
-              <Link key={n.href} href={n.href} className="hover:text-foreground">
-                {n.label}
-              </Link>
-            ))}
-          </nav>
+          <div className="flex items-center gap-1">
+            <Link
+              href={`/${slug}/notifications`}
+              className="relative inline-flex size-10 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+              aria-label={t("notifications")}
+            >
+              🔔
+              {unread > 0 && (
+                <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold text-destructive-foreground">
+                  {unread > 99 ? "99+" : unread}
+                </span>
+              )}
+            </Link>
+            <span className="hidden text-xs font-medium text-muted-foreground sm:inline">
+              {membership.role}
+            </span>
+            <SignOutButton />
+          </div>
         </div>
-        <div className="flex items-center gap-3">
-          <Link
-            href={`/${slug}/notifications`}
-            className="relative text-sm text-muted-foreground hover:text-foreground"
-            aria-label="Notifications"
-          >
-            🔔
-            {unread > 0 && (
-              <span className="absolute -right-2 -top-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold text-destructive-foreground">
-                {unread > 99 ? "99+" : unread}
-              </span>
-            )}
-          </Link>
-          <span className="text-xs font-medium text-muted-foreground">{membership.role}</span>
-          <SignOutButton />
-        </div>
+        {/* Nav: horizontally scrollable pill row on phones, inline on larger screens */}
+        <nav className="flex gap-1 overflow-x-auto px-2 pb-2 [scrollbar-width:none] md:px-4 [&::-webkit-scrollbar]:hidden">
+          {nav.map((n) => (
+            <Link
+              key={n.href}
+              href={n.href}
+              className="flex shrink-0 items-center rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:bg-muted"
+            >
+              {n.label}
+            </Link>
+          ))}
+        </nav>
       </header>
-      <main className="flex-1 p-6">{children}</main>
+      <main className="flex-1 p-4 sm:p-6">{children}</main>
     </div>
   );
 }

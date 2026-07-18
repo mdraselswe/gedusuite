@@ -8,6 +8,8 @@ import {
 } from "@/server/actions/notifications";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Bell } from "lucide-react";
 
 type Notification = {
   id: string;
@@ -48,7 +50,9 @@ export function NotificationList({
   }
 
   if (notifications.length === 0) {
-    return <p className="py-10 text-center text-sm text-muted-foreground">No notifications.</p>;
+    return (
+      <EmptyState icon={Bell} title="No notifications" description="You're all caught up." />
+    );
   }
 
   return (

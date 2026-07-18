@@ -1,18 +1,21 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Anek_Bangla, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/providers";
 import { auth } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { isLocale, type Locale } from "@/lib/i18n";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
+// Anek Bangla renders Bangla + Latin in one visual rhythm — primary UI font
+// (TECH_SPEC §10). Loaded as the --font-sans variable.
+const anekBangla = Anek_Bangla({
+  variable: "--font-sans",
+  subsets: ["bengali", "latin"],
+  display: "swap",
 });
 
 const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+  variable: "--font-mono",
   subsets: ["latin"],
 });
 
@@ -55,7 +58,7 @@ export default async function RootLayout({
     <html
       lang={locale}
       data-preset={preset}
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${anekBangla.variable} ${geistMono.variable} h-full antialiased`}
       suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col" suppressHydrationWarning>

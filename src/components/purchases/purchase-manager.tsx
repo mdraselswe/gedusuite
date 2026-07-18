@@ -16,14 +16,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { DataTable, type Column } from "@/components/ui/data-table";
+import { PackageOpen } from "lucide-react";
 
 type VariantOption = { id: string; label: string; expiryTracked: boolean };
 type PurchaseRow = {
@@ -169,44 +163,40 @@ export function PurchaseManager({
 
       <div>
         <h2 className="mb-3 text-lg font-semibold">Recent purchases</h2>
-        {purchases.length === 0 ? (
-          <p className="py-6 text-center text-sm text-muted-foreground">
-            No purchases recorded yet.
-          </p>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Date</TableHead>
-                <TableHead>Product</TableHead>
-                <TableHead>Supplier</TableHead>
-                <TableHead className="text-right">Unit cost</TableHead>
-                <TableHead className="text-right">Qty</TableHead>
-                <TableHead>Expiry</TableHead>
-                {perms.canEdit && <TableHead className="w-16" />}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {purchases.map((p) => (
-                <TableRow key={p.id}>
-                  <TableCell>{p.date}</TableCell>
-                  <TableCell className="font-medium">{p.product}</TableCell>
-                  <TableCell>{p.supplier}</TableCell>
-                  <TableCell className="text-right">{p.unitCost.toFixed(2)}</TableCell>
-                  <TableCell className="text-right">{p.quantity}</TableCell>
-                  <TableCell>{p.expiryDate ?? "—"}</TableCell>
-                  {perms.canEdit && (
-                    <TableCell>
-                      <Button variant="ghost" size="sm" onClick={() => onDelete(p.id)}>
-                        Delete
-                      </Button>
-                    </TableCell>
-                  )}
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
+        <DataTable
+          rows={purchases}
+          rowKey={(p) => p.id}
+          empty={{ icon: PackageOpen, title: "No purchases recorded yet" }}
+          columns={
+            [
+              { key: "date", header: "Date", cell: (p) => p.date },
+              { key: "product", header: "Product", cardTitle: true, cell: (p) => p.product },
+              { key: "supplier", header: "Supplier", cell: (p) => p.supplier },
+              {
+                key: "unitCost",
+                header: "Unit cost",
+                align: "right",
+                cell: (p) => p.unitCost.toFixed(2),
+              },
+              { key: "quantity", header: "Qty", align: "right", cell: (p) => p.quantity },
+              { key: "expiry", header: "Expiry", cell: (p) => p.expiryDate ?? "—" },
+              ...(perms.canEdit
+                ? [
+                    {
+                      key: "actions",
+                      header: "",
+                      cardFullWidth: true,
+                      cell: (p: PurchaseRow) => (
+                        <Button variant="ghost" size="sm" onClick={() => onDelete(p.id)}>
+                          Delete
+                        </Button>
+                      ),
+                    },
+                  ]
+                : []),
+            ] as Column<PurchaseRow>[]
+          }
+        />
       </div>
     </div>
   );

@@ -26,14 +26,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { DataTable, type Column } from "@/components/ui/data-table";
+import { Handshake } from "lucide-react";
 
 type PartnerRow = {
   id: string;
@@ -109,36 +103,56 @@ export function PartnerManager({
         </div>
       )}
 
-      {partners.length === 0 ? (
-        <p className="py-8 text-center text-sm text-muted-foreground">No partners yet.</p>
-      ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Partner</TableHead>
-              <TableHead className="text-right">Share %</TableHead>
-              <TableHead className="text-right">Net capital</TableHead>
-              <TableHead className="text-right">Expenses</TableHead>
-              <TableHead className="text-right">To treasury</TableHead>
-              <TableHead className="text-right">Profit share</TableHead>
-              <TableHead className="w-40" />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {partners.map((p) => (
-              <TableRow key={p.id}>
-                <TableCell className="font-medium">{p.name}</TableCell>
-                <TableCell className="text-right">{p.profitSharePercent.toFixed(2)}</TableCell>
-                <TableCell className="text-right">{p.netCapital.toFixed(2)}</TableCell>
-                <TableCell className="text-right">{p.expenses.toFixed(2)}</TableCell>
-                <TableCell className="text-right">{p.depositedToTreasury.toFixed(2)}</TableCell>
-                <TableCell className="text-right font-medium">
-                  {p.profitShareAmount.toFixed(2)}
-                </TableCell>
-                <TableCell className="flex gap-1">
+      <DataTable
+        rows={partners}
+        rowKey={(p) => p.id}
+        empty={{
+          icon: Handshake,
+          title: "No partners yet",
+          description: canManage ? "Promote a member to partner to track investment & profit share." : undefined,
+        }}
+        columns={
+          [
+            { key: "name", header: "Partner", cardTitle: true, cell: (p) => p.name },
+            {
+              key: "share",
+              header: "Share %",
+              align: "right",
+              cell: (p) => p.profitSharePercent.toFixed(2),
+            },
+            {
+              key: "capital",
+              header: "Net capital",
+              align: "right",
+              cell: (p) => p.netCapital.toFixed(2),
+            },
+            {
+              key: "expenses",
+              header: "Expenses",
+              align: "right",
+              cell: (p) => p.expenses.toFixed(2),
+            },
+            {
+              key: "toTreasury",
+              header: "To treasury",
+              align: "right",
+              cell: (p) => p.depositedToTreasury.toFixed(2),
+            },
+            {
+              key: "profitShare",
+              header: "Profit share",
+              align: "right",
+              cell: (p) => p.profitShareAmount.toFixed(2),
+            },
+            {
+              key: "actions",
+              header: "",
+              cardFullWidth: true,
+              cell: (p: PartnerRow) => (
+                <>
                   <Link
                     href={`/${slug}/partners/${p.id}`}
-                    className="text-sm underline underline-offset-4"
+                    className="inline-flex items-center text-sm underline underline-offset-4"
                   >
                     Ledger
                   </Link>
@@ -152,12 +166,12 @@ export function PartnerManager({
                       </Button>
                     </>
                   )}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      )}
+                </>
+              ),
+            },
+          ] as Column<PartnerRow>[]
+        }
+      />
 
       {/* Add partner */}
       <Dialog open={addOpen} onOpenChange={setAddOpen}>

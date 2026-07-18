@@ -18,14 +18,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { DataTable, type Column } from "@/components/ui/data-table";
+import { Users } from "lucide-react";
 
 type Customer = {
   id: string;
@@ -129,45 +123,55 @@ export function CustomerManager({
         )}
       </div>
 
-      {filtered.length === 0 ? (
-        <p className="py-8 text-center text-sm text-muted-foreground">No customers.</p>
-      ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Phone</TableHead>
-              <TableHead className="text-right">Orders</TableHead>
-              <TableHead className="text-right">Outstanding</TableHead>
-              <TableHead className="w-40" />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filtered.map((c) => (
-              <TableRow key={c.id}>
-                <TableCell className="font-medium">
+      <DataTable
+        rows={filtered}
+        rowKey={(c) => c.id}
+        empty={{
+          icon: Users,
+          title: "No customers",
+          description: perms.canAdd ? "Add a customer to track orders and dues." : undefined,
+        }}
+        columns={
+          [
+            {
+              key: "name",
+              header: "Name",
+              cardTitle: true,
+              cell: (c) => (
+                <span>
                   {c.name}
                   {c.orderCount > 1 && (
                     <Badge variant="secondary" className="ml-2">
                       Repeat
                     </Badge>
                   )}
-                </TableCell>
-                <TableCell>{c.phone ?? "—"}</TableCell>
-                <TableCell className="text-right">{c.orderCount}</TableCell>
-                <TableCell className="text-right">
-                  {c.outstanding > 0 ? (
-                    <span className="font-semibold text-destructive">
-                      {c.outstanding.toFixed(2)}
-                    </span>
-                  ) : (
-                    "—"
-                  )}
-                </TableCell>
-                <TableCell className="flex gap-1">
+                </span>
+              ),
+            },
+            { key: "phone", header: "Phone", cell: (c) => c.phone ?? "—" },
+            { key: "orders", header: "Orders", align: "right", cell: (c) => c.orderCount },
+            {
+              key: "outstanding",
+              header: "Outstanding",
+              align: "right",
+              cell: (c) =>
+                c.outstanding > 0 ? (
+                  <span className="font-semibold text-destructive">
+                    {c.outstanding.toFixed(2)}
+                  </span>
+                ) : (
+                  "—"
+                ),
+            },
+            {
+              key: "actions",
+              header: "",
+              cardFullWidth: true,
+              cell: (c: Customer) => (
+                <>
                   <Link
                     href={`/${slug}/customers/${c.id}`}
-                    className="text-sm underline underline-offset-4"
+                    className="inline-flex items-center text-sm underline underline-offset-4"
                   >
                     History
                   </Link>
@@ -188,12 +192,12 @@ export function CustomerManager({
                       </Button>
                     </>
                   )}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      )}
+                </>
+              ),
+            },
+          ] as Column<Customer>[]
+        }
+      />
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>

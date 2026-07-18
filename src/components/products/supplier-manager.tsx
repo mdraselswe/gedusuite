@@ -19,14 +19,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { DataTable, type Column } from "@/components/ui/data-table";
+import { Truck } from "lucide-react";
 
 type Supplier = {
   id: string;
@@ -111,41 +105,43 @@ export function SupplierManager({
         )}
       </div>
 
-      {shown.length === 0 ? (
-        <p className="py-8 text-center text-sm text-muted-foreground">
-          No suppliers found.
-        </p>
-      ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Phone</TableHead>
-              <TableHead>Address</TableHead>
-              {perms.canEdit && <TableHead className="w-24" />}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {shown.map((s) => (
-              <TableRow key={s.id}>
-                <TableCell className="font-medium">{s.name}</TableCell>
-                <TableCell>{s.phone ?? "—"}</TableCell>
-                <TableCell>{s.address ?? "—"}</TableCell>
-                {perms.canEdit && (
-                  <TableCell className="flex gap-1">
-                    <Button variant="ghost" size="sm" onClick={() => openEdit(s)}>
-                      Edit
-                    </Button>
-                    <Button variant="ghost" size="sm" onClick={() => onDelete(s)}>
-                      Delete
-                    </Button>
-                  </TableCell>
-                )}
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      )}
+      <DataTable
+        rows={shown}
+        rowKey={(s) => s.id}
+        empty={{
+          icon: Truck,
+          title: "No suppliers found",
+          description: perms.canAdd
+            ? "Add a supplier to reuse across purchase entries."
+            : undefined,
+        }}
+        columns={
+          [
+            { key: "name", header: "Name", cardTitle: true, cell: (s) => s.name },
+            { key: "phone", header: "Phone", cell: (s) => s.phone ?? "—" },
+            { key: "address", header: "Address", cell: (s) => s.address ?? "—" },
+            ...(perms.canEdit
+              ? [
+                  {
+                    key: "actions",
+                    header: "",
+                    cardFullWidth: true,
+                    cell: (s: Supplier) => (
+                      <>
+                        <Button variant="ghost" size="sm" onClick={() => openEdit(s)}>
+                          Edit
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => onDelete(s)}>
+                          Delete
+                        </Button>
+                      </>
+                    ),
+                  },
+                ]
+              : []),
+          ] as Column<Supplier>[]
+        }
+      />
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>

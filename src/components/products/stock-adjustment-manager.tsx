@@ -19,14 +19,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { DataTable, type Column } from "@/components/ui/data-table";
+import { ClipboardList } from "lucide-react";
 
 type VariantOption = { id: string; label: string; stock: number };
 type Adjustment = {
@@ -169,47 +163,48 @@ export function StockAdjustmentManager({
 
       <div>
         <h2 className="mb-3 text-lg font-semibold">Recent adjustments</h2>
-        {adjustments.length === 0 ? (
-          <p className="py-6 text-center text-sm text-muted-foreground">None recorded.</p>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Date</TableHead>
-                <TableHead>Product</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead className="text-right">Change</TableHead>
-                <TableHead>Reason</TableHead>
-                {canEdit && <TableHead className="w-16" />}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {adjustments.map((a) => (
-                <TableRow key={a.id}>
-                  <TableCell>{a.date}</TableCell>
-                  <TableCell className="font-medium">{a.product}</TableCell>
-                  <TableCell>
-                    <Badge variant="secondary">{LABEL[a.type] ?? a.type}</Badge>
-                  </TableCell>
-                  <TableCell
-                    className={`text-right font-medium ${a.delta < 0 ? "text-destructive" : "text-green-600"}`}
-                  >
+        <DataTable
+          rows={adjustments}
+          rowKey={(a) => a.id}
+          empty={{ icon: ClipboardList, title: "No adjustments recorded" }}
+          columns={
+            [
+              { key: "date", header: "Date", cell: (a) => a.date },
+              { key: "product", header: "Product", cardTitle: true, cell: (a) => a.product },
+              {
+                key: "type",
+                header: "Type",
+                cell: (a) => <Badge variant="secondary">{LABEL[a.type] ?? a.type}</Badge>,
+              },
+              {
+                key: "delta",
+                header: "Change",
+                align: "right",
+                cell: (a) => (
+                  <span className={a.delta < 0 ? "text-destructive" : "text-green-600"}>
                     {a.delta > 0 ? "+" : ""}
                     {a.delta}
-                  </TableCell>
-                  <TableCell>{a.reason ?? "—"}</TableCell>
-                  {canEdit && (
-                    <TableCell>
-                      <Button variant="ghost" size="sm" onClick={() => onDelete(a.id)}>
-                        Delete
-                      </Button>
-                    </TableCell>
-                  )}
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
+                  </span>
+                ),
+              },
+              { key: "reason", header: "Reason", cell: (a) => a.reason ?? "—" },
+              ...(canEdit
+                ? [
+                    {
+                      key: "actions",
+                      header: "",
+                      cardFullWidth: true,
+                      cell: (a: Adjustment) => (
+                        <Button variant="ghost" size="sm" onClick={() => onDelete(a.id)}>
+                          Delete
+                        </Button>
+                      ),
+                    },
+                  ]
+                : []),
+            ] as Column<Adjustment>[]
+          }
+        />
       </div>
     </div>
   );

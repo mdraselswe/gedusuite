@@ -29,14 +29,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { DataTable, type Column } from "@/components/ui/data-table";
+import { ShoppingCart } from "lucide-react";
 
 type VariantOption = { id: string; label: string; stock: number };
 type OrderItem = {
@@ -224,60 +218,83 @@ export function OrderManager({
         )}
       </div>
 
-      {shownOrders.length === 0 ? (
-        <p className="py-8 text-center text-sm text-muted-foreground">No orders found.</p>
-      ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Date</TableHead>
-              <TableHead>Customer</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Payment</TableHead>
-              <TableHead className="text-right">Total</TableHead>
-              {perms.canViewProfit && <TableHead className="text-right">Profit</TableHead>}
-              <TableHead className="w-40" />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {shownOrders.map((o) => (
-              <TableRow key={o.id}>
-                <TableCell>{o.date}</TableCell>
-                <TableCell className="font-medium">{o.customerName}</TableCell>
-                <TableCell>
-                  {perms.canEdit ? (
-                    <Select value={o.status} onValueChange={(v) => v && onStatusChange(o.id, v)}>
-                      <SelectTrigger className="h-7 w-32">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {STATUSES.map((s) => (
-                          <SelectItem key={s} value={s}>
-                            {s}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  ) : (
-                    <Badge variant="secondary">{o.status}</Badge>
-                  )}
-                </TableCell>
-                <TableCell>
+      <DataTable
+        rows={shownOrders}
+        rowKey={(o) => o.id}
+        empty={{
+          icon: ShoppingCart,
+          title: "No orders found",
+          description: perms.canAdd ? "Create an order to start selling." : undefined,
+        }}
+        columns={
+          [
+            { key: "date", header: "Date", cell: (o) => o.date },
+            {
+              key: "customer",
+              header: "Customer",
+              cardTitle: true,
+              cell: (o) => o.customerName,
+            },
+            {
+              key: "status",
+              header: "Status",
+              cell: (o) =>
+                perms.canEdit ? (
+                  <Select value={o.status} onValueChange={(v) => v && onStatusChange(o.id, v)}>
+                    <SelectTrigger className="h-8 w-36">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {STATUSES.map((s) => (
+                        <SelectItem key={s} value={s}>
+                          {s}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Badge variant="secondary">{o.status}</Badge>
+                ),
+            },
+            {
+              key: "payment",
+              header: "Payment",
+              cell: (o) => (
+                <span>
                   {o.paymentStatus}
                   {o.totals.returnedUnits > 0 && (
                     <Badge variant="outline" className="ml-2">
                       {o.totals.returnedUnits} returned
                     </Badge>
                   )}
-                </TableCell>
-                <TableCell className="text-right">{o.totals.customerTotal.toFixed(2)}</TableCell>
-                {perms.canViewProfit && (
-                  <TableCell className="text-right">{o.totals.netProfit.toFixed(2)}</TableCell>
-                )}
-                <TableCell className="flex items-center gap-1">
+                </span>
+              ),
+            },
+            {
+              key: "total",
+              header: "Total",
+              align: "right",
+              cell: (o) => o.totals.customerTotal.toFixed(2),
+            },
+            ...(perms.canViewProfit
+              ? [
+                  {
+                    key: "profit",
+                    header: "Profit",
+                    align: "right" as const,
+                    cell: (o: OrderRow) => o.totals.netProfit.toFixed(2),
+                  },
+                ]
+              : []),
+            {
+              key: "actions",
+              header: "",
+              cardFullWidth: true,
+              cell: (o: OrderRow) => (
+                <>
                   <Link
                     href={`/${slug}/sales/orders/${o.id}/invoice`}
-                    className="text-sm underline underline-offset-4"
+                    className="inline-flex items-center text-sm underline underline-offset-4"
                   >
                     Invoice
                   </Link>
@@ -291,12 +308,12 @@ export function OrderManager({
                       </Button>
                     </>
                   )}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      )}
+                </>
+              ),
+            },
+          ] as Column<OrderRow>[]
+        }
+      />
 
       {/* New order dialog */}
       <Dialog open={open} onOpenChange={setOpen}>

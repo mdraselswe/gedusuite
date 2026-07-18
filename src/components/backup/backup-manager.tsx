@@ -15,14 +15,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { DataTable, type Column } from "@/components/ui/data-table";
+import { DatabaseBackup } from "lucide-react";
 
 type Setting = {
   googleSheetId: string;
@@ -241,50 +235,46 @@ export function BackupManager({
       {/* Log */}
       <div>
         <h2 className="mb-3 text-lg font-semibold">Backup history</h2>
-        {logs.length === 0 ? (
-          <p className="py-6 text-center text-sm text-muted-foreground">No backups yet.</p>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>When</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Details</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {logs.map((l) => (
-                <TableRow key={l.id}>
-                  <TableCell>{l.createdAt}</TableCell>
-                  <TableCell>{l.type}</TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={
-                        l.status === "SUCCESS"
-                          ? "secondary"
-                          : l.status === "FAILED"
-                            ? "destructive"
-                            : "outline"
-                      }
-                    >
-                      {l.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {l.fileUrl ? (
-                      <a href={l.fileUrl} target="_blank" rel="noreferrer" className="underline">
-                        open
-                      </a>
-                    ) : (
-                      l.note ?? "—"
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
+        <DataTable
+          rows={logs}
+          rowKey={(l) => l.id}
+          empty={{ icon: DatabaseBackup, title: "No backups yet" }}
+          columns={
+            [
+              { key: "when", header: "When", cardTitle: true, cell: (l) => l.createdAt },
+              { key: "type", header: "Type", cell: (l) => l.type },
+              {
+                key: "status",
+                header: "Status",
+                cell: (l) => (
+                  <Badge
+                    variant={
+                      l.status === "SUCCESS"
+                        ? "secondary"
+                        : l.status === "FAILED"
+                          ? "destructive"
+                          : "outline"
+                    }
+                  >
+                    {l.status}
+                  </Badge>
+                ),
+              },
+              {
+                key: "details",
+                header: "Details",
+                cell: (l) =>
+                  l.fileUrl ? (
+                    <a href={l.fileUrl} target="_blank" rel="noreferrer" className="underline">
+                      open
+                    </a>
+                  ) : (
+                    <span className="text-muted-foreground">{l.note ?? "—"}</span>
+                  ),
+              },
+            ] as Column<Log>[]
+          }
+        />
       </div>
     </div>
   );

@@ -6,14 +6,8 @@ import { prisma } from "@/lib/prisma";
 import { computeOrderTotals } from "@/lib/orders";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { DataTable, type Column } from "@/components/ui/data-table";
+import { ShoppingBag } from "lucide-react";
 
 export default async function CustomerDetailPage({
   params,
@@ -99,38 +93,39 @@ export default async function CustomerDetailPage({
 
       <div>
         <h2 className="mb-3 text-lg font-semibold">Order history</h2>
-        {orders.length === 0 ? (
-          <p className="py-6 text-center text-sm text-muted-foreground">No orders yet.</p>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Date</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Payment</TableHead>
-                <TableHead className="text-right">Items</TableHead>
-                <TableHead className="text-right">Total</TableHead>
-                {canViewProfit && <TableHead className="text-right">Profit</TableHead>}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {orders.map((o) => (
-                <TableRow key={o.id}>
-                  <TableCell>{o.date}</TableCell>
-                  <TableCell>
-                    <Badge variant="secondary">{o.status}</Badge>
-                  </TableCell>
-                  <TableCell>{o.paymentStatus}</TableCell>
-                  <TableCell className="text-right">{o.itemCount}</TableCell>
-                  <TableCell className="text-right">{o.totals.customerTotal.toFixed(2)}</TableCell>
-                  {canViewProfit && (
-                    <TableCell className="text-right">{o.totals.netProfit.toFixed(2)}</TableCell>
-                  )}
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
+        <DataTable
+          rows={orders}
+          rowKey={(o) => o.id}
+          empty={{ icon: ShoppingBag, title: "No orders yet" }}
+          columns={
+            [
+              { key: "date", header: "Date", cardTitle: true, cell: (o) => o.date },
+              {
+                key: "status",
+                header: "Status",
+                cell: (o) => <Badge variant="secondary">{o.status}</Badge>,
+              },
+              { key: "payment", header: "Payment", cell: (o) => o.paymentStatus },
+              { key: "items", header: "Items", align: "right", cell: (o) => o.itemCount },
+              {
+                key: "total",
+                header: "Total",
+                align: "right",
+                cell: (o) => o.totals.customerTotal.toFixed(2),
+              },
+              ...(canViewProfit
+                ? [
+                    {
+                      key: "profit",
+                      header: "Profit",
+                      align: "right" as const,
+                      cell: (o: (typeof orders)[number]) => o.totals.netProfit.toFixed(2),
+                    },
+                  ]
+                : []),
+            ] as Column<(typeof orders)[number]>[]
+          }
+        />
       </div>
     </div>
   );

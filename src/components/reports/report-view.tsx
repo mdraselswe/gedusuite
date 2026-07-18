@@ -16,14 +16,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { DataTable, type Column } from "@/components/ui/data-table";
+import { BarChart3, Users } from "lucide-react";
 import type { Report } from "@/lib/reports";
 
 
@@ -225,24 +219,28 @@ export function ReportView({
             <CardTitle className="text-base">Partner profit share</CardTitle>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Partner</TableHead>
-                  <TableHead className="text-right">Share %</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {report.partnerShares.map((p) => (
-                  <TableRow key={p.name}>
-                    <TableCell>{p.name}</TableCell>
-                    <TableCell className="text-right">{p.percent.toFixed(2)}</TableCell>
-                    <TableCell className="text-right font-medium">{p.amount.toFixed(2)}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <DataTable
+              rows={report.partnerShares}
+              rowKey={(p) => p.name}
+              empty={{ icon: Users, title: "No partners" }}
+              columns={
+                [
+                  { key: "name", header: "Partner", cardTitle: true, cell: (p) => p.name },
+                  {
+                    key: "percent",
+                    header: "Share %",
+                    align: "right",
+                    cell: (p) => p.percent.toFixed(2),
+                  },
+                  {
+                    key: "amount",
+                    header: "Amount",
+                    align: "right",
+                    cell: (p) => p.amount.toFixed(2),
+                  },
+                ] as Column<Report["partnerShares"][number]>[]
+              }
+            />
           </CardContent>
         </Card>
       )}
@@ -251,29 +249,29 @@ export function ReportView({
 }
 
 function ProductTable({ rows, empty }: { rows: Report["products"]; empty: string }) {
-  if (rows.length === 0) {
-    return <p className="py-6 text-center text-sm text-muted-foreground">{empty}</p>;
-  }
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Product</TableHead>
-          <TableHead className="text-right">Qty</TableHead>
-          <TableHead className="text-right">Revenue</TableHead>
-          <TableHead className="text-right">Profit</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {rows.map((p) => (
-          <TableRow key={p.productId}>
-            <TableCell className="font-medium">{p.name}</TableCell>
-            <TableCell className="text-right">{p.qty}</TableCell>
-            <TableCell className="text-right">{p.revenue.toFixed(2)}</TableCell>
-            <TableCell className="text-right">{p.profit.toFixed(2)}</TableCell>
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
+    <DataTable
+      rows={rows}
+      rowKey={(p) => p.productId}
+      empty={{ icon: BarChart3, title: empty }}
+      columns={
+        [
+          { key: "name", header: "Product", cardTitle: true, cell: (p) => p.name },
+          { key: "qty", header: "Qty", align: "right", cell: (p) => p.qty },
+          {
+            key: "revenue",
+            header: "Revenue",
+            align: "right",
+            cell: (p) => p.revenue.toFixed(2),
+          },
+          {
+            key: "profit",
+            header: "Profit",
+            align: "right",
+            cell: (p) => p.profit.toFixed(2),
+          },
+        ] as Column<Report["products"][number]>[]
+      }
+    />
   );
 }

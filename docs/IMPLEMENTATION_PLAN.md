@@ -198,7 +198,43 @@ Read TECH_SPEC.md sections 7 and 8.
 
 ---
 
-## Notes on Working With Claude Code Across Phases
+---
+
+## Retrofit — UI/UX & Typography Pass (run this now, before continuing further phases)
+
+**Why this exists:** the original phase prompts above focused on functionality
+and didn't specify typography, responsive breakpoints, or visual polish —
+so the first implementation pass came out visually basic with a single font
+awkwardly covering both Bangla and English. This prompt fixes what's already
+built before any new phase adds more screens on the same shaky foundation.
+
+**Prompt:**
+```
+Read /docs/TECH_SPEC.md section 10 (UI/UX & Typography Standards) in full.
+
+Go through every existing screen in the app built so far and retrofit it to
+match that section exactly:
+
+1. Replace the current font setup with the Anek Bangla + fallback pairing
+   specified in section 10, loaded via next/font, applied globally.
+2. Rebuild each screen mobile-first: verify and fix layout at 375px, 768px,
+   and 1280px widths specifically — don't just eyeball it, actually resize
+   and check each one.
+3. Convert any data tables (products, orders, transactions) to a stacked
+   card layout below the `md:` breakpoint instead of horizontal scroll.
+4. Apply the spacing, touch-target, hover/focus state, and empty-state
+   rules from section 10 consistently across all screens.
+5. Do not change any business logic, data models, or API behavior in this
+   pass — this is a visual/layout-only retrofit.
+
+After finishing, list which screens you touched and flag any screen where
+the retrofit revealed a structural layout problem that needs a bigger
+rework than a style fix.
+```
+
+Run this before starting whichever phase you haven't reached yet — it keeps
+new screens consistent with the fixed ones instead of fixing everything twice.
+
 
 - Start a **fresh, focused conversation per phase** rather than one giant thread — keeps context clean and reduces the chance Claude Code loses track of earlier decisions.
 - After each phase, **actually run the app and click through it** before moving on. Catching a schema mistake in Phase 1 is cheap; catching it after Phase 5 depends on it is expensive.

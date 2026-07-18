@@ -27,14 +27,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { DataTable, type Column } from "@/components/ui/data-table";
+import { Receipt } from "lucide-react";
 
 type Item = {
   id: string;
@@ -138,56 +132,64 @@ export function InternalPurchaseManager({
         )}
       </div>
 
-      {filtered.length === 0 ? (
-        <p className="py-8 text-center text-sm text-muted-foreground">No entries.</p>
-      ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Date</TableHead>
-              <TableHead>Item</TableHead>
-              <TableHead>Category</TableHead>
-              <TableHead>Supplier</TableHead>
-              <TableHead className="text-right">Cost</TableHead>
-              <TableHead className="text-right">Qty</TableHead>
-              <TableHead className="text-right">Total</TableHead>
-              {perms.canEdit && <TableHead className="w-24" />}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filtered.map((i) => (
-              <TableRow key={i.id}>
-                <TableCell>{i.date}</TableCell>
-                <TableCell className="font-medium">
+      <DataTable
+        rows={filtered}
+        rowKey={(i) => i.id}
+        empty={{ icon: Receipt, title: "No entries" }}
+        columns={
+          [
+            { key: "date", header: "Date", cell: (i) => i.date },
+            {
+              key: "item",
+              header: "Item",
+              cardTitle: true,
+              cell: (i) => (
+                <span>
                   {i.itemName}
                   {i.description && (
-                    <div className="text-xs text-muted-foreground">{i.description}</div>
+                    <span className="block text-xs font-normal text-muted-foreground">
+                      {i.description}
+                    </span>
                   )}
-                </TableCell>
-                <TableCell>
-                  <Badge variant="secondary">{LABEL[i.category] ?? i.category}</Badge>
-                </TableCell>
-                <TableCell>{i.supplierName ?? "—"}</TableCell>
-                <TableCell className="text-right">{i.cost.toFixed(2)}</TableCell>
-                <TableCell className="text-right">{i.quantity}</TableCell>
-                <TableCell className="text-right font-medium">
-                  {(i.cost * i.quantity).toFixed(2)}
-                </TableCell>
-                {perms.canEdit && (
-                  <TableCell className="flex gap-1">
-                    <Button variant="ghost" size="sm" onClick={() => openEdit(i)}>
-                      Edit
-                    </Button>
-                    <Button variant="ghost" size="sm" onClick={() => onDelete(i)}>
-                      Delete
-                    </Button>
-                  </TableCell>
-                )}
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      )}
+                </span>
+              ),
+            },
+            {
+              key: "category",
+              header: "Category",
+              cell: (i) => <Badge variant="secondary">{LABEL[i.category] ?? i.category}</Badge>,
+            },
+            { key: "supplier", header: "Supplier", cell: (i) => i.supplierName ?? "—" },
+            { key: "cost", header: "Cost", align: "right", cell: (i) => i.cost.toFixed(2) },
+            { key: "qty", header: "Qty", align: "right", cell: (i) => i.quantity },
+            {
+              key: "total",
+              header: "Total",
+              align: "right",
+              cell: (i) => (i.cost * i.quantity).toFixed(2),
+            },
+            ...(perms.canEdit
+              ? [
+                  {
+                    key: "actions",
+                    header: "",
+                    cardFullWidth: true,
+                    cell: (i: Item) => (
+                      <>
+                        <Button variant="ghost" size="sm" onClick={() => openEdit(i)}>
+                          Edit
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => onDelete(i)}>
+                          Delete
+                        </Button>
+                      </>
+                    ),
+                  },
+                ]
+              : []),
+          ] as Column<Item>[]
+        }
+      />
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>

@@ -23,6 +23,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Package } from "lucide-react";
 
 type Variant = {
   id: string;
@@ -196,7 +198,11 @@ export function ProductManager({
       </div>
 
       {shown.length === 0 ? (
-        <p className="py-8 text-center text-sm text-muted-foreground">No products found.</p>
+        <EmptyState
+          icon={Package}
+          title="No products found"
+          description={perms.canAdd ? "Add your first product to start tracking stock." : undefined}
+        />
       ) : (
         <div className="space-y-3">
           {shown.map((p) => (
