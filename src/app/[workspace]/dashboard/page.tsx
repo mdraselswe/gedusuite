@@ -2,21 +2,11 @@ import { requireMembership, serverT } from "@/lib/session";
 import { workspaceAccess } from "@/lib/authz";
 import { can } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
-import { refreshInventoryAlerts } from "@/lib/inventory";
-import {
-  refreshOverdueAlerts,
-  totalBusinessProfit,
-  treasuryBalance,
-} from "@/lib/finance";
+import { computeInventoryAlerts } from "@/lib/inventory";
+import { overdueOrders, totalBusinessProfit, treasuryBalance } from "@/lib/finance";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { DataTable, type Column } from "@/components/ui/data-table";
+import { Users } from "lucide-react";
 
 export default async function DashboardPage({
   params,
@@ -34,10 +24,12 @@ export default async function DashboardPage({
   const canViewTreasury =
     !!access && can(access.role, "treasury", "view", access.permissions);
 
+  // Read-only computes — the dashboard must not write to the DB on every view.
+  // Notification reconciliation happens on mutations + the scheduled cron.
   const [memberCount, alerts, overdue, profit, treasury] = await Promise.all([
     prisma.membership.count({ where: { workspaceId } }),
-    refreshInventoryAlerts(workspaceId),
-    refreshOverdueAlerts(workspaceId),
+    computeInventoryAlerts(workspaceId),
+    overdueOrders(workspaceId),
     totalBusinessProfit(workspaceId),
     treasuryBalance(workspaceId),
   ]);
@@ -126,24 +118,28 @@ export default async function DashboardPage({
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Partner</TableHead>
-                  <TableHead className="text-right">Share %</TableHead>
-                  <TableHead className="text-right">Share amount</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {partnerShares.map((p) => (
-                  <TableRow key={p.name}>
-                    <TableCell>{p.name}</TableCell>
-                    <TableCell className="text-right">{p.percent.toFixed(2)}</TableCell>
-                    <TableCell className="text-right font-medium">{p.amount.toFixed(2)}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <DataTable
+              rows={partnerShares}
+              rowKey={(p) => p.name}
+              empty={{ icon: Users, title: "No partners" }}
+              columns={
+                [
+                  { key: "name", header: "Partner", cardTitle: true, cell: (p) => p.name },
+                  {
+                    key: "percent",
+                    header: "Share %",
+                    align: "right",
+                    cell: (p) => p.percent.toFixed(2),
+                  },
+                  {
+                    key: "amount",
+                    header: "Share amount",
+                    align: "right",
+                    cell: (p) => p.amount.toFixed(2),
+                  },
+                ] as Column<(typeof partnerShares)[number]>[]
+              }
+            />
           </CardContent>
         </Card>
       )}

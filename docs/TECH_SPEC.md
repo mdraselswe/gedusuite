@@ -52,6 +52,8 @@ TreasuryEntry    { id, workspaceId, type(IN|OUT), amount, source, note, date }
 InternalPurchase { id, workspaceId, itemName, supplierName, cost, quantity, category, date }
 
 BackupLog        { id, workspaceId, type(SHEETS|JSON), status, triggeredBy, fileUrl, createdAt }
+UserGoogleConnection { id, userId, scope(PERSONAL_BACKUP), accessToken(encrypted), refreshToken(encrypted),
+                        sheetId, connectedAt, lastSyncedAt }
 Notification     { id, workspaceId, type, message, read, createdAt }
 ```
 
@@ -85,10 +87,21 @@ Notification     { id, workspaceId, type, message, read, createdAt }
 
 ## 6. Backup & Recovery Design
 
-- **Google Sheets sync**: one Google Sheet per workspace in the company's registered-email Drive, one tab per module (Purchases, Sales, Partners, Treasury, Internal Purchases, Customers). Sync via a queued job — either on every write, or batched hourly/daily (configurable). Sheet tabs are protected ranges (view-only) to prevent accidental edits.
-- **JSON export**: full-workspace snapshot generated on a cron schedule (daily/weekly) + a manual "Backup Now" action, stored in the same Drive folder. Keep the last N versions.
+- **Company-level Google Sheets sync**: one Google Sheet per workspace in the company's registered-email Drive, one tab per module (Purchases, Sales, Partners, Treasury, Internal Purchases, Customers). Sync via a queued job — either on every write, or batched hourly/daily (configurable). Sheet tabs are protected ranges (view-only) to prevent accidental edits.
+- **Personal per-user Google Sheets backup (added after user feedback):** any user (Owner, Partner, Manager) can, from Settings, connect *their own* Google account via OAuth (separate consent from the company backup connection) and get a personal copy of the workspace data written to a Sheet in *their own* Drive. This is opt-in per user, not automatic — the app never writes to someone's personal Drive without them explicitly connecting it.
+  - Same human-readable format as the company sheet (proper headers, formatted dates/currency, one tab per module) but generated from a shared formatting function so both stay visually consistent — don't build two separate formatters.
+  - Personal sheets sync on the same schedule as the company one, or on-demand via a "Sync to my Sheet" button.
+  - A user can disconnect their personal sync anytime from Settings; disconnecting revokes the stored OAuth token.
+- **JSON export**: full-workspace snapshot generated on a cron schedule (daily/weekly) + a manual "Backup Now" action, stored in the company Drive folder. Keep the last N versions.
 - **Restore**: admin uploads a JSON file → validate/preview → choose Merge or Overwrite → auto-snapshot current data first as a safety net → apply.
-- Both integrations authenticate against the company's registered email via OAuth (or a service account shared with that email's Drive).
+- Company-level integration authenticates via the company's registered email OAuth (or a service account shared with that email's Drive). Personal sync uses each user's own OAuth token, stored encrypted, scoped only to Sheets/Drive file creation (not full Drive access).
+
+**Formatting requirements for "human-readable and well-organized" (this was reported broken/basic and needs explicit attention):**
+- Header row: bold, frozen, with a background color per module tab.
+- Dates formatted as human dates (not raw ISO timestamps or Unix epoch).
+- Currency columns formatted with the ৳ symbol and thousands separators, right-aligned.
+- Column widths auto-sized to content, not default narrow columns.
+- A summary tab (first tab in the workbook) with basic totals (total sales, total purchases, current treasury balance, last sync time) so opening the sheet gives an at-a-glance view before drilling into module tabs.
 
 ## 7. PWA Requirements
 

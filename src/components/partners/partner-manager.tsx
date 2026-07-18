@@ -182,7 +182,11 @@ export function PartnerManager({
           <form onSubmit={onAdd} className="space-y-4">
             <div className="space-y-2">
               <Label>Member</Label>
-              <Select value={userId} onValueChange={(v) => setUserId(v ?? "")}>
+              <Select
+                value={userId}
+                onValueChange={(v) => setUserId(v ?? "")}
+                items={memberOptions.map((m) => ({ value: m.userId, label: m.label }))}
+              >
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Select a member" />
                 </SelectTrigger>

@@ -96,7 +96,14 @@ export function StockAdjustmentManager({
               <form onSubmit={onSubmit} className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-2 sm:col-span-2">
                   <Label>Product / variant</Label>
-                  <Select value={variantId} onValueChange={(v) => setVariantId(v ?? "")}>
+                  <Select
+                    value={variantId}
+                    onValueChange={(v) => setVariantId(v ?? "")}
+                    items={variantOptions.map((v) => ({
+                      value: v.id,
+                      label: `${v.label} · ${v.stock} in stock`,
+                    }))}
+                  >
                     <SelectTrigger className="w-full">
                       <SelectValue placeholder="Select a product variant" />
                     </SelectTrigger>

@@ -235,6 +235,103 @@ rework than a style fix.
 Run this before starting whichever phase you haven't reached yet — it keeps
 new screens consistent with the fixed ones instead of fixing everything twice.
 
+---
+
+## Bugfix & Enhancement Pass (run after user testing revealed issues)
+
+Run these **one at a time, in this order**, and test after each before moving
+to the next. Don't paste all five together — a couple of these touch
+overlapping code (product forms, stock logic) and reviewing one clean diff
+at a time makes it far easier to catch a regression.
+
+### Fix 1 — Performance diagnosis (do this first, it may explain issue reports beyond just "slow")
+```
+The app feels slow — navigation and save/view actions take a long time.
+Before changing anything, diagnose:
+1. Check if Neon's free-tier compute is auto-suspending between requests
+   (cold start) — log query timing and report whether the first request
+   after idle is disproportionately slow vs subsequent ones.
+2. Review the data-fetching pattern on the slowest 2-3 pages: look for
+   N+1 queries (fetching related records in a loop instead of a single
+   join/include), missing pagination on list views, and over-fetching
+   (selecting all columns/relations when the UI only needs a few).
+3. Check React Query configuration — confirm staleTime/cacheTime are set
+   sensibly (not refetching on every navigation) and that mutations use
+   optimistic updates or at least proper loading states instead of a full
+   page block.
+4. Report findings with numbers (approximate ms per request) before fixing
+   anything, then propose and apply fixes for whatever's actually slow.
+```
+
+### Fix 2 — Dropdown selection not displaying
+```
+Select/dropdown components across the app don't visually reflect the
+selected value after choosing an option. Audit every Select/dropdown
+component (product category, supplier, customer, partner, status, etc.):
+ensure each is a fully controlled component (value + onChange bound to
+state, not relying on defaultValue), and that comparisons use the option's
+id/value rather than object reference equality. Fix all instances, not
+just one, and confirm by testing at least one dropdown in each major
+module (Products, Purchases, Sales, Partners).
+```
+
+### Fix 3 — Product creation shouldn't require variants
+```
+Currently, creating a product without adding a variant disables several
+fields/options that should work for simple products with no size/color
+variation — most products in this business won't have variants.
+
+Fix: variants must be fully optional. When a product is created without
+explicit variants, automatically create a single hidden "default" variant
+behind the scenes so the rest of the system (stock tracking, purchases,
+orders) keeps working against ProductVariant uniformly, but the UI never
+forces the user to interact with variant fields unless they choose
+"Add variants" for that product. Re-test the full product creation →
+purchase → sale flow for both a variant-less product and a product with
+variants (e.g. sizes) to confirm both paths work.
+```
+
+### Fix 4 — Prevent selling out-of-stock products
+```
+Currently the sales/order flow allows selling a product variant with zero
+or insufficient available stock. Add server-side validation (not just a
+UI warning) in the order-item creation logic: reject (or clearly block)
+adding a quantity that exceeds the variant's currently available stock,
+accounting for stock already reserved by other pending orders if that
+matters to this business (check with the reporting logic from Phase 2).
+Show a clear inline error naming the product and available quantity,
+don't just fail silently or with a generic error.
+```
+
+### Fix 5 — Personal per-user Google Sheets backup
+```
+Read /docs/TECH_SPEC.md section 6 (updated) and the new UserGoogleConnection
+model in section 3.
+
+The current backup implementation doesn't match this spec. Implement:
+1. A Settings page section "My personal backup" where any user can connect
+   their own Google account (separate OAuth consent/scope from the
+   company-level backup connection) and see connection status + last synced
+   time + a "Sync now" button + a "Disconnect" button.
+2. On connect, create a Sheet in that user's own Drive and populate it using
+   the same formatting function as the company sheet — don't duplicate
+   formatting logic in two places, extract a shared formatter.
+3. Apply the human-readable formatting requirements explicitly listed in
+   TECH_SPEC.md section 6: bold/frozen header row per tab, human-formatted
+   dates, currency formatted with ৳ and thousands separators, auto-sized
+   columns, and a summary tab as the first tab with totals + last sync time.
+4. Also verify and fix whatever was broken in the existing company-level
+   sync — check the BackupLog entries for failed sync attempts and surface
+   the actual error rather than failing silently.
+5. Disconnecting revokes the stored token and stops future syncs for that
+   user, without affecting the company-level sync or other users' personal
+   syncs.
+```
+
+---
+
+## Notes on Working With Claude Code Across Phases
+
 
 - Start a **fresh, focused conversation per phase** rather than one giant thread — keeps context clean and reduces the chance Claude Code loses track of earlier decisions.
 - After each phase, **actually run the app and click through it** before moving on. Catching a schema mistake in Phase 1 is cheap; catching it after Phase 5 depends on it is expensive.

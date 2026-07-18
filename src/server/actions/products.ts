@@ -66,6 +66,16 @@ export async function createProduct(
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
   const d = parsed.data;
+
+  // Variants are optional. If the user didn't add any, create a single default
+  // (empty) variant so stock/purchases/orders keep working uniformly against
+  // ProductVariant without ever forcing variant fields in the UI.
+  const meaningful = d.variants.filter((v) => v.size || v.color || v.sku);
+  const variantCreate =
+    meaningful.length > 0
+      ? meaningful.map((v) => ({ size: clean(v.size), color: clean(v.color), sku: clean(v.sku) }))
+      : [{ size: null, color: null, sku: null }];
+
   await prisma.product.create({
     data: {
       workspaceId: gate.access.workspaceId,
@@ -76,11 +86,7 @@ export async function createProduct(
       imageUrl: clean(d.imageUrl),
       expiryTracked: d.expiryTracked,
       lowStockThreshold: d.lowStockThreshold,
-      variants: {
-        create: d.variants
-          .filter((v) => v.size || v.color || v.sku)
-          .map((v) => ({ size: clean(v.size), color: clean(v.color), sku: clean(v.sku) })),
-      },
+      variants: { create: variantCreate },
     },
   });
   revalidatePath(`/${slug}/products`);

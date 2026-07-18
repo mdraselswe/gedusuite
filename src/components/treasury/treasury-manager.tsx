@@ -175,7 +175,14 @@ export function TreasuryManager({
               </div>
               <div className="space-y-2">
                 <Label>Partner (optional)</Label>
-                <Select value={partnerId} onValueChange={(v) => setPartnerId(v ?? NONE)}>
+                <Select
+                  value={partnerId}
+                  onValueChange={(v) => setPartnerId(v ?? NONE)}
+                  items={[
+                    { value: NONE, label: "—" },
+                    ...partnerOptions.map((p) => ({ value: p.id, label: p.label })),
+                  ]}
+                >
                   <SelectTrigger className="w-full">
                     <SelectValue />
                   </SelectTrigger>
@@ -217,7 +224,14 @@ export function TreasuryManager({
               <SelectItem value="OUT">OUT</SelectItem>
             </SelectContent>
           </Select>
-          <Select value={partnerFilter} onValueChange={(v) => setPartnerFilter(v ?? ALL)}>
+          <Select
+            value={partnerFilter}
+            onValueChange={(v) => setPartnerFilter(v ?? ALL)}
+            items={[
+              { value: ALL, label: "All partners" },
+              ...partnerOptions.map((p) => ({ value: p.id, label: p.label })),
+            ]}
+          >
             <SelectTrigger className="w-44">
               <SelectValue />
             </SelectTrigger>

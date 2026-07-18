@@ -117,17 +117,35 @@ export async function createOrder(
     heldByMembershipId = m.id;
   }
 
-  // If the order starts in a stock-consuming status, ensure stock is available.
-  if (CONSUMING.includes(d.status)) {
+  // Never allow selling more than is currently in stock — server-side guard for
+  // every order (not just consuming ones), with a clear, product-named error.
+  {
     const stock = await variantStockMap(workspaceId);
     const need = new Map<string, number>();
     for (const it of d.items) {
       need.set(it.productVariantId, (need.get(it.productVariantId) ?? 0) + it.quantity);
     }
-    for (const [vid, qty] of need) {
-      if ((stock.get(vid) ?? 0) < qty) {
-        return { ok: false, error: "Not enough stock for one or more items" };
-      }
+    const short = [...need.entries()].filter(([vid, qty]) => (stock.get(vid) ?? 0) < qty);
+    if (short.length > 0) {
+      const labels = await prisma.productVariant.findMany({
+        where: { id: { in: short.map(([vid]) => vid) } },
+        select: {
+          id: true,
+          size: true,
+          color: true,
+          product: { select: { name: true } },
+        },
+      });
+      const byId = new Map(labels.map((v) => [v.id, v]));
+      const msg = short
+        .map(([vid, qty]) => {
+          const v = byId.get(vid);
+          const extra = v ? [v.size, v.color].filter(Boolean).join(" / ") : "";
+          const name = v ? `${v.product.name}${extra ? ` (${extra})` : ""}` : "item";
+          return `${name}: need ${qty}, ${stock.get(vid) ?? 0} in stock`;
+        })
+        .join("; ");
+      return { ok: false, error: `Not enough stock — ${msg}` };
     }
   }
 

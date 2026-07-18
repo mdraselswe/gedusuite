@@ -332,7 +332,14 @@ export function OrderManager({
                 <Label>Items</Label>
                 {items.map((it, i) => (
                   <div key={i} className="grid grid-cols-[1fr_5rem_4rem_5rem_2rem] items-center gap-2">
-                    <Select value={it.variantId} onValueChange={(v) => updateItem(i, { variantId: v ?? "" })}>
+                    <Select
+                      value={it.variantId}
+                      onValueChange={(v) => updateItem(i, { variantId: v ?? "" })}
+                      items={variantOptions.map((v) => ({
+                        value: v.id,
+                        label: `${v.label} · ${v.stock} in stock`,
+                      }))}
+                    >
                       <SelectTrigger>
                         <SelectValue placeholder="Product" />
                       </SelectTrigger>
@@ -390,7 +397,14 @@ export function OrderManager({
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
                   <Label>Customer</Label>
-                  <Select value={customerId} onValueChange={(v) => setCustomerId(v ?? NONE)}>
+                  <Select
+                    value={customerId}
+                    onValueChange={(v) => setCustomerId(v ?? NONE)}
+                    items={[
+                      { value: NONE, label: "Walk-in" },
+                      ...customers.map((c) => ({ value: c.id, label: c.name })),
+                    ]}
+                  >
                     <SelectTrigger className="w-full">
                       <SelectValue />
                     </SelectTrigger>
@@ -425,7 +439,14 @@ export function OrderManager({
                 </div>
                 <div className="space-y-2">
                   <Label>Held by (partner)</Label>
-                  <Select value={heldById} onValueChange={(v) => setHeldById(v ?? NONE)}>
+                  <Select
+                    value={heldById}
+                    onValueChange={(v) => setHeldById(v ?? NONE)}
+                    items={[
+                      { value: NONE, label: "—" },
+                      ...members.map((m) => ({ value: m.id, label: m.label })),
+                    ]}
+                  >
                     <SelectTrigger className="w-full">
                       <SelectValue />
                     </SelectTrigger>
@@ -532,7 +553,13 @@ export function OrderManager({
             <form onSubmit={onSubmitReturn} className="space-y-4">
               <div className="space-y-2">
                 <Label>Item</Label>
-                <Select value={returnItemId} onValueChange={(v) => setReturnItemId(v ?? "")}>
+                <Select
+                  value={returnItemId}
+                  onValueChange={(v) => setReturnItemId(v ?? "")}
+                  items={returnOrder.items
+                    .filter((it) => it.remaining > 0)
+                    .map((it) => ({ value: it.id, label: `${it.label} · ${it.remaining} returnable` }))}
+                >
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="Select item" />
                   </SelectTrigger>

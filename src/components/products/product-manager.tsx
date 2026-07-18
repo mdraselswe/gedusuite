@@ -86,6 +86,7 @@ export function ProductManager({
   const [threshold, setThreshold] = useState("5");
   const [expiryTracked, setExpiryTracked] = useState(false);
   const [imageUrl, setImageUrl] = useState("");
+  const [hasVariants, setHasVariants] = useState(false);
   const [draftVariants, setDraftVariants] = useState<VariantDraft[]>([]);
 
   // Add-variant dialog.
@@ -101,6 +102,7 @@ export function ProductManager({
     setThreshold("5");
     setExpiryTracked(false);
     setImageUrl("");
+    setHasVariants(false);
     setDraftVariants([{ size: "", color: "", sku: "" }]);
     setOpen(true);
   }
@@ -141,7 +143,9 @@ export function ProductManager({
     fd.set("lowStockThreshold", threshold);
     fd.set("expiryTracked", expiryTracked ? "true" : "false");
     fd.set("imageUrl", imageUrl);
-    fd.set("variants", JSON.stringify(editing ? [] : draftVariants));
+    // Only send variants when the user opted into them; otherwise the server
+    // creates a single default variant automatically.
+    fd.set("variants", JSON.stringify(editing || !hasVariants ? [] : draftVariants));
     const res = editing
       ? await updateProduct(slug, editing.id, fd)
       : await createProduct(slug, fd);
@@ -342,6 +346,25 @@ export function ProductManager({
             </div>
 
             {!editing && (
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="p-hasvariants"
+                  checked={hasVariants}
+                  onCheckedChange={(v) => {
+                    const on = v === true;
+                    setHasVariants(on);
+                    if (on && draftVariants.length === 0) {
+                      setDraftVariants([{ size: "", color: "", sku: "" }]);
+                    }
+                  }}
+                />
+                <Label htmlFor="p-hasvariants">
+                  This product has variants (size / color)
+                </Label>
+              </div>
+            )}
+
+            {!editing && hasVariants && (
               <div className="space-y-2">
                 <Label>Variants (size / color / SKU)</Label>
                 {draftVariants.map((v, i) => (
@@ -392,7 +415,7 @@ export function ProductManager({
                   + Add variant row
                 </Button>
                 <p className="text-xs text-muted-foreground">
-                  Leave all fields blank to skip a row. Add more variants later from the list.
+                  Add more variants later from the list. Uncheck to sell as a single product.
                 </p>
               </div>
             )}

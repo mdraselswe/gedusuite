@@ -103,7 +103,11 @@ export function PurchaseManager({
               <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2 sm:col-span-2">
                   <Label>Product / variant</Label>
-                  <Select value={variantId} onValueChange={(v) => setVariantId(v ?? "")}>
+                  <Select
+                    value={variantId}
+                    onValueChange={(v) => setVariantId(v ?? "")}
+                    items={variantOptions.map((v) => ({ value: v.id, label: v.label }))}
+                  >
                     <SelectTrigger className="w-full">
                       <SelectValue placeholder="Select a product variant" />
                     </SelectTrigger>
@@ -118,7 +122,14 @@ export function PurchaseManager({
                 </div>
                 <div className="space-y-2">
                   <Label>Supplier</Label>
-                  <Select value={supplierId} onValueChange={(v) => setSupplierId(v ?? NO_SUPPLIER)}>
+                  <Select
+                    value={supplierId}
+                    onValueChange={(v) => setSupplierId(v ?? NO_SUPPLIER)}
+                    items={[
+                      { value: NO_SUPPLIER, label: "No supplier" },
+                      ...suppliers.map((s) => ({ value: s.id, label: s.name })),
+                    ]}
+                  >
                     <SelectTrigger className="w-full">
                       <SelectValue />
                     </SelectTrigger>
