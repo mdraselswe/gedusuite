@@ -128,3 +128,24 @@
     @apply font-sans;
   }
 }
+/* ── Phase 7: color presets (set via html[data-preset]) ───────────── */
+[data-preset="indigo"] {
+  --primary: oklch(0.51 0.23 277);
+  --primary-foreground: oklch(0.985 0 0);
+  --ring: oklch(0.51 0.23 277);
+}
+[data-preset="green"] {
+  --primary: oklch(0.60 0.17 150);
+  --primary-foreground: oklch(0.985 0 0);
+  --ring: oklch(0.60 0.17 150);
+}
+[data-preset="rose"] {
+  --primary: oklch(0.59 0.22 12);
+  --primary-foreground: oklch(0.985 0 0);
+  --ring: oklch(0.59 0.22 12);
+}
+[data-preset="amber"] {
+  --primary: oklch(0.77 0.16 70);
+  --primary-foreground: oklch(0.20 0 0);
+  --ring: oklch(0.77 0.16 70);
+}

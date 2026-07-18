@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -101,6 +102,16 @@ export function OrderManager({
   const [returnOrder, setReturnOrder] = useState<OrderRow | null>(null);
   const [returnItemId, setReturnItemId] = useState("");
 
+  const [query, setQuery] = useState("");
+  const shownOrders = orders.filter((o) => {
+    const q = query.toLowerCase();
+    return (
+      o.customerName.toLowerCase().includes(q) ||
+      o.status.toLowerCase().includes(q) ||
+      o.paymentStatus.toLowerCase().includes(q)
+    );
+  });
+
   function resetForm() {
     setItems([emptyItem()]);
     setCustomerId(NONE);
@@ -193,8 +204,14 @@ export function OrderManager({
 
   return (
     <div className="space-y-6">
-      {perms.canAdd && (
-        <div className="flex justify-end">
+      <div className="flex items-center justify-between gap-3">
+        <Input
+          placeholder="Search by customer or status…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          className="max-w-xs"
+        />
+        {perms.canAdd && (
           <Button
             size="sm"
             onClick={() => {
@@ -204,11 +221,11 @@ export function OrderManager({
           >
             + New order
           </Button>
-        </div>
-      )}
+        )}
+      </div>
 
-      {orders.length === 0 ? (
-        <p className="py-8 text-center text-sm text-muted-foreground">No orders yet.</p>
+      {shownOrders.length === 0 ? (
+        <p className="py-8 text-center text-sm text-muted-foreground">No orders found.</p>
       ) : (
         <Table>
           <TableHeader>
@@ -223,7 +240,7 @@ export function OrderManager({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {orders.map((o) => (
+            {shownOrders.map((o) => (
               <TableRow key={o.id}>
                 <TableCell>{o.date}</TableCell>
                 <TableCell className="font-medium">{o.customerName}</TableCell>
@@ -257,7 +274,13 @@ export function OrderManager({
                 {perms.canViewProfit && (
                   <TableCell className="text-right">{o.totals.netProfit.toFixed(2)}</TableCell>
                 )}
-                <TableCell className="flex gap-1">
+                <TableCell className="flex items-center gap-1">
+                  <Link
+                    href={`/${slug}/sales/orders/${o.id}/invoice`}
+                    className="text-sm underline underline-offset-4"
+                  >
+                    Invoice
+                  </Link>
                   {perms.canEdit && (
                     <>
                       <Button variant="ghost" size="sm" onClick={() => openReturn(o)}>

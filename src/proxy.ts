@@ -5,7 +5,7 @@ import { moduleForSegment, can } from "@/lib/rbac";
 import type { SessionMembership } from "@/lib/auth";
 
 // Paths that never require auth or workspace scoping.
-const PUBLIC_PREFIXES = ["/login", "/register", "/invite", "/api/auth"];
+const PUBLIC_PREFIXES = ["/login", "/register", "/invite", "/api/auth", "/offline"];
 // Top-level app routes that need auth but aren't workspace-scoped.
 const NON_WORKSPACE = new Set(["", "workspaces", "api"]);
 

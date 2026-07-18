@@ -51,6 +51,12 @@ export function SupplierManager({
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Supplier | null>(null);
   const [loading, setLoading] = useState(false);
+  const [query, setQuery] = useState("");
+
+  const shown = suppliers.filter((s) => {
+    const q = query.toLowerCase();
+    return s.name.toLowerCase().includes(q) || (s.phone ?? "").includes(query);
+  });
 
   function openNew() {
     setEditing(null);
@@ -91,17 +97,23 @@ export function SupplierManager({
 
   return (
     <div className="space-y-4">
-      {perms.canAdd && (
-        <div className="flex justify-end">
+      <div className="flex items-center justify-between gap-3">
+        <Input
+          placeholder="Search suppliers…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          className="max-w-xs"
+        />
+        {perms.canAdd && (
           <Button size="sm" onClick={openNew}>
             + Add supplier
           </Button>
-        </div>
-      )}
+        )}
+      </div>
 
-      {suppliers.length === 0 ? (
+      {shown.length === 0 ? (
         <p className="py-8 text-center text-sm text-muted-foreground">
-          No suppliers yet.
+          No suppliers found.
         </p>
       ) : (
         <Table>
@@ -114,7 +126,7 @@ export function SupplierManager({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {suppliers.map((s) => (
+            {shown.map((s) => (
               <TableRow key={s.id}>
                 <TableCell className="font-medium">{s.name}</TableCell>
                 <TableCell>{s.phone ?? "—"}</TableCell>

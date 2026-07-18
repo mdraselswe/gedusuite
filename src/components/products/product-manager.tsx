@@ -64,6 +64,17 @@ export function ProductManager({
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
   const [loading, setLoading] = useState(false);
+  const [query, setQuery] = useState("");
+
+  const shown = products.filter((p) => {
+    const q = query.toLowerCase();
+    return (
+      p.name.toLowerCase().includes(q) ||
+      (p.category ?? "").toLowerCase().includes(q) ||
+      (p.sku ?? "").toLowerCase().includes(q) ||
+      (p.barcode ?? "").toLowerCase().includes(q)
+    );
+  });
 
   // Controlled product-dialog fields.
   const [name, setName] = useState("");
@@ -170,19 +181,25 @@ export function ProductManager({
 
   return (
     <div className="space-y-4">
-      {perms.canAdd && (
-        <div className="flex justify-end">
+      <div className="flex items-center justify-between gap-3">
+        <Input
+          placeholder="Search products…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          className="max-w-xs"
+        />
+        {perms.canAdd && (
           <Button size="sm" onClick={openNew}>
             + Add product
           </Button>
-        </div>
-      )}
+        )}
+      </div>
 
-      {products.length === 0 ? (
-        <p className="py-8 text-center text-sm text-muted-foreground">No products yet.</p>
+      {shown.length === 0 ? (
+        <p className="py-8 text-center text-sm text-muted-foreground">No products found.</p>
       ) : (
         <div className="space-y-3">
-          {products.map((p) => (
+          {shown.map((p) => (
             <div key={p.id} className="rounded-lg border p-4">
               <div className="flex items-start gap-4">
                 {p.imageUrl ? (
