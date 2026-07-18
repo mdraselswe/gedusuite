@@ -58,10 +58,11 @@ model User {
   locale        String    @default("en") // en | bn
   createdAt     DateTime  @default(now())
 
-  accounts    Account[]
-  sessions    Session[]
-  memberships Membership[]
-  partners    Partner[]
+  accounts        Account[]
+  sessions        Session[]
+  memberships     Membership[]
+  partners        Partner[]
+  googleConnection UserGoogleConnection?
 }
 
 model Membership {
@@ -497,4 +498,24 @@ model StockAdjustment {
 
   @@index([workspaceId])
   @@index([productVariantId])
+}
+
+// ── Personal per-user Google Sheets backup (TECH_SPEC §3, §6) ───────
+
+enum GoogleScope {
+  PERSONAL_BACKUP
+}
+
+model UserGoogleConnection {
+  id           String      @id @default(cuid())
+  userId       String      @unique
+  scope        GoogleScope @default(PERSONAL_BACKUP)
+  accessToken  String      @db.Text // encrypted (AES-256-GCM)
+  refreshToken String?     @db.Text // encrypted
+  expiryDate   BigInt? // access token expiry (ms epoch)
+  sheetId      String? // the user's personal backup spreadsheet
+  connectedAt  DateTime    @default(now())
+  lastSyncedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

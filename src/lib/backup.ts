@@ -1,6 +1,34 @@
 import { prisma } from "@/lib/prisma";
+import { computeOrderTotals } from "@/lib/orders";
+import { treasuryBalance } from "@/lib/finance";
+import type { BackupSummary } from "@/lib/google";
 
 export const SNAPSHOT_VERSION = 1;
+
+/** At-a-glance totals for the backup sheet's summary tab. */
+export async function computeBackupSummary(
+  workspaceId: string,
+  workspaceName: string,
+): Promise<BackupSummary> {
+  const [orders, purchases, balance] = await Promise.all([
+    prisma.order.findMany({
+      where: { workspaceId, status: { not: "CANCELLED" } },
+      include: { items: { include: { returns: true } } },
+    }),
+    prisma.purchase.findMany({ where: { workspaceId }, select: { unitCost: true, quantity: true } }),
+    treasuryBalance(workspaceId),
+  ]);
+  const totalSales = orders.reduce((s, o) => s + computeOrderTotals(o).netRevenue, 0);
+  const totalPurchases = purchases.reduce((s, p) => s + Number(p.unitCost) * p.quantity, 0);
+  const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
+  return {
+    workspaceName,
+    totalSales: round2(totalSales),
+    totalPurchases: round2(totalPurchases),
+    treasuryBalance: balance,
+    lastSync: new Date().toISOString().slice(0, 16).replace("T", " "),
+  };
+}
 
 // Tables included in a full-workspace snapshot, in parent→child insert order.
 // (Auth/user rows and notifications/backup logs are intentionally excluded.)

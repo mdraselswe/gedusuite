@@ -7,6 +7,7 @@ import {
   buildSnapshot,
   validateSnapshot,
   restoreSnapshot,
+  computeBackupSummary,
   type RestoreMode,
   type SnapshotCounts,
 } from "@/lib/backup";
@@ -110,14 +111,18 @@ export async function syncSheets(slug: string): Promise<BackupResult<{ url: stri
   }
 
   try {
-    const [snapshot, ws, setting] = await Promise.all([
+    const ws = await prisma.workspace.findUnique({
+      where: { id: workspaceId },
+      select: { name: true },
+    });
+    const [snapshot, summary, setting] = await Promise.all([
       buildSnapshot(workspaceId),
-      prisma.workspace.findUnique({ where: { id: workspaceId }, select: { name: true } }),
+      computeBackupSummary(workspaceId, ws?.name ?? "Workspace"),
       prisma.backupSetting.findUnique({ where: { workspaceId } }),
     ]);
     const { sheetId, url } = await syncSnapshotToSheets(
       snapshot,
-      ws?.name ?? "Workspace",
+      summary,
       setting?.googleSheetId ?? null,
     );
     await prisma.backupSetting.upsert({

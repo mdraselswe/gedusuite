@@ -4,6 +4,8 @@ import { can } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
 import { isGoogleConfigured } from "@/lib/google";
 import { BackupManager } from "@/components/backup/backup-manager";
+import { PersonalBackupCard } from "@/components/backup/personal-backup-card";
+import { getPersonalStatus } from "@/server/actions/personal-backup";
 import { serverT } from "@/lib/session";
 
 export default async function BackupSettingsPage({
@@ -20,13 +22,14 @@ export default async function BackupSettingsPage({
   const workspaceId = access.workspaceId;
   const canManage = can(access.role, "backup", "full", access.permissions);
 
-  const [setting, logs] = await Promise.all([
+  const [setting, logs, personal] = await Promise.all([
     prisma.backupSetting.findUnique({ where: { workspaceId } }),
     prisma.backupLog.findMany({
       where: { workspaceId },
       orderBy: { createdAt: "desc" },
       take: 30,
     }),
+    getPersonalStatus(),
   ]);
 
   const logRows = logs.map((l) => ({
@@ -54,6 +57,7 @@ export default async function BackupSettingsPage({
         }}
         logs={logRows}
       />
+      <PersonalBackupCard slug={slug} status={personal} />
     </div>
   );
 }
