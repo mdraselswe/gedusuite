@@ -185,9 +185,15 @@ Read TECH_SPEC.md sections 7 and 8.
    saved per user).
 3. Add Bangla/English language toggle.
 4. Review all list views for search/filter/sort per PRD non-functional requirements.
-5. Prepare a production build and deployment steps for the Hostinger VPS
-   (PM2 + Nginx reverse proxy, environment variables, Postgres connection,
-   HTTPS via Let's Encrypt).
+5. Prepare the project for deployment on Vercel (free Hobby plan) with Neon
+   as the PostgreSQL provider, per TECH_SPEC.md section 9. Concretely:
+   ensure Prisma's `DATABASE_URL` reads from an environment variable (no
+   hardcoded connection string), add a `vercel.json` only if non-default
+   behavior is needed, document which environment variables must be set
+   in the Vercel dashboard (DATABASE_URL, NEXTAUTH_SECRET, GOOGLE_CLIENT_ID/
+   SECRET, Google Sheets/Drive service account credentials), and add a
+   README section on connecting the GitHub repo to a new Vercel project
+   and adding `suite.gedushop.com` as a custom domain.
 ```
 
 ---

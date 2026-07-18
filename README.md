@@ -20,5 +20,5 @@ Read these in order before writing any code:
 
 ## Stack (summary — full detail in TECH_SPEC.md)
 
-Next.js 14 (App Router, TypeScript) · PostgreSQL · Prisma · NextAuth.js (Google OAuth) ·
-Tailwind CSS + shadcn/ui · next-pwa · Google Sheets/Drive API for backups
+Next.js 14 (App Router, TypeScript) · PostgreSQL (Neon, free tier) · Prisma · NextAuth.js (Google OAuth) ·
+Tailwind CSS + shadcn/ui · next-pwa · Hosted free on Vercel · Google Sheets/Drive API for backups

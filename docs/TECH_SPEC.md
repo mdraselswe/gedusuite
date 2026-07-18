@@ -18,7 +18,7 @@ _(Reference document for Claude Code implementation. Pairs with `PRD.md` and `IM
 | Backup integration | `googleapis` npm package (Sheets API + Drive API) | For the human-readable + JSON backup system |
 | Data fetching | TanStack Query | Caching, offline-friendly retry behavior (useful with PWA) |
 | Charts | Recharts | For the reports/dashboard module |
-| Hosting | Your existing Hostinger VPS (Node + PM2 + Nginx) | You already have SSH set up there; reuse it. Postgres can run on the same VPS or a managed free-tier (Neon/Supabase) if you want automatic DB backups without managing them yourself |
+| Hosting | **Vercel (Free/Hobby)** for the app + **Neon (Free tier)** for PostgreSQL | Confirmed: the Hostinger plan is shared hosting (MySQL only, no Node.js support) — not usable for a custom Node app. This combo needs zero payment. Details and caveats in section 9. |
 
 ## 2. Multi-Tenancy Model
 
@@ -99,3 +99,46 @@ Notification     { id, workspaceId, type, message, read, createdAt }
 ## 8. Theming
 
 - CSS custom properties per theme (e.g., `--color-primary`, `--color-bg`), a small set of preset palettes, stored as a per-user preference in `User` or `Membership`.
+
+## 9. Hosting & Deployment (100% Free Tier — Confirmed No VPS Available)
+
+The Hostinger plan currently in use for gedushop.com is **shared hosting**
+(MySQL only, no Node.js support, no root/SSH beyond a restricted shell) —
+confirmed by checking hPanel directly. It cannot run a persistent Node.js
+app. Since no new spending is wanted, GeduSuite will run entirely on free
+tiers of dedicated platforms instead:
+
+| Piece | Service | Free tier reality (read before relying on it) |
+|---|---|---|
+| App hosting (Next.js) | **Vercel — Hobby plan** | Free, includes serverless functions + custom domains + HTTPS. Vercel's ToS scopes the Hobby plan to personal/non-commercial use. Using it for GeduShop's own internal tool is the common case people run for free; if GeduSuite is ever sold/offered as a paid product to other businesses, that crosses into commercial use and Vercel's Pro plan ($20/mo) would be the honest path at that point. |
+| Database (PostgreSQL) | **Neon — Free tier** | ~0.5GB storage, generous compute hours. Auto-suspends after a period of inactivity and wakes on the next request (a few hundred ms delay on the first query after idle) — no data loss, just a cold-start pause. Fine for a business tool that isn't hit 24/7. |
+| Backups | Google Sheets + Drive API | Already free (section 6) — uses your own Google account's storage quota. |
+| Auth | NextAuth + Google OAuth | Free — only needs a Google Cloud project (also free to create) for OAuth credentials. |
+| Domain | Existing `gedushop.com` | Add a subdomain (e.g. `suite.gedushop.com`) as a CNAME pointing to Vercel — done in Hostinger's DNS Zone Editor, free, and Vercel issues the HTTPS certificate automatically. |
+
+**Why this is a solid choice, not just "the free option"**
+Vercel + Neon is what Next.js is built and optimized for — deployments are
+git-push-to-deploy, previews per branch, and Neon's branching feature can
+give you a free throwaway database copy to test schema changes safely.
+This isn't a downgrade from the VPS plan, it's arguably a smoother workflow.
+
+**What changes in the implementation plan**
+- Prisma's `provider` stays `postgresql` — Neon is standard Postgres, no
+  code changes needed versus the earlier self-hosted plan.
+- Drop all PM2/Nginx/VPS-specific steps from Phase 7 — deployment becomes
+  "connect the GitHub repo to a Vercel project" instead.
+- Environment variables (`DATABASE_URL`, Google OAuth secrets, etc.) are
+  set in the Vercel project dashboard rather than a `.env` file on a server.
+
+**Multi-tenant note (unchanged)**
+Other businesses registering a Workspace are still just new rows in the
+same Neon Postgres database — no new infrastructure needed per business,
+free tier or not. The `workspaceId` scoping from section 2 still does the
+isolation work.
+
+**If the free tiers are ever outgrown**
+Neon's free tier limit (~0.5GB) is the one most likely to be hit first as
+data grows across months of purchases/sales/customers. When that happens,
+Neon's paid tier starts small (a few dollars/month) rather than requiring
+a full re-architecture — a decision to make later, with real usage data,
+not now.
