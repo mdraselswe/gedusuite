@@ -476,9 +476,22 @@ export function OrderManager({
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="o-delivery">Delivery charge</Label>
+                  <Label htmlFor="o-delivery">Delivery charge (from customer)</Label>
                   <Input id="o-delivery" name="deliveryCharge" type="number" step="0.01" min="0" defaultValue="0" />
                 </div>
+                {deliveryType === "COURIER" && (
+                  <div className="space-y-2">
+                    <Label htmlFor="o-delivery-cost">Actual courier cost (optional)</Label>
+                    <Input
+                      id="o-delivery-cost"
+                      name="deliveryCost"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="Same as delivery charge if blank"
+                    />
+                  </div>
+                )}
                 <div className="space-y-2">
                   <Label>Payment method</Label>
                   <Select value={paymentMethod} onValueChange={(v) => setPaymentMethod(v ?? "CASH")}>

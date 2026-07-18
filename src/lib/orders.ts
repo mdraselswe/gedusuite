@@ -4,6 +4,7 @@ import type { Prisma } from "@prisma/client";
 // includes items and each item's returns.
 export type OrderWithTotals = {
   deliveryCharge: Prisma.Decimal | number;
+  deliveryCost?: Prisma.Decimal | number | null;
   packagingCost: Prisma.Decimal | number;
   giftCost: Prisma.Decimal | number;
   discount: Prisma.Decimal | number;
@@ -29,7 +30,9 @@ export type OrderTotals = {
   packagingCost: number;
   giftCost: number;
   deliveryCharge: number;
-  netProfit: number; // PRD: sale − cost − packaging − discount − gift (returns-aware)
+  deliveryCost: number; // actual amount paid to the courier
+  deliveryMargin: number; // deliveryCharge − deliveryCost; can be + or −
+  netProfit: number; // PRD: sale − cost − packaging − discount − gift, plus/minus delivery margin
   customerTotal: number; // owed for kept goods incl. delivery
   returnedUnits: number;
 };
@@ -39,7 +42,14 @@ export type OrderTotals = {
  * quantity (ordered − returned): a returned unit drops out of revenue AND cost,
  * so its margin disappears from profit exactly once. `refundAmount` is reported
  * for cash tracking but is NOT subtracted again (that would double-count the
- * return). Delivery charge is a passthrough, excluded from profit.
+ * return).
+ *
+ * Delivery: `deliveryCharge` is what the customer pays; `deliveryCost` is what
+ * actually goes to the courier. When `deliveryCost` is null (not entered), it's
+ * assumed to equal `deliveryCharge` — a pure pass-through, net zero effect on
+ * profit (this is also what every pre-existing order in the DB means). When
+ * they differ — the business keeps a cut, or pays more than it collected —
+ * that difference (`deliveryMargin`) flows into net profit.
  */
 export function computeOrderTotals(order: OrderWithTotals): OrderTotals {
   let grossRevenue = 0;
@@ -67,9 +77,11 @@ export function computeOrderTotals(order: OrderWithTotals): OrderTotals {
   const packagingCost = n(order.packagingCost);
   const giftCost = n(order.giftCost);
   const deliveryCharge = n(order.deliveryCharge);
+  const deliveryCost = order.deliveryCost != null ? n(order.deliveryCost) : deliveryCharge;
+  const deliveryMargin = deliveryCharge - deliveryCost;
 
   const netRevenue = effectiveRevenue - itemDiscounts - orderDiscount;
-  const netProfit = netRevenue - cogs - packagingCost - giftCost;
+  const netProfit = netRevenue - cogs - packagingCost - giftCost + deliveryMargin;
   const customerTotal = netRevenue + deliveryCharge;
 
   return {
@@ -82,6 +94,8 @@ export function computeOrderTotals(order: OrderWithTotals): OrderTotals {
     packagingCost: round2(packagingCost),
     giftCost: round2(giftCost),
     deliveryCharge: round2(deliveryCharge),
+    deliveryCost: round2(deliveryCost),
+    deliveryMargin: round2(deliveryMargin),
     netProfit: round2(netProfit),
     customerTotal: round2(customerTotal),
     returnedUnits,
