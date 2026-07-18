@@ -80,7 +80,14 @@ function LoginForm() {
         </form>
         <p className="text-center text-sm text-muted-foreground">
           No account?{" "}
-          <Link href="/register" className="underline underline-offset-4">
+          <Link
+            href={
+              callbackUrl !== "/"
+                ? `/register?callbackUrl=${encodeURIComponent(callbackUrl)}`
+                : "/register"
+            }
+            className="underline underline-offset-4"
+          >
             Create one
           </Link>
         </p>
