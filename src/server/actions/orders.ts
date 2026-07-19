@@ -46,17 +46,24 @@ async function latestCosts(
   workspaceId: string,
   variantIds: string[],
 ): Promise<Map<string, number>> {
+  const uniqueIds = [...new Set(variantIds)];
   const map = new Map<string, number>();
-  await Promise.all(
-    [...new Set(variantIds)].map(async (vid) => {
-      const p = await prisma.purchase.findFirst({
-        where: { workspaceId, productVariantId: vid },
-        orderBy: { date: "desc" },
-        select: { unitCost: true },
-      });
-      map.set(vid, p ? Number(p.unitCost) : 0);
-    }),
-  );
+  if (uniqueIds.length === 0) return map;
+
+  const purchases = await prisma.purchase.findMany({
+    where: { workspaceId, productVariantId: { in: uniqueIds } },
+    orderBy: [{ productVariantId: "asc" }, { date: "desc" }],
+    select: { productVariantId: true, unitCost: true },
+  });
+
+  for (const p of purchases) {
+    if (!map.has(p.productVariantId)) {
+      map.set(p.productVariantId, Number(p.unitCost));
+    }
+  }
+  for (const vid of uniqueIds) {
+    if (!map.has(vid)) map.set(vid, 0);
+  }
   return map;
 }
 

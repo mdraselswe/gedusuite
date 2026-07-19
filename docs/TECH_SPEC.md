@@ -9,16 +9,35 @@ _(Reference document for Claude Code implementation. Pairs with `PRD.md` and `IM
 
 | Layer | Choice | Why |
 |---|---|---|
-| Frontend | Next.js 14 (App Router, TypeScript) | Server components + API routes in one project, easy PWA support |
+| Frontend | Next.js 16 (App Router, TypeScript) | Server components, server actions, and API routes in one project, easy PWA support |
 | Styling | Tailwind CSS + shadcn/ui | Fast, consistent, theme-able via CSS variables |
-| PWA | `next-pwa` | Service worker, offline caching, installable app |
+| PWA | Serwist (`@serwist/next`) | Service worker, offline caching, installable app |
 | Database | PostgreSQL | Relational integrity matters here — money, ownership, multi-partner ledgers must never go inconsistent. NoSQL (Firestore) makes cross-record math and reporting harder. |
 | ORM | Prisma | Type-safe schema, migrations, works well with Claude Code iterating on models |
 | Auth | NextAuth.js (Credentials + Google provider) | Matches your "email/password + Google Sign-In" requirement |
 | Backup integration | `googleapis` npm package (Sheets API + Drive API) | For the human-readable + JSON backup system |
-| Data fetching | TanStack Query | Caching, offline-friendly retry behavior (useful with PWA) |
+| Data mutations | Next.js server actions | Keeps permission checks and business calculations server-side; offline writes are queued and replayed through `/api/mutations`. |
 | Charts | Recharts | For the reports/dashboard module |
 | Hosting | **Vercel (Free/Hobby)** for the app + **Neon (Free tier)** for PostgreSQL | Confirmed: the Hostinger plan is shared hosting (MySQL only, no Node.js support) — not usable for a custom Node app. This combo needs zero payment. Details and caveats in section 9. |
+
+## 1.1 Current Implementation Snapshot
+
+The repository is no longer a blank scaffold. It currently includes:
+
+- Next.js App Router pages for login/register, workspace creation, dashboard,
+  products, purchases, sales orders, customers, partners, treasury, internal
+  purchases, reports, notifications, team settings, appearance settings, and
+  backup settings.
+- Prisma schema and migrations through the core modules: multi-tenancy,
+  NextAuth adapter tables, products/purchases, customers/orders/returns,
+  partner finance, treasury, internal purchases, backup logs/settings, stock
+  adjustments, and personal Google backup connections.
+- Server actions for each business module, plus server-side inventory/order
+  validation helpers.
+- Serwist service worker, offline fallback page, IndexedDB-style local mutation
+  queue helpers, and reconnect sync UI.
+- Company-level and personal Google backup code paths using shared Google API
+  helpers.
 
 ## 2. Multi-Tenancy Model
 
@@ -29,32 +48,35 @@ _(Reference document for Claude Code implementation. Pairs with `PRD.md` and `IM
 ## 3. Core Data Models (Prisma outline)
 
 ```
-Workspace        { id, name, logoUrl, themeColor, createdAt }
-User             { id, name, email, passwordHash?, googleId?, createdAt }
-Membership       { id, userId, workspaceId, role, permissions(json), invitedBy }
+Workspace        { id, name, slug, logoUrl, themeColor, createdAt }
+User             { id, name, email, passwordHash?, theme, colorPreset, locale, createdAt }
+Membership       { id, userId, workspaceId, role, permissions(json), invitedBy, createdAt }
 
 Supplier         { id, workspaceId, name, address, phone, notes }
-Product          { id, workspaceId, name, category, sku, barcode, expiryTracked(bool) }
+Product          { id, workspaceId, name, category, sku, barcode, imageUrl, expiryTracked(bool), lowStockThreshold }
 ProductVariant   { id, productId, size, color, sku }
-Purchase         { id, workspaceId, supplierId, productVariantId, date, unitCost, quantity, expiryDate }
+Purchase         { id, workspaceId, supplierId?, productVariantId, date, unitCost, quantity, expiryDate }
 
 Customer         { id, workspaceId, name, phone, address, notes }
 Order            { id, workspaceId, customerId, date, status(enum), deliveryType, deliveryCharge,
-                    paymentMethod, paymentStatus, packagingCost, giftCost, discount, heldByPartnerId }
+                    deliveryCost, paymentMethod, paymentStatus, packagingCost, giftCost, discount,
+                    heldByMembershipId, notes }
 OrderItem        { id, orderId, productVariantId, unitPrice, quantity, unitCost, discount }
 Return           { id, orderItemId, quantity, reason, refundAmount, date }
 
-Partner          { id, workspaceId, userId, investedAmount, profitSharePercent }
-PartnerTxn       { id, partnerId, type(INVESTMENT|EXPENSE|WITHDRAWAL|DEPOSIT_TO_TREASURY),
+Partner          { id, workspaceId, userId, profitSharePercent, notes }
+PartnerTxn       { id, workspaceId, partnerId, type(INVESTMENT|EXPENSE|WITHDRAWAL|DEPOSIT_TO_TREASURY),
                     amount, purpose, date }
-TreasuryEntry    { id, workspaceId, type(IN|OUT), amount, source, note, date }
+TreasuryEntry    { id, workspaceId, type(IN|OUT), amount, source, note, date, partnerId?, partnerTxnId? }
 
-InternalPurchase { id, workspaceId, itemName, supplierName, cost, quantity, category, date }
+InternalPurchase { id, workspaceId, itemName, description, supplierName, cost, quantity, category, date }
 
-BackupLog        { id, workspaceId, type(SHEETS|JSON), status, triggeredBy, fileUrl, createdAt }
+BackupLog        { id, workspaceId, type(SHEETS|JSON), status, triggeredBy, fileUrl, payload, error, createdAt }
+BackupSetting    { id, workspaceId, googleSheetId, driveFolderId, autoJson, lastJsonAt, lastSheetsAt }
+StockAdjustment  { id, workspaceId, productVariantId, type(DAMAGED|LOST|GIFT|CORRECTION), delta, reason, date }
 UserGoogleConnection { id, userId, scope(PERSONAL_BACKUP), accessToken(encrypted), refreshToken(encrypted),
-                        sheetId, connectedAt, lastSyncedAt }
-Notification     { id, workspaceId, type, message, read, createdAt }
+                        expiryDate, sheetId, connectedAt, lastSyncedAt }
+Notification     { id, workspaceId, type, message, dedupeKey, read, createdAt }
 ```
 
 ## 4. Module → Route Map
@@ -72,6 +94,11 @@ Notification     { id, workspaceId, type, message, read, createdAt }
 /[workspace]/reports            → analytics, export
 /[workspace]/settings/team      → invite admins/staff, roles
 /[workspace]/settings/backup    → Google Sheets/JSON backup controls
+/[workspace]/settings/appearance → theme/language preferences
+/[workspace]/notifications      → notification center
+/[workspace]/customers/[id]     → customer order history
+/[workspace]/partners/[id]      → partner transaction history
+/[workspace]/sales/orders/[id]/invoice → printable invoice
 ```
 
 ## 5. RBAC Permission Matrix (starting point — refine per module)
@@ -106,8 +133,8 @@ Notification     { id, workspaceId, type, message, read, createdAt }
 ## 7. PWA Requirements
 
 - `manifest.json` with icons, theme color, `display: standalone`.
-- Service worker: network-first for API calls (so data stays fresh when online), cache-first for static assets, offline fallback page for full disconnection.
-- Local write queue: entries made offline are queued in IndexedDB and synced when connectivity returns.
+- Service worker: Serwist-powered caching, offline fallback page for full disconnection, and cache-first static assets.
+- Local write queue: entries made offline are queued locally and replayed via `/api/mutations` when connectivity returns.
 
 ## 8. Theming
 
@@ -198,4 +225,3 @@ Fallback pairing if Anek Bangla doesn't cover a need: `Noto Sans Bengali` +
 - Every interactive element needs a visible hover/active/focus state.
 - Empty states (no products yet, no orders yet) get a simple illustration
   or icon + short message, not a blank white area.
-

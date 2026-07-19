@@ -361,20 +361,21 @@ In-Scope:
   সার্চ ও ফিল্টার      সব লিস্ট ভিউতে সার্চ, ফিল্টার ও সর্টিং অপশন
   -----------------------------------------------------------------------
 
-**৭.১ প্রস্তাবিত টেক স্ট্যাক (উদাহরণ)**
+**৭.১ নির্বাচিত টেক স্ট্যাক**
 
--   ফ্রন্টএন্ড: React / Next.js (PWA সাপোর্ট সহ) + Tailwind CSS
+-   ফ্রন্টএন্ড: Next.js 16 App Router + React 19 + TypeScript
 
--   ব্যাকএন্ড: Node.js (Express/NestJS) বা Firebase
+-   ব্যাকএন্ড: Next.js server actions এবং API routes
 
--   ডেটাবেস: PostgreSQL / MongoDB (মাল্টি-টেন্যান্ট স্কিমা ডিজাইন সহ)
+-   ডেটাবেস: PostgreSQL (Neon free tier) + Prisma 6
 
--   অথেন্টিকেশন: Firebase Auth / NextAuth (Google OAuth সহ)
+-   অথেন্টিকেশন: NextAuth.js (email/password Credentials + Google OAuth)
 
--   হোস্টিং: Vercel / Hostinger VPS
+-   হোস্টিং: Vercel Hobby plan
 
--   ব্যাকআপ ইন্টিগ্রেশন: Google Sheets API + Google Drive API (OAuth 2.0,
-    Service Account)
+-   PWA: Serwist service worker, offline fallback, এবং local mutation queue
+
+-   ব্যাকআপ ইন্টিগ্রেশন: Google Sheets API + Google Drive API (OAuth 2.0)
 
 **৮. মাল্টি-টেন্যান্ট আর্কিটেকচার**
 

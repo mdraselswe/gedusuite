@@ -30,7 +30,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { DataTable, type Column } from "@/components/ui/data-table";
-import { ShoppingCart } from "lucide-react";
+import { Plus, ShoppingCart, Trash2 } from "lucide-react";
 
 type VariantOption = { id: string; label: string; stock: number };
 type OrderItem = {
@@ -63,6 +63,27 @@ function emptyItem(): ItemDraft {
   return { variantId: "", unitPrice: "", quantity: "1", discount: "0" };
 }
 
+function todayInputValue() {
+  const date = new Date();
+  date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
+  return date.toISOString().slice(0, 10);
+}
+
+function formatEnum(value: string) {
+  return value
+    .toLowerCase()
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function formatMoney(value: number) {
+  return `৳${value.toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
 export function OrderManager({
   slug,
   variantOptions,
@@ -90,6 +111,11 @@ export function OrderManager({
   const [deliveryType, setDeliveryType] = useState("SELF");
   const [paymentMethod, setPaymentMethod] = useState("CASH");
   const [paymentStatus, setPaymentStatus] = useState("UNPAID");
+  const [deliveryCharge, setDeliveryCharge] = useState("0");
+  const [deliveryCost, setDeliveryCost] = useState("");
+  const [packagingCost, setPackagingCost] = useState("0");
+  const [giftCost, setGiftCost] = useState("0");
+  const [orderDiscount, setOrderDiscount] = useState("0");
 
   // ── Return dialog state ──
   const [returnOpen, setReturnOpen] = useState(false);
@@ -114,17 +140,29 @@ export function OrderManager({
     setDeliveryType("SELF");
     setPaymentMethod("CASH");
     setPaymentStatus("UNPAID");
+    setDeliveryCharge("0");
+    setDeliveryCost("");
+    setPackagingCost("0");
+    setGiftCost("0");
+    setOrderDiscount("0");
   }
 
   const preview = useMemo(() => {
-    const itemsTotal = items.reduce((s, it) => {
+    const itemsSubtotal = items.reduce((s, it) => {
       const price = parseFloat(it.unitPrice) || 0;
       const qty = parseInt(it.quantity) || 0;
       const disc = parseFloat(it.discount) || 0;
       return s + price * qty - disc;
     }, 0);
-    return itemsTotal;
-  }, [items]);
+    const customerTotal =
+      itemsSubtotal + (parseFloat(deliveryCharge) || 0) - (parseFloat(orderDiscount) || 0);
+    const costPreview =
+      (parseFloat(packagingCost) || 0) +
+      (parseFloat(giftCost) || 0) +
+      (deliveryType === "COURIER" ? parseFloat(deliveryCost || deliveryCharge) || 0 : 0);
+
+    return { itemsSubtotal, customerTotal, costPreview };
+  }, [deliveryCharge, deliveryCost, deliveryType, giftCost, items, orderDiscount, packagingCost]);
 
   function updateItem(i: number, patch: Partial<ItemDraft>) {
     setItems((prev) => prev.map((it, j) => (j === i ? { ...it, ...patch } : it)));
@@ -317,240 +355,399 @@ export function OrderManager({
 
       {/* New order dialog */}
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-h-[92vh] max-w-2xl overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>New order</DialogTitle>
+        <DialogContent className="flex max-h-[92dvh] max-w-[min(96vw,980px)] flex-col overflow-hidden p-0 sm:max-w-[min(96vw,980px)]">
+          <DialogHeader className="shrink-0 border-b bg-muted/30 px-4 py-4 pr-14 sm:px-5">
+            <DialogTitle className="text-lg">New order</DialogTitle>
+            <p className="text-sm text-muted-foreground">
+              Add products first, then payment and delivery details.
+            </p>
           </DialogHeader>
           {variantOptions.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
+            <p className="px-5 pb-5 text-sm text-muted-foreground">
               Add a product with a variant (and some stock) first.
             </p>
           ) : (
-            <form onSubmit={onSubmit} className="space-y-4">
-              {/* Items */}
-              <div className="space-y-2">
-                <Label>Items</Label>
-                {items.map((it, i) => (
-                  <div key={i} className="grid grid-cols-[1fr_5rem_4rem_5rem_2rem] items-center gap-2">
-                    <Select
-                      value={it.variantId}
-                      onValueChange={(v) => updateItem(i, { variantId: v ?? "" })}
-                      items={variantOptions.map((v) => ({
-                        value: v.id,
-                        label: `${v.label} · ${v.stock} in stock`,
-                      }))}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Product" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {variantOptions.map((v) => (
-                          <SelectItem key={v.id} value={v.id}>
-                            {v.label} · {v.stock} in stock
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      placeholder="Price"
-                      value={it.unitPrice}
-                      onChange={(e) => updateItem(i, { unitPrice: e.target.value })}
-                    />
-                    <Input
-                      type="number"
-                      min="1"
-                      placeholder="Qty"
-                      value={it.quantity}
-                      onChange={(e) => updateItem(i, { quantity: e.target.value })}
-                    />
-                    <Input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      placeholder="Disc"
-                      value={it.discount}
-                      onChange={(e) => updateItem(i, { discount: e.target.value })}
-                    />
+            <form onSubmit={onSubmit} className="flex min-h-0 flex-1 flex-col overflow-hidden">
+              <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 py-4 sm:px-5">
+                <section className="space-y-3 rounded-xl bg-muted/25 p-3 ring-1 ring-border sm:p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <h3 className="text-sm font-semibold">Order items</h3>
+                      <p className="text-xs text-muted-foreground">
+                        Product, sale price, quantity, and item discount.
+                      </p>
+                    </div>
                     <Button
                       type="button"
-                      variant="ghost"
+                      variant="outline"
                       size="sm"
-                      onClick={() => setItems(items.filter((_, j) => j !== i))}
+                      onClick={() => setItems([...items, emptyItem()])}
                     >
-                      ×
+                      <Plus />
+                      Add item
                     </Button>
                   </div>
-                ))}
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setItems([...items, emptyItem()])}
-                >
-                  + Add item
-                </Button>
-              </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <Label>Customer</Label>
-                  <Select
-                    value={customerId}
-                    onValueChange={(v) => setCustomerId(v ?? NONE)}
-                    items={[
-                      { value: NONE, label: "Walk-in" },
-                      ...customers.map((c) => ({ value: c.id, label: c.name })),
-                    ]}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={NONE}>Walk-in</SelectItem>
-                      {customers.map((c) => (
-                        <SelectItem key={c.id} value={c.id}>
-                          {c.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="o-date">Date</Label>
-                  <Input id="o-date" name="date" type="date" required defaultValue={orders[0]?.date} />
-                </div>
-                <div className="space-y-2">
-                  <Label>Status</Label>
-                  <Select value={status} onValueChange={(v) => setStatus(v ?? "PENDING")}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {STATUSES.map((s) => (
-                        <SelectItem key={s} value={s}>
-                          {s}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Held by (partner)</Label>
-                  <Select
-                    value={heldById}
-                    onValueChange={(v) => setHeldById(v ?? NONE)}
-                    items={[
-                      { value: NONE, label: "—" },
-                      ...members.map((m) => ({ value: m.id, label: m.label })),
-                    ]}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={NONE}>—</SelectItem>
-                      {members.map((m) => (
-                        <SelectItem key={m.id} value={m.id}>
-                          {m.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Delivery</Label>
-                  <Select value={deliveryType} onValueChange={(v) => setDeliveryType(v ?? "SELF")}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {DELIVERY.map((s) => (
-                        <SelectItem key={s} value={s}>
-                          {s}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="o-delivery">Delivery charge (from customer)</Label>
-                  <Input id="o-delivery" name="deliveryCharge" type="number" step="0.01" min="0" defaultValue="0" />
-                </div>
-                {deliveryType === "COURIER" && (
-                  <div className="space-y-2">
-                    <Label htmlFor="o-delivery-cost">Actual courier cost (optional)</Label>
-                    <Input
-                      id="o-delivery-cost"
-                      name="deliveryCost"
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      placeholder="Same as delivery charge if blank"
-                    />
+                  <div className="space-y-3">
+                    {items.map((it, i) => {
+                      const selectedVariant = variantOptions.find((v) => v.id === it.variantId);
+                      const quantity = parseInt(it.quantity) || 0;
+                      const itemTotal =
+                        (parseFloat(it.unitPrice) || 0) * quantity - (parseFloat(it.discount) || 0);
+                      const stockWarning =
+                        selectedVariant && quantity > selectedVariant.stock
+                          ? `Only ${selectedVariant.stock} in stock`
+                          : null;
+
+                      return (
+                        <div
+                          key={i}
+                          className="rounded-xl bg-background p-3 ring-1 ring-border transition-shadow focus-within:ring-ring/60 sm:p-4"
+                        >
+                          <div className="mb-3 flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium">Item {i + 1}</p>
+                              <p className="truncate text-xs text-muted-foreground">
+                                {selectedVariant
+                                  ? `${selectedVariant.label} · ${selectedVariant.stock} in stock`
+                                  : "Choose a product"}
+                              </p>
+                            </div>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-sm"
+                              aria-label={`Remove item ${i + 1}`}
+                              disabled={items.length === 1}
+                              onClick={() => setItems(items.filter((_, j) => j !== i))}
+                            >
+                              <Trash2 />
+                            </Button>
+                          </div>
+
+                          <div className="grid gap-3 lg:grid-cols-[minmax(16rem,1fr)_8rem_6rem_8rem]">
+                            <div className="space-y-2 lg:col-span-1">
+                              <Label>Product</Label>
+                              <Select
+                                value={it.variantId}
+                                onValueChange={(v) => updateItem(i, { variantId: v ?? "" })}
+                                items={variantOptions.map((v) => ({
+                                  value: v.id,
+                                  label: `${v.label} · ${v.stock} in stock`,
+                                }))}
+                              >
+                                <SelectTrigger className="h-10 w-full">
+                                  <SelectValue placeholder="Select product" />
+                                </SelectTrigger>
+                                <SelectContent align="start">
+                                  {variantOptions.map((v) => (
+                                    <SelectItem key={v.id} value={v.id}>
+                                      {v.label} · {v.stock} in stock
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Price</Label>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                inputMode="decimal"
+                                placeholder="0.00"
+                                value={it.unitPrice}
+                                onChange={(e) => updateItem(i, { unitPrice: e.target.value })}
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Qty</Label>
+                              <Input
+                                type="number"
+                                min="1"
+                                inputMode="numeric"
+                                value={it.quantity}
+                                aria-invalid={Boolean(stockWarning)}
+                                onChange={(e) => updateItem(i, { quantity: e.target.value })}
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Discount</Label>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                inputMode="decimal"
+                                placeholder="0.00"
+                                value={it.discount}
+                                onChange={(e) => updateItem(i, { discount: e.target.value })}
+                              />
+                            </div>
+                          </div>
+
+                          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs">
+                            <span className={stockWarning ? "text-destructive" : "text-muted-foreground"}>
+                              {stockWarning ?? "Stock will be validated before saving."}
+                            </span>
+                            <span className="font-medium tabular-nums">
+                              Line total {formatMoney(Math.max(itemTotal, 0))}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                )}
+                </section>
+
+                <section className="space-y-3">
+                  <div>
+                    <h3 className="text-sm font-semibold">Customer and status</h3>
+                    <p className="text-xs text-muted-foreground">
+                      Walk-in orders can be saved without a customer profile.
+                    </p>
+                  </div>
+                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                    <div className="space-y-2">
+                      <Label>Customer</Label>
+                      <Select
+                        value={customerId}
+                        onValueChange={(v) => setCustomerId(v ?? NONE)}
+                        items={[
+                          { value: NONE, label: "Walk-in" },
+                          ...customers.map((c) => ({ value: c.id, label: c.name })),
+                        ]}
+                      >
+                        <SelectTrigger className="h-10 w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent align="start">
+                          <SelectItem value={NONE}>Walk-in</SelectItem>
+                          {customers.map((c) => (
+                            <SelectItem key={c.id} value={c.id}>
+                              {c.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="o-date">Date</Label>
+                      <Input id="o-date" name="date" type="date" required defaultValue={todayInputValue()} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Status</Label>
+                      <Select value={status} onValueChange={(v) => setStatus(v ?? "PENDING")}>
+                        <SelectTrigger className="h-10 w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent align="start">
+                          {STATUSES.map((s) => (
+                            <SelectItem key={s} value={s}>
+                              {formatEnum(s)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Held by</Label>
+                      <Select
+                        value={heldById}
+                        onValueChange={(v) => setHeldById(v ?? NONE)}
+                        items={[
+                          { value: NONE, label: "Not assigned" },
+                          ...members.map((m) => ({ value: m.id, label: m.label })),
+                        ]}
+                      >
+                        <SelectTrigger className="h-10 w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent align="start">
+                          <SelectItem value={NONE}>Not assigned</SelectItem>
+                          {members.map((m) => (
+                            <SelectItem key={m.id} value={m.id}>
+                              {m.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </section>
+
+                <section className="grid gap-4 lg:grid-cols-2">
+                  <div className="space-y-3 rounded-xl bg-muted/20 p-3 ring-1 ring-border sm:p-4">
+                    <div>
+                      <h3 className="text-sm font-semibold">Delivery</h3>
+                      <p className="text-xs text-muted-foreground">
+                        Courier cost is used for profit calculation.
+                      </p>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label>Type</Label>
+                        <Select value={deliveryType} onValueChange={(v) => setDeliveryType(v ?? "SELF")}>
+                          <SelectTrigger className="h-10 w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent align="start">
+                            {DELIVERY.map((s) => (
+                              <SelectItem key={s} value={s}>
+                                {formatEnum(s)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="o-delivery">Charge from customer</Label>
+                        <Input
+                          id="o-delivery"
+                          name="deliveryCharge"
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          inputMode="decimal"
+                          value={deliveryCharge}
+                          onChange={(e) => setDeliveryCharge(e.target.value)}
+                        />
+                      </div>
+                      {deliveryType === "COURIER" && (
+                        <div className="space-y-2 sm:col-span-2">
+                          <Label htmlFor="o-delivery-cost">Actual courier cost</Label>
+                          <Input
+                            id="o-delivery-cost"
+                            name="deliveryCost"
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            inputMode="decimal"
+                            placeholder="Same as delivery charge if blank"
+                            value={deliveryCost}
+                            onChange={(e) => setDeliveryCost(e.target.value)}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="space-y-3 rounded-xl bg-muted/20 p-3 ring-1 ring-border sm:p-4">
+                    <div>
+                      <h3 className="text-sm font-semibold">Payment and costs</h3>
+                      <p className="text-xs text-muted-foreground">
+                        Internal costs reduce profit, not customer total.
+                      </p>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label>Payment method</Label>
+                        <Select value={paymentMethod} onValueChange={(v) => setPaymentMethod(v ?? "CASH")}>
+                          <SelectTrigger className="h-10 w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent align="start">
+                            {METHODS.map((s) => (
+                              <SelectItem key={s} value={s}>
+                                {formatEnum(s)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Payment status</Label>
+                        <Select value={paymentStatus} onValueChange={(v) => setPaymentStatus(v ?? "UNPAID")}>
+                          <SelectTrigger className="h-10 w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent align="start">
+                            {PAY_STATUS.map((s) => (
+                              <SelectItem key={s} value={s}>
+                                {formatEnum(s)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="o-pack">Packaging cost</Label>
+                        <Input
+                          id="o-pack"
+                          name="packagingCost"
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          inputMode="decimal"
+                          value={packagingCost}
+                          onChange={(e) => setPackagingCost(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="o-gift">Gift cost</Label>
+                        <Input
+                          id="o-gift"
+                          name="giftCost"
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          inputMode="decimal"
+                          value={giftCost}
+                          onChange={(e) => setGiftCost(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2 sm:col-span-2">
+                        <Label htmlFor="o-disc">Order discount</Label>
+                        <Input
+                          id="o-disc"
+                          name="discount"
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          inputMode="decimal"
+                          value={orderDiscount}
+                          onChange={(e) => setOrderDiscount(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
                 <div className="space-y-2">
-                  <Label>Payment method</Label>
-                  <Select value={paymentMethod} onValueChange={(v) => setPaymentMethod(v ?? "CASH")}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {METHODS.map((s) => (
-                        <SelectItem key={s} value={s}>
-                          {s}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Payment status</Label>
-                  <Select value={paymentStatus} onValueChange={(v) => setPaymentStatus(v ?? "UNPAID")}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {PAY_STATUS.map((s) => (
-                        <SelectItem key={s} value={s}>
-                          {s}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="o-pack">Packaging cost</Label>
-                  <Input id="o-pack" name="packagingCost" type="number" step="0.01" min="0" defaultValue="0" />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="o-gift">Gift cost</Label>
-                  <Input id="o-gift" name="giftCost" type="number" step="0.01" min="0" defaultValue="0" />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="o-disc">Order discount</Label>
-                  <Input id="o-disc" name="discount" type="number" step="0.01" min="0" defaultValue="0" />
+                  <Label htmlFor="o-notes">Notes</Label>
+                  <Textarea
+                    id="o-notes"
+                    name="notes"
+                    className="min-h-20"
+                    placeholder="Courier note, payment note, or special instruction"
+                  />
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="o-notes">Notes</Label>
-                <Textarea id="o-notes" name="notes" />
+              <div className="shrink-0 border-t bg-background/95 p-4 backdrop-blur">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="grid w-full grid-cols-2 gap-x-4 gap-y-1 text-sm sm:max-w-md">
+                    <span className="text-muted-foreground">Items</span>
+                    <span className="text-right font-medium tabular-nums">
+                      {formatMoney(preview.itemsSubtotal)}
+                    </span>
+                    <span className="text-muted-foreground">Order total</span>
+                    <span className="text-right text-base font-semibold tabular-nums">
+                      {formatMoney(Math.max(preview.customerTotal, 0))}
+                    </span>
+                    {preview.costPreview > 0 && (
+                      <>
+                        <span className="text-muted-foreground">Cost preview</span>
+                        <span className="text-right tabular-nums">
+                          {formatMoney(preview.costPreview)}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                  <Button type="submit" className="w-full sm:w-auto" disabled={loading}>
+                    {loading ? "Saving…" : "Create order"}
+                  </Button>
+                </div>
               </div>
-
-              <div className="rounded-md bg-muted p-3 text-sm">
-                Items subtotal (excl. order-level charges):{" "}
-                <span className="font-semibold">{preview.toFixed(2)}</span>
-              </div>
-
-              <DialogFooter>
-                <Button type="submit" disabled={loading}>
-                  {loading ? "Saving…" : "Create order"}
-                </Button>
-              </DialogFooter>
             </form>
           )}
         </DialogContent>

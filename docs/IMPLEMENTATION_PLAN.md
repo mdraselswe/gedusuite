@@ -1,5 +1,31 @@
 # GeduSuite — Phased Implementation Plan for Claude Code
 
+> **Current repo status:** this plan began as a build guide for a blank app.
+> The repository now has the core app implemented through the main business
+> modules, reporting, notifications, PWA support, theming, and backup flows.
+> Treat the phase prompts below as historical/reference prompts, not as a sign
+> that the app has not started.
+
+## Current Implementation Status
+
+| Area | Status | Notes |
+|---|---|---|
+| Phase 0 — Scaffold/Auth/Multi-tenancy | Implemented | Next.js App Router, NextAuth Credentials + Google OAuth, workspace creation, invites, memberships, RBAC helpers. |
+| Phase 1 — Products/Purchases | Implemented | Supplier/product/variant/purchase flows, stock adjustments, low-stock/expiry notification support. |
+| Phase 2 — Sales/Orders/Customers | Implemented | Customer CRUD/history, multi-item orders, statuses, invoice route, server-side order helpers. |
+| Phase 3 — Partners/Treasury | Implemented | Partner profiles, partner transactions, treasury ledger, linked treasury entries for deposits. |
+| Phase 4 — Internal Purchases | Implemented | Separate non-sales purchase model and manager UI. |
+| Phase 5 — Reports/Notifications | Implemented | Report view/export helpers and notification center are present. |
+| Phase 6 — Backup | Implemented, verify in environment | Company JSON/Sheets flow, backup logs/settings, and personal Google backup connection model/actions/components are present. Real Google OAuth credentials are still required for end-to-end testing. |
+| Phase 7 — PWA/Theming/Deployment | Partially implemented | Serwist service worker, offline page/queue UI, and appearance settings are present. Final Vercel/Neon environment validation is still a launch task. |
+
+## Current Stack Adjustment
+
+The prompts below mention `Next.js 14` and `next-pwa` because they were written
+before implementation. The actual repo uses Next.js 16, React 19, Tailwind CSS 4,
+Prisma 6, and Serwist (`@serwist/next`). Continue using the installed stack unless
+there is a deliberate migration decision.
+
 Don't hand Claude Code the whole PRD and ask for the full app in one shot — a system this size (auth, multi-tenancy, RBAC, 6+ business modules, Google Sheets/JSON backup, PWA) needs to be built and tested in stages, or bugs compound and become hard to trace. Below is a phase-by-phase plan. Each phase has a ready-to-paste prompt for Claude Code. Run them **in order**, and test each phase before moving to the next.
 
 Keep `TECH_SPEC.md` and `PRD.md` in your repo (e.g. under `/docs`) — reference them in every prompt so Claude Code stays consistent across sessions.
@@ -14,7 +40,7 @@ Keep `TECH_SPEC.md` and `PRD.md` in your repo (e.g. under `/docs`) — reference
 ```
 Read /docs/TECH_SPEC.md and /docs/PRD.md.
 
-Scaffold a Next.js 14 (App Router, TypeScript) project named "gedusuite"
+Scaffold a Next.js 16 (App Router, TypeScript) project named "gedusuite"
 with Tailwind CSS + shadcn/ui.
 Set up Prisma with PostgreSQL using the data models in TECH_SPEC.md section 3
 (start with Workspace, User, Membership only — other tables come later).
@@ -27,7 +53,7 @@ Implement:
 4. Middleware that scopes every request to the current workspace and enforces
    role-based access per the permission matrix in TECH_SPEC.md section 5.
 
-Set up the PWA basics (manifest.json, service worker via next-pwa) even though
+Set up the PWA basics (manifest.ts, service worker via Serwist) even though
 there's no offline data yet — get the install prompt working now.
 
 Write a short README explaining how to run migrations and start the dev server.

@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev --webpack",
     "build": "dotenv -e .env.local -- prisma migrate deploy && next build --webpack",
-    "vercel-build": "prisma migrate deploy && next build --webpack",
+    "vercel-build": "node scripts/vercel-build.mjs",
     "start": "next start",
     "db:deploy": "dotenv -e .env.local -- prisma migrate deploy",
     "typecheck": "tsc --noEmit",
