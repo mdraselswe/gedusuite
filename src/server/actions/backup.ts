@@ -56,14 +56,17 @@ export async function backupNow(
 
     // Optionally push to Drive if configured + a folder is set.
     let driveUrl: string | null = null;
+    let driveError: string | null = null;
     const setting = await prisma.backupSetting.findUnique({ where: { workspaceId } });
     if (isGoogleConfigured()) {
       try {
         const up = await uploadJsonToDrive(filename, json, setting?.driveFolderId ?? null);
         driveUrl = up.url;
-      } catch {
-        // Drive upload failure shouldn't block the local download.
-        driveUrl = null;
+      } catch (e) {
+        // Drive upload failure shouldn't block the local download, but it
+        // should be visible somewhere — otherwise a wrong/unshared folder id
+        // fails silently forever.
+        driveError = e instanceof Error ? e.message : "Unknown Drive error";
       }
     }
 
@@ -74,6 +77,7 @@ export async function backupNow(
         status: "SUCCESS",
         triggeredBy: gate.access.userId,
         fileUrl: driveUrl,
+        error: driveError ? `Drive upload failed: ${driveError}` : null,
         payload: json,
       },
     });
@@ -94,6 +98,25 @@ export async function backupNow(
     await alertFailure(workspaceId, `JSON backup failed: ${msg}`);
     return { ok: false, error: msg };
   }
+}
+
+/** Set which Drive folder JSON backups get uploaded into. */
+export async function updateDriveFolderId(
+  slug: string,
+  folderId: string,
+): Promise<BackupResult> {
+  const gate = await requireAccess(slug, "backup", "full");
+  if (!gate.ok) return gate;
+  const workspaceId = gate.access.workspaceId;
+
+  const trimmed = folderId.trim() || null;
+  await prisma.backupSetting.upsert({
+    where: { workspaceId },
+    create: { workspaceId, driveFolderId: trimmed },
+    update: { driveFolderId: trimmed },
+  });
+  revalidatePath(`/${slug}/settings/backup`);
+  return { ok: true };
 }
 
 /** Validate an uploaded JSON string and return per-table counts (no changes). */

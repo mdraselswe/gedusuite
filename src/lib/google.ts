@@ -11,6 +11,18 @@ export function isGoogleConfigured(): boolean {
   return !!process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
 }
 
+/** The service account's email — share a Drive folder with this to let it upload there. */
+export function serviceAccountEmail(): string | null {
+  const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+  if (!raw) return null;
+  try {
+    const { client_email } = JSON.parse(raw);
+    return typeof client_email === "string" ? client_email : null;
+  } catch {
+    return null;
+  }
+}
+
 const SCOPES = [
   "https://www.googleapis.com/auth/spreadsheets",
   "https://www.googleapis.com/auth/drive",
