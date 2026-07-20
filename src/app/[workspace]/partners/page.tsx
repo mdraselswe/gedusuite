@@ -2,9 +2,10 @@ import { redirect } from "next/navigation";
 import { workspaceAccess } from "@/lib/authz";
 import { can } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
-import { partnerBalances, totalBusinessProfit } from "@/lib/finance";
+import { partnerBalances, totalBusinessProfit, businessCapitalSummary } from "@/lib/finance";
 import { serverT } from "@/lib/session";
 import { PartnerManager } from "@/components/partners/partner-manager";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default async function PartnersPage({
   params,
@@ -20,7 +21,7 @@ export default async function PartnersPage({
   const workspaceId = access.workspaceId;
   const canManage = can(access.role, "partners", "full", access.permissions);
 
-  const [partners, balances, profit, members] = await Promise.all([
+  const [partners, balances, profit, members, capital] = await Promise.all([
     prisma.partner.findMany({
       where: { workspaceId },
       include: { user: { select: { name: true, email: true } } },
@@ -32,6 +33,7 @@ export default async function PartnersPage({
       where: { workspaceId },
       include: { user: { select: { id: true, name: true, email: true } } },
     }),
+    businessCapitalSummary(workspaceId),
   ]);
 
   // A PARTNER only sees their own record; OWNER/MANAGER see everyone.
@@ -52,6 +54,7 @@ export default async function PartnersPage({
       expenses: b?.expenses ?? 0,
       depositedToTreasury: b?.depositedToTreasury ?? 0,
       netCapital: b?.netCapital ?? 0,
+      remaining: b?.remaining ?? 0,
       profitShareAmount: Math.round((share / 100) * profit * 100) / 100,
     };
   });
@@ -70,6 +73,40 @@ export default async function PartnersPage({
           Total business profit: <span className="font-semibold">{profit.toFixed(2)}</span>
         </span>
       </div>
+
+      <div className="grid gap-4 sm:grid-cols-3">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Total invested (all partners)
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="text-2xl font-bold">
+            {capital.totalInvested.toFixed(2)}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Total spent (all partners)
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="text-2xl font-bold">
+            {capital.totalExpenses.toFixed(2)}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Total remaining (unspent)
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="text-2xl font-bold">
+            {capital.totalRemaining.toFixed(2)}
+          </CardContent>
+        </Card>
+      </div>
+
       <PartnerManager
         slug={slug}
         partners={rows}

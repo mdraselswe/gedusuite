@@ -12,6 +12,7 @@ export type PartnerBalance = {
   expenses: number; // sum of EXPENSE
   depositedToTreasury: number; // sum of DEPOSIT_TO_TREASURY
   netCapital: number; // invested − withdrawn
+  remaining: number; // invested − expenses − depositedToTreasury: what's left of their capital still to spend
 };
 
 /** Derive each partner's balances from their transaction log (never stored). */
@@ -35,6 +36,7 @@ export async function partnerBalances(
         expenses: 0,
         depositedToTreasury: 0,
         netCapital: 0,
+        remaining: 0,
       })
       .get(id)!;
 
@@ -52,8 +54,37 @@ export async function partnerBalances(
     b.expenses = round2(b.expenses);
     b.depositedToTreasury = round2(b.depositedToTreasury);
     b.netCapital = round2(b.invested - b.withdrawn);
+    // What's left of their invested capital that hasn't gone to an expense yet
+    // — the exact "koto taka খরচ হয়েছে, koto taka এখনও খরচ হয়নি" question.
+    // Expenses can be entered as one lump sum or many small entries across
+    // different categories; both are just PartnerTxn rows, summed the same way.
+    b.remaining = round2(b.invested - b.expenses);
   }
   return map;
+}
+
+export type BusinessCapitalSummary = {
+  totalInvested: number;
+  totalExpenses: number;
+  totalRemaining: number; // totalInvested − totalExpenses, across every partner
+};
+
+/** Whole-business rollup: who invested what, in aggregate, and what's left unspent. */
+export async function businessCapitalSummary(
+  workspaceId: string,
+): Promise<BusinessCapitalSummary> {
+  const balances = await partnerBalances(workspaceId);
+  let totalInvested = 0;
+  let totalExpenses = 0;
+  for (const b of balances.values()) {
+    totalInvested += b.invested;
+    totalExpenses += b.expenses;
+  }
+  return {
+    totalInvested: round2(totalInvested),
+    totalExpenses: round2(totalExpenses),
+    totalRemaining: round2(totalInvested - totalExpenses),
+  };
 }
 
 /** Central treasury running balance = sum(IN) − sum(OUT). */

@@ -32,3 +32,4 @@ public/swe-worker-*.js
 .vscode/
 .idea/
 tsconfig.tsbuildinfo
+.vercel

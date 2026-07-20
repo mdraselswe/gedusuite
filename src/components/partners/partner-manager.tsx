@@ -38,6 +38,7 @@ type PartnerRow = {
   expenses: number;
   depositedToTreasury: number;
   netCapital: number;
+  remaining: number;
   profitShareAmount: number;
 };
 
@@ -131,6 +132,16 @@ export function PartnerManager({
               header: "Expenses",
               align: "right",
               cell: (p) => p.expenses.toFixed(2),
+            },
+            {
+              key: "remaining",
+              header: "Remaining",
+              align: "right",
+              cell: (p) => (
+                <span className={p.remaining < 0 ? "text-destructive" : undefined}>
+                  {p.remaining.toFixed(2)}
+                </span>
+              ),
             },
             {
               key: "toTreasury",
