@@ -5,7 +5,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAccess } from "@/lib/authz";
 import { variantStockMap, STOCK_CONSUMING_STATUSES } from "@/lib/inventory";
-import type { OrderStatus } from "@prisma/client";
+import type { OrderStatus, PaymentStatus } from "@prisma/client";
 
 export type ActionResult = { ok: true; id?: string } | { ok: false; error: string };
 
@@ -249,6 +249,35 @@ export async function updateOrderStatus(
 
   revalidatePath(`/${slug}/sales/orders`);
   revalidatePath(`/${slug}/dashboard`);
+  return { ok: true };
+}
+
+/**
+ * Update whether an order's payment has been collected — e.g. UNPAID -> PAID
+ * once COD/courier-collection cash actually comes in. Doesn't touch stock;
+ * unlike order status, payment status has no effect on inventory.
+ */
+export async function updatePaymentStatus(
+  slug: string,
+  orderId: string,
+  paymentStatus: string,
+): Promise<ActionResult> {
+  const gate = await requireAccess(slug, "sales", "edit");
+  if (!gate.ok) return gate;
+  const workspaceId = gate.access.workspaceId;
+
+  const valid = ["PAID", "UNPAID", "PARTIAL"];
+  if (!valid.includes(paymentStatus)) return { ok: false, error: "Invalid payment status" };
+
+  const res = await prisma.order.updateMany({
+    where: { id: orderId, workspaceId },
+    data: { paymentStatus: paymentStatus as PaymentStatus },
+  });
+  if (res.count === 0) return { ok: false, error: "Order not found" };
+
+  revalidatePath(`/${slug}/sales/orders`);
+  revalidatePath(`/${slug}/dashboard`);
+  revalidatePath(`/${slug}/treasury`);
   return { ok: true };
 }
 

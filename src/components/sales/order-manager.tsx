@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import {
   createOrder,
   updateOrderStatus,
+  updatePaymentStatus,
   createReturn,
   deleteOrder,
 } from "@/server/actions/orders";
@@ -209,6 +210,13 @@ export function OrderManager({
     router.refresh();
   }
 
+  async function onPaymentStatusChange(orderId: string, newStatus: string) {
+    const res = await updatePaymentStatus(slug, orderId, newStatus);
+    if (!res.ok) return toast.error(res.error);
+    toast.success(`Payment → ${newStatus}`);
+    router.refresh();
+  }
+
   async function onDelete(orderId: string) {
     if (!confirm("Delete this order?")) return;
     const res = await deleteOrder(slug, orderId);
@@ -300,14 +308,31 @@ export function OrderManager({
               key: "payment",
               header: "Payment",
               cell: (o) => (
-                <span>
-                  {o.paymentStatus} · {o.paymentMethod}
-                  {o.totals.returnedUnits > 0 && (
-                    <Badge variant="outline" className="ml-2">
-                      {o.totals.returnedUnits} returned
-                    </Badge>
+                <div className="flex items-center gap-2">
+                  {perms.canEdit ? (
+                    <Select
+                      value={o.paymentStatus}
+                      onValueChange={(v) => v && onPaymentStatusChange(o.id, v)}
+                    >
+                      <SelectTrigger className="h-8 w-28">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {PAY_STATUS.map((s) => (
+                          <SelectItem key={s} value={s}>
+                            {s}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <span>{o.paymentStatus}</span>
                   )}
-                </span>
+                  <span className="text-muted-foreground">· {o.paymentMethod}</span>
+                  {o.totals.returnedUnits > 0 && (
+                    <Badge variant="outline">{o.totals.returnedUnits} returned</Badge>
+                  )}
+                </div>
               ),
             },
             { key: "heldBy", header: "Held by", cell: (o) => o.heldByName ?? "—" },
