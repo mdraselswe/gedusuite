@@ -357,7 +357,7 @@ export function OrderManager({
               header: "",
               cardFullWidth: true,
               cell: (o: OrderRow) => (
-                <>
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                   <Link
                     href={`/${slug}/sales/orders/${o.id}/invoice`}
                     className="inline-flex items-center text-sm underline underline-offset-4"
@@ -382,7 +382,7 @@ export function OrderManager({
                       </Button>
                     </>
                   )}
-                </>
+                </div>
               ),
             },
           ] as Column<OrderRow>[]
