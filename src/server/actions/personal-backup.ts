@@ -61,6 +61,7 @@ export async function personalSyncNow(slug: string): Promise<Result<{ url: strin
       where: { userId },
       data: {
         sheetId,
+        workspaceId,
         lastSyncedAt: new Date(),
         ...(creds.access_token ? { accessToken: encrypt(creds.access_token) } : {}),
         ...(creds.expiry_date ? { expiryDate: BigInt(creds.expiry_date) } : {}),

@@ -31,6 +31,7 @@ export async function GET(req: NextRequest) {
   try {
     const tokens = await exchangeCode(code);
     if (!tokens.access_token) throw new Error("No access token returned");
+    const workspace = slug ? await prisma.workspace.findUnique({ where: { slug }, select: { id: true } }) : null;
     await prisma.userGoogleConnection.upsert({
       where: { userId: session.user.id },
       create: {
@@ -38,12 +39,14 @@ export async function GET(req: NextRequest) {
         accessToken: encrypt(tokens.access_token),
         refreshToken: tokens.refresh_token ? encrypt(tokens.refresh_token) : null,
         expiryDate: tokens.expiry_date ? BigInt(tokens.expiry_date) : null,
+        workspaceId: workspace?.id ?? null,
       },
       update: {
         accessToken: encrypt(tokens.access_token),
         ...(tokens.refresh_token ? { refreshToken: encrypt(tokens.refresh_token) } : {}),
         expiryDate: tokens.expiry_date ? BigInt(tokens.expiry_date) : null,
         connectedAt: new Date(),
+        ...(workspace ? { workspaceId: workspace.id } : {}),
       },
     });
     return NextResponse.redirect(new URL(`${back}?personal=connected`, req.url));

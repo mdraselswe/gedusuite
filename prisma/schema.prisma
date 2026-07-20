@@ -45,6 +45,7 @@ model Workspace {
   backupSetting BackupSetting?
   stockAdjustments StockAdjustment[]
   productCategories ProductCategory[]
+  userGoogleConnections UserGoogleConnection[]
 }
 
 model User {
@@ -549,8 +550,10 @@ model UserGoogleConnection {
   refreshToken String?     @db.Text // encrypted
   expiryDate   BigInt? // access token expiry (ms epoch)
   sheetId      String? // the user's personal backup spreadsheet
+  workspaceId  String? // which workspace this sheet backs up (set on connect/sync, used by the auto-sync cron)
   connectedAt  DateTime    @default(now())
   lastSyncedAt DateTime?
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
 }

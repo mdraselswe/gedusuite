@@ -48,7 +48,9 @@ export function PersonalBackupCard({ slug, status }: { slug: string; status: Sta
         <p className="text-muted-foreground">
           Connect <span className="font-medium">your own</span> Google account to keep a
           personal copy of this workspace&apos;s data in a Sheet in your Drive. Opt-in and
-          separate from the company backup.
+          separate from the company backup. Once connected, it syncs automatically every day
+          — use &quot;Sync to my Sheet&quot; any time you want it updated immediately instead
+          of waiting for the next scheduled run.
         </p>
 
         {!status.configured ? (
