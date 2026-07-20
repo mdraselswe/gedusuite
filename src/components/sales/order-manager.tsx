@@ -364,6 +364,14 @@ export function OrderManager({
                   >
                     Invoice
                   </Link>
+                  {perms.canViewProfit && (
+                    <Link
+                      href={`/${slug}/sales/orders/${o.id}/breakdown`}
+                      className="inline-flex items-center text-sm underline underline-offset-4"
+                    >
+                      Breakdown
+                    </Link>
+                  )}
                   {perms.canEdit && (
                     <>
                       <Button variant="ghost" size="sm" onClick={() => openReturn(o)}>
