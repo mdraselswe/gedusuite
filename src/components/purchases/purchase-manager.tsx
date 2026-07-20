@@ -19,6 +19,16 @@ import {
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { PackageOpen } from "lucide-react";
 
+// Local calendar date (not UTC) as a stable "today" default — must NOT depend
+// on props/state that change after mount (e.g. the newest purchase's date),
+// or an uncontrolled <Input defaultValue> on this always-mounted form would
+// get a changing defaultValue post-init and trip Base UI's dev warning.
+function todayInputValue() {
+  const date = new Date();
+  date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
+  return date.toISOString().slice(0, 10);
+}
+
 type VariantOption = { id: string; label: string; expiryTracked: boolean };
 type PurchaseRow = {
   id: string;
@@ -51,7 +61,6 @@ export function PurchaseManager({
   perms: Perms;
 }) {
   const router = useRouter();
-  const today = purchases[0]?.date ?? "";
   const [variantId, setVariantId] = useState("");
   const [supplierId, setSupplierId] = useState<string>(NO_SUPPLIER);
   const [paidByPartnerId, setPaidByPartnerId] = useState<string>(NO_PARTNER);
@@ -175,7 +184,7 @@ export function PurchaseManager({
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="date">Date</Label>
-                  <Input id="date" name="date" type="date" required defaultValue={today || undefined} />
+                  <Input id="date" name="date" type="date" required defaultValue={todayInputValue()} />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="unitCost">Unit cost</Label>
