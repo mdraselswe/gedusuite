@@ -9,21 +9,40 @@ export type PartnerBalance = {
   partnerId: string;
   invested: number; // sum of INVESTMENT
   withdrawn: number; // sum of WITHDRAWAL
-  expenses: number; // sum of EXPENSE
+  customerProductSpend: number; // Purchase (inventory to resell) rows tagged to this partner
+  internalPurchaseSpend: number; // InternalPurchase rows tagged to this partner
+  miscExpense: number; // manual PartnerTxn EXPENSE entries — rent, food, anything with no dedicated record
+  expenses: number; // customerProductSpend + internalPurchaseSpend + miscExpense
   depositedToTreasury: number; // sum of DEPOSIT_TO_TREASURY
   netCapital: number; // invested − withdrawn
-  remaining: number; // invested − expenses − depositedToTreasury: what's left of their capital still to spend
+  remaining: number; // invested − expenses: what's left of their capital still to spend
 };
 
-/** Derive each partner's balances from their transaction log (never stored). */
+/**
+ * Derive each partner's balances — never stored, always computed from the
+ * underlying records. `expenses` is no longer a single manually-typed number:
+ * it's auto-summed from three real sources — Purchase and InternalPurchase
+ * rows tagged with `paidByPartnerId`, plus manual PartnerTxn EXPENSE entries
+ * for anything with no dedicated record (rent, food, misc).
+ */
 export async function partnerBalances(
   workspaceId: string,
 ): Promise<Map<string, PartnerBalance>> {
-  const rows = await prisma.partnerTxn.groupBy({
-    by: ["partnerId", "type"],
-    where: { workspaceId },
-    _sum: { amount: true },
-  });
+  const [txnRows, purchaseRows, internalRows] = await Promise.all([
+    prisma.partnerTxn.groupBy({
+      by: ["partnerId", "type"],
+      where: { workspaceId },
+      _sum: { amount: true },
+    }),
+    prisma.purchase.findMany({
+      where: { workspaceId, paidByPartnerId: { not: null } },
+      select: { paidByPartnerId: true, unitCost: true, quantity: true },
+    }),
+    prisma.internalPurchase.findMany({
+      where: { workspaceId, paidByPartnerId: { not: null } },
+      select: { paidByPartnerId: true, cost: true, quantity: true },
+    }),
+  ]);
 
   const map = new Map<string, PartnerBalance>();
   const ensure = (id: string): PartnerBalance =>
@@ -33,6 +52,9 @@ export async function partnerBalances(
         partnerId: id,
         invested: 0,
         withdrawn: 0,
+        customerProductSpend: 0,
+        internalPurchaseSpend: 0,
+        miscExpense: 0,
         expenses: 0,
         depositedToTreasury: 0,
         netCapital: 0,
@@ -40,24 +62,32 @@ export async function partnerBalances(
       })
       .get(id)!;
 
-  for (const r of rows) {
+  for (const r of txnRows) {
     const b = ensure(r.partnerId);
     const amt = Number(r._sum.amount ?? 0);
     if (r.type === "INVESTMENT") b.invested += amt;
     else if (r.type === "WITHDRAWAL") b.withdrawn += amt;
-    else if (r.type === "EXPENSE") b.expenses += amt;
+    else if (r.type === "EXPENSE") b.miscExpense += amt;
     else if (r.type === "DEPOSIT_TO_TREASURY") b.depositedToTreasury += amt;
   }
+  for (const p of purchaseRows) {
+    const b = ensure(p.paidByPartnerId!);
+    b.customerProductSpend += Number(p.unitCost) * p.quantity;
+  }
+  for (const ip of internalRows) {
+    const b = ensure(ip.paidByPartnerId!);
+    b.internalPurchaseSpend += Number(ip.cost) * ip.quantity;
+  }
+
   for (const b of map.values()) {
     b.invested = round2(b.invested);
     b.withdrawn = round2(b.withdrawn);
-    b.expenses = round2(b.expenses);
+    b.customerProductSpend = round2(b.customerProductSpend);
+    b.internalPurchaseSpend = round2(b.internalPurchaseSpend);
+    b.miscExpense = round2(b.miscExpense);
+    b.expenses = round2(b.customerProductSpend + b.internalPurchaseSpend + b.miscExpense);
     b.depositedToTreasury = round2(b.depositedToTreasury);
     b.netCapital = round2(b.invested - b.withdrawn);
-    // What's left of their invested capital that hasn't gone to an expense yet
-    // — the exact "koto taka খরচ হয়েছে, koto taka এখনও খরচ হয়নি" question.
-    // Expenses can be entered as one lump sum or many small entries across
-    // different categories; both are just PartnerTxn rows, summed the same way.
     b.remaining = round2(b.invested - b.expenses);
   }
   return map;
@@ -65,23 +95,59 @@ export async function partnerBalances(
 
 export type BusinessCapitalSummary = {
   totalInvested: number;
+  customerProductSpend: number; // ALL purchases in the workspace, tagged or not
+  internalPurchaseSpend: number; // ALL internal purchases in the workspace, tagged or not
+  miscExpense: number; // ALL partner EXPENSE entries
   totalExpenses: number;
-  totalRemaining: number; // totalInvested − totalExpenses, across every partner
+  totalRemaining: number; // totalInvested − totalExpenses
 };
 
-/** Whole-business rollup: who invested what, in aggregate, and what's left unspent. */
+/**
+ * Whole-business rollup: total invested (every partner) vs. total actually
+ * spent — on customer-product purchases, internal purchases, and misc
+ * (rent/food/etc.) — with what's left unspent. Unlike the per-partner view,
+ * this counts EVERY purchase/internal-purchase regardless of whether it was
+ * tagged to a specific partner, so the business total never silently drops
+ * spending just because nobody recorded who paid for it.
+ */
 export async function businessCapitalSummary(
   workspaceId: string,
 ): Promise<BusinessCapitalSummary> {
-  const balances = await partnerBalances(workspaceId);
+  const [balances, purchases, internalPurchases, miscRows] = await Promise.all([
+    partnerBalances(workspaceId),
+    prisma.purchase.findMany({
+      where: { workspaceId },
+      select: { unitCost: true, quantity: true },
+    }),
+    prisma.internalPurchase.findMany({
+      where: { workspaceId },
+      select: { cost: true, quantity: true },
+    }),
+    prisma.partnerTxn.aggregate({
+      where: { workspaceId, type: "EXPENSE" },
+      _sum: { amount: true },
+    }),
+  ]);
+
   let totalInvested = 0;
-  let totalExpenses = 0;
-  for (const b of balances.values()) {
-    totalInvested += b.invested;
-    totalExpenses += b.expenses;
-  }
+  for (const b of balances.values()) totalInvested += b.invested;
+
+  const customerProductSpend = purchases.reduce(
+    (s, p) => s + Number(p.unitCost) * p.quantity,
+    0,
+  );
+  const internalPurchaseSpend = internalPurchases.reduce(
+    (s, ip) => s + Number(ip.cost) * ip.quantity,
+    0,
+  );
+  const miscExpense = Number(miscRows._sum.amount ?? 0);
+  const totalExpenses = customerProductSpend + internalPurchaseSpend + miscExpense;
+
   return {
     totalInvested: round2(totalInvested),
+    customerProductSpend: round2(customerProductSpend),
+    internalPurchaseSpend: round2(internalPurchaseSpend),
+    miscExpense: round2(miscExpense),
     totalExpenses: round2(totalExpenses),
     totalRemaining: round2(totalInvested - totalExpenses),
   };

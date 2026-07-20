@@ -48,11 +48,15 @@ export default async function PartnerDetailPage({
   }));
 
   const cards: [string, number][] = [
-    ["Net capital", balances?.netCapital ?? 0],
     ["Invested", balances?.invested ?? 0],
+    ["Customer products", balances?.customerProductSpend ?? 0],
+    ["Internal purchases", balances?.internalPurchaseSpend ?? 0],
+    ["Other (rent, food, etc.)", balances?.miscExpense ?? 0],
+    ["Total spent", balances?.expenses ?? 0],
+    ["Remaining (unspent)", balances?.remaining ?? 0],
     ["Withdrawn", balances?.withdrawn ?? 0],
-    ["Expenses", balances?.expenses ?? 0],
     ["To treasury", balances?.depositedToTreasury ?? 0],
+    ["Net capital", balances?.netCapital ?? 0],
   ];
 
   return (

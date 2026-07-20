@@ -22,11 +22,20 @@ export default async function InternalPurchasesPage({
     canEdit: can(access.role, "internal-purchases", "edit", access.permissions),
   };
 
-  const items = await prisma.internalPurchase.findMany({
-    where: { workspaceId: access.workspaceId },
-    orderBy: { date: "desc" },
-    take: 200,
-  });
+  const [items, partners] = await Promise.all([
+    prisma.internalPurchase.findMany({
+      where: { workspaceId: access.workspaceId },
+      orderBy: { date: "desc" },
+      take: 200,
+      include: {
+        paidByPartner: { select: { id: true, user: { select: { name: true, email: true } } } },
+      },
+    }),
+    prisma.partner.findMany({
+      where: { workspaceId: access.workspaceId },
+      select: { id: true, user: { select: { name: true, email: true } } },
+    }),
+  ]);
 
   const rows = items.map((i) => ({
     id: i.id,
@@ -34,9 +43,16 @@ export default async function InternalPurchasesPage({
     itemName: i.itemName,
     description: i.description,
     supplierName: i.supplierName,
+    paidBy: i.paidByPartner ? (i.paidByPartner.user.name ?? i.paidByPartner.user.email) : null,
+    paidByPartnerId: i.paidByPartnerId,
     cost: Number(i.cost),
     quantity: i.quantity,
     category: i.category,
+  }));
+
+  const partnerOptions = partners.map((p) => ({
+    id: p.id,
+    label: p.user.name ?? p.user.email,
   }));
 
   const totalSpend = rows.reduce((s, r) => s + r.cost * r.quantity, 0);
@@ -49,7 +65,12 @@ export default async function InternalPurchasesPage({
           Total spend: <span className="font-semibold">{totalSpend.toFixed(2)}</span>
         </span>
       </div>
-      <InternalPurchaseManager slug={slug} items={rows} perms={perms} />
+      <InternalPurchaseManager
+        slug={slug}
+        items={rows}
+        partnerOptions={partnerOptions}
+        perms={perms}
+      />
     </div>
   );
 }

@@ -36,11 +36,14 @@ type Item = {
   itemName: string;
   description: string | null;
   supplierName: string | null;
+  paidBy: string | null;
+  paidByPartnerId: string | null;
   cost: number;
   quantity: number;
   category: string;
 };
 type Perms = { canAdd: boolean; canEdit: boolean };
+const NO_PARTNER = "__none__";
 
 const CATEGORIES = [
   "OFFICE_SUPPLIES",
@@ -60,16 +63,19 @@ const LABEL: Record<string, string> = {
 export function InternalPurchaseManager({
   slug,
   items,
+  partnerOptions,
   perms,
 }: {
   slug: string;
   items: Item[];
+  partnerOptions: { id: string; label: string }[];
   perms: Perms;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Item | null>(null);
   const [category, setCategory] = useState("OTHER");
+  const [paidByPartnerId, setPaidByPartnerId] = useState(NO_PARTNER);
   const [loading, setLoading] = useState(false);
   const [catFilter, setCatFilter] = useState("__all__");
 
@@ -78,11 +84,13 @@ export function InternalPurchaseManager({
   function openNew() {
     setEditing(null);
     setCategory("OTHER");
+    setPaidByPartnerId(NO_PARTNER);
     setOpen(true);
   }
   function openEdit(i: Item) {
     setEditing(i);
     setCategory(i.category);
+    setPaidByPartnerId(i.paidByPartnerId ?? NO_PARTNER);
     setOpen(true);
   }
 
@@ -91,6 +99,7 @@ export function InternalPurchaseManager({
     setLoading(true);
     const fd = new FormData(e.currentTarget);
     fd.set("category", category);
+    fd.set("paidByPartnerId", paidByPartnerId === NO_PARTNER ? "" : paidByPartnerId);
     const res = editing
       ? await updateInternalPurchase(slug, editing.id, fd)
       : await createInternalPurchase(slug, fd);
@@ -160,6 +169,7 @@ export function InternalPurchaseManager({
               cell: (i) => <Badge variant="secondary">{LABEL[i.category] ?? i.category}</Badge>,
             },
             { key: "supplier", header: "Supplier", cell: (i) => i.supplierName ?? "—" },
+            { key: "paidBy", header: "Paid by", cell: (i) => i.paidBy ?? "—" },
             { key: "cost", header: "Cost", align: "right", cell: (i) => i.cost.toFixed(2) },
             { key: "qty", header: "Qty", align: "right", cell: (i) => i.quantity },
             {
@@ -224,6 +234,29 @@ export function InternalPurchaseManager({
               <div className="space-y-2">
                 <Label htmlFor="ip-supplier">Supplier / shop</Label>
                 <Input id="ip-supplier" name="supplierName" defaultValue={editing?.supplierName ?? ""} />
+              </div>
+              <div className="space-y-2">
+                <Label>Paid by (partner)</Label>
+                <Select
+                  value={paidByPartnerId}
+                  onValueChange={(v) => setPaidByPartnerId(v ?? NO_PARTNER)}
+                  items={[
+                    { value: NO_PARTNER, label: "Not tracked" },
+                    ...partnerOptions.map((p) => ({ value: p.id, label: p.label })),
+                  ]}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NO_PARTNER}>Not tracked</SelectItem>
+                    {partnerOptions.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="ip-cost">Unit cost</Label>

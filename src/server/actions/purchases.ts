@@ -11,6 +11,7 @@ export type ActionResult = { ok: true } | { ok: false; error: string };
 const PurchaseSchema = z.object({
   productVariantId: z.string().min(1, "Select a product variant"),
   supplierId: z.string().optional().or(z.literal("")),
+  paidByPartnerId: z.string().optional().or(z.literal("")),
   date: z.coerce.date(),
   unitCost: z.coerce.number().nonnegative("Unit cost must be ≥ 0"),
   quantity: z.coerce.number().int().positive("Quantity must be > 0"),
@@ -27,6 +28,7 @@ export async function createPurchase(
   const parsed = PurchaseSchema.safeParse({
     productVariantId: formData.get("productVariantId"),
     supplierId: formData.get("supplierId") ?? undefined,
+    paidByPartnerId: formData.get("paidByPartnerId") ?? undefined,
     date: formData.get("date"),
     unitCost: formData.get("unitCost"),
     quantity: formData.get("quantity"),
@@ -38,9 +40,10 @@ export async function createPurchase(
   const d = parsed.data;
   const workspaceId = gate.access.workspaceId;
 
-  // Variant + supplier checks are independent — run concurrently instead of
-  // one after another (each round trip costs real time over a remote DB).
-  const [variant, supplier] = await Promise.all([
+  // Variant + supplier + partner checks are independent — run concurrently
+  // instead of one after another (each round trip costs real time over a
+  // remote DB).
+  const [variant, supplier, partner] = await Promise.all([
     prisma.productVariant.findFirst({
       where: { id: d.productVariantId, product: { workspaceId } },
       select: { id: true },
@@ -48,16 +51,22 @@ export async function createPurchase(
     d.supplierId
       ? prisma.supplier.findFirst({ where: { id: d.supplierId, workspaceId }, select: { id: true } })
       : Promise.resolve(null),
+    d.paidByPartnerId
+      ? prisma.partner.findFirst({ where: { id: d.paidByPartnerId, workspaceId }, select: { id: true } })
+      : Promise.resolve(null),
   ]);
   if (!variant) return { ok: false, error: "Product variant not found" };
   if (d.supplierId && !supplier) return { ok: false, error: "Supplier not found" };
+  if (d.paidByPartnerId && !partner) return { ok: false, error: "Partner not found" };
   const supplierId = supplier?.id ?? null;
+  const paidByPartnerId = partner?.id ?? null;
 
   await prisma.purchase.create({
     data: {
       workspaceId,
       productVariantId: d.productVariantId,
       supplierId,
+      paidByPartnerId,
       date: d.date,
       unitCost: d.unitCost,
       quantity: d.quantity,

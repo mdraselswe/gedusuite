@@ -25,6 +25,7 @@ type PurchaseRow = {
   date: string;
   product: string;
   supplier: string;
+  paidBy: string | null;
   unitCost: number;
   quantity: number;
   expiryDate: string | null;
@@ -32,17 +33,20 @@ type PurchaseRow = {
 type Perms = { canAdd: boolean; canEdit: boolean };
 
 const NO_SUPPLIER = "__none__";
+const NO_PARTNER = "__none__";
 
 export function PurchaseManager({
   slug,
   variantOptions,
   suppliers,
+  partnerOptions,
   purchases,
   perms,
 }: {
   slug: string;
   variantOptions: VariantOption[];
   suppliers: { id: string; name: string }[];
+  partnerOptions: { id: string; label: string }[];
   purchases: PurchaseRow[];
   perms: Perms;
 }) {
@@ -50,6 +54,7 @@ export function PurchaseManager({
   const today = purchases[0]?.date ?? "";
   const [variantId, setVariantId] = useState("");
   const [supplierId, setSupplierId] = useState<string>(NO_SUPPLIER);
+  const [paidByPartnerId, setPaidByPartnerId] = useState<string>(NO_PARTNER);
   const [loading, setLoading] = useState(false);
 
   const selectedVariant = variantOptions.find((v) => v.id === variantId);
@@ -65,6 +70,7 @@ export function PurchaseManager({
     const fd = new FormData(e.currentTarget);
     fd.set("productVariantId", variantId);
     fd.set("supplierId", supplierId === NO_SUPPLIER ? "" : supplierId);
+    fd.set("paidByPartnerId", paidByPartnerId === NO_PARTNER ? "" : paidByPartnerId);
     const payload = Object.fromEntries(fd.entries()) as Record<string, unknown>;
     const res = await submitOrQueue("purchase.create", slug, payload);
     setLoading(false);
@@ -76,6 +82,7 @@ export function PurchaseManager({
     (e.target as HTMLFormElement).reset();
     setVariantId("");
     setSupplierId(NO_SUPPLIER);
+    setPaidByPartnerId(NO_PARTNER);
     router.refresh();
   }
 
@@ -144,6 +151,29 @@ export function PurchaseManager({
                   </Select>
                 </div>
                 <div className="space-y-2">
+                  <Label>Paid by (partner)</Label>
+                  <Select
+                    value={paidByPartnerId}
+                    onValueChange={(v) => setPaidByPartnerId(v ?? NO_PARTNER)}
+                    items={[
+                      { value: NO_PARTNER, label: "Not tracked" },
+                      ...partnerOptions.map((p) => ({ value: p.id, label: p.label })),
+                    ]}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NO_PARTNER}>Not tracked</SelectItem>
+                      {partnerOptions.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
                   <Label htmlFor="date">Date</Label>
                   <Input id="date" name="date" type="date" required defaultValue={today || undefined} />
                 </div>
@@ -183,6 +213,7 @@ export function PurchaseManager({
               { key: "date", header: "Date", cell: (p) => p.date },
               { key: "product", header: "Product", cardTitle: true, cell: (p) => p.product },
               { key: "supplier", header: "Supplier", cell: (p) => p.supplier },
+              { key: "paidBy", header: "Paid by", cell: (p) => p.paidBy ?? "—" },
               {
                 key: "unitCost",
                 header: "Unit cost",

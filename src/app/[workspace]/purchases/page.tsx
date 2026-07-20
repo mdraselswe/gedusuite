@@ -22,7 +22,7 @@ export default async function PurchasesPage({
     canEdit: can(access.role, "purchases", "edit", access.permissions),
   };
 
-  const [products, suppliers, purchases] = await Promise.all([
+  const [products, suppliers, purchases, partners] = await Promise.all([
     // No `select` here previously meant every product's imageUrl (up to ~1.4MB
     // base64 each) came along even though this page never renders images.
     prisma.product.findMany({
@@ -46,10 +46,15 @@ export default async function PurchasesPage({
       take: 100,
       include: {
         supplier: { select: { name: true } },
+        paidByPartner: { select: { user: { select: { name: true, email: true } } } },
         productVariant: {
           select: { size: true, color: true, product: { select: { name: true } } },
         },
       },
+    }),
+    prisma.partner.findMany({
+      where: { workspaceId: access.workspaceId },
+      select: { id: true, user: { select: { name: true, email: true } } },
     }),
   ]);
 
@@ -74,9 +79,17 @@ export default async function PurchasesPage({
         ? ` (${[pu.productVariant.size, pu.productVariant.color].filter(Boolean).join(" / ")})`
         : ""),
     supplier: pu.supplier?.name ?? "—",
+    paidBy: pu.paidByPartner
+      ? (pu.paidByPartner.user.name ?? pu.paidByPartner.user.email)
+      : null,
     unitCost: Number(pu.unitCost),
     quantity: pu.quantity,
     expiryDate: pu.expiryDate ? pu.expiryDate.toISOString().slice(0, 10) : null,
+  }));
+
+  const partnerOptions = partners.map((p) => ({
+    id: p.id,
+    label: p.user.name ?? p.user.email,
   }));
 
   return (
@@ -86,6 +99,7 @@ export default async function PurchasesPage({
         slug={slug}
         variantOptions={variantOptions}
         suppliers={suppliers}
+        partnerOptions={partnerOptions}
         purchases={purchaseRows}
         perms={perms}
       />

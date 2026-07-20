@@ -51,6 +51,9 @@ export default async function PartnersPage({
       profitSharePercent: share,
       invested: b?.invested ?? 0,
       withdrawn: b?.withdrawn ?? 0,
+      customerProductSpend: b?.customerProductSpend ?? 0,
+      internalPurchaseSpend: b?.internalPurchaseSpend ?? 0,
+      miscExpense: b?.miscExpense ?? 0,
       expenses: b?.expenses ?? 0,
       depositedToTreasury: b?.depositedToTreasury ?? 0,
       netCapital: b?.netCapital ?? 0,
@@ -74,11 +77,11 @@ export default async function PartnersPage({
         </span>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-5">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Total invested (all partners)
+              Total invested
             </CardTitle>
           </CardHeader>
           <CardContent className="text-2xl font-bold">
@@ -88,17 +91,37 @@ export default async function PartnersPage({
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Total spent (all partners)
+              Customer products
             </CardTitle>
           </CardHeader>
-          <CardContent className="text-2xl font-bold">
-            {capital.totalExpenses.toFixed(2)}
+          <CardContent className="text-xl font-bold">
+            {capital.customerProductSpend.toFixed(2)}
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Total remaining (unspent)
+              Internal purchases
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="text-xl font-bold">
+            {capital.internalPurchaseSpend.toFixed(2)}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Other (rent, food, etc.)
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="text-xl font-bold">
+            {capital.miscExpense.toFixed(2)}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Remaining (unspent)
             </CardTitle>
           </CardHeader>
           <CardContent className="text-2xl font-bold">
@@ -106,6 +129,12 @@ export default async function PartnersPage({
           </CardContent>
         </Card>
       </div>
+      <p className="text-xs text-muted-foreground">
+        Total spent (all categories): {capital.totalExpenses.toFixed(2)}. "Customer products"
+        and "Internal purchases" count every recorded purchase regardless of whether it was
+        tagged to a specific partner; per-partner breakdown below only reflects purchases
+        tagged with "Paid by".
+      </p>
 
       <PartnerManager
         slug={slug}

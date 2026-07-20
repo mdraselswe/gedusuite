@@ -19,6 +19,7 @@ const Schema = z.object({
   itemName: z.string().trim().min(1, "Item name is required").max(160),
   description: z.string().trim().max(500).optional().or(z.literal("")),
   supplierName: z.string().trim().max(160).optional().or(z.literal("")),
+  paidByPartnerId: z.string().optional().or(z.literal("")),
   cost: z.coerce.number().nonnegative("Cost must be ≥ 0"),
   quantity: z.coerce.number().int().positive("Quantity must be > 0"),
   category: z.enum(CATEGORIES),
@@ -30,6 +31,7 @@ function parse(formData: FormData) {
     itemName: formData.get("itemName"),
     description: formData.get("description") ?? undefined,
     supplierName: formData.get("supplierName") ?? undefined,
+    paidByPartnerId: formData.get("paidByPartnerId") ?? undefined,
     cost: formData.get("cost"),
     quantity: formData.get("quantity"),
     category: formData.get("category"),
@@ -51,12 +53,25 @@ export async function createInternalPurchase(
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
   const d = parsed.data;
+  const workspaceId = gate.access.workspaceId;
+
+  let paidByPartnerId: string | null = null;
+  if (d.paidByPartnerId) {
+    const partner = await prisma.partner.findFirst({
+      where: { id: d.paidByPartnerId, workspaceId },
+      select: { id: true },
+    });
+    if (!partner) return { ok: false, error: "Partner not found" };
+    paidByPartnerId = partner.id;
+  }
+
   await prisma.internalPurchase.create({
     data: {
-      workspaceId: gate.access.workspaceId,
+      workspaceId,
       itemName: d.itemName,
       description: clean(d.description),
       supplierName: clean(d.supplierName),
+      paidByPartnerId,
       cost: d.cost,
       quantity: d.quantity,
       category: d.category,
@@ -79,12 +94,25 @@ export async function updateInternalPurchase(
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
   const d = parsed.data;
+  const workspaceId = gate.access.workspaceId;
+
+  let paidByPartnerId: string | null = null;
+  if (d.paidByPartnerId) {
+    const partner = await prisma.partner.findFirst({
+      where: { id: d.paidByPartnerId, workspaceId },
+      select: { id: true },
+    });
+    if (!partner) return { ok: false, error: "Partner not found" };
+    paidByPartnerId = partner.id;
+  }
+
   const res = await prisma.internalPurchase.updateMany({
-    where: { id, workspaceId: gate.access.workspaceId },
+    where: { id, workspaceId },
     data: {
       itemName: d.itemName,
       description: clean(d.description),
       supplierName: clean(d.supplierName),
+      paidByPartnerId,
       cost: d.cost,
       quantity: d.quantity,
       category: d.category,
