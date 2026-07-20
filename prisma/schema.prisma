@@ -44,6 +44,7 @@ model Workspace {
   backupLogs    BackupLog[]
   backupSetting BackupSetting?
   stockAdjustments StockAdjustment[]
+  productCategories ProductCategory[]
 }
 
 model User {
@@ -168,6 +169,21 @@ model Product {
   workspace Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   variants  ProductVariant[]
 
+  @@index([workspaceId])
+}
+
+// Managed category list per workspace — the product form selects from these
+// instead of free-typing, but new ones can be added inline (see
+// createProductCategory). Seeded with baby-product defaults on first use.
+model ProductCategory {
+  id          String   @id @default(cuid())
+  workspaceId String
+  name        String
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, name])
   @@index([workspaceId])
 }
 

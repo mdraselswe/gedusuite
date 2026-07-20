@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ProductManager } from "@/components/products/product-manager";
 import { SupplierManager } from "@/components/products/supplier-manager";
 import { StockAdjustmentManager } from "@/components/products/stock-adjustment-manager";
+import { listProductCategories } from "@/server/actions/product-categories";
 
 export default async function ProductsPage({
   params,
@@ -26,7 +27,7 @@ export default async function ProductsPage({
     canEdit: can(access.role, "products", "edit", access.permissions),
   };
 
-  const [products, suppliers, stock, adjustments] = await Promise.all([
+  const [products, suppliers, stock, adjustments, categories] = await Promise.all([
     prisma.product.findMany({
       where: { workspaceId: access.workspaceId },
       include: { variants: true },
@@ -47,6 +48,7 @@ export default async function ProductsPage({
         },
       },
     }),
+    listProductCategories(slug),
   ]);
 
   const productData = products.map((p) => ({
@@ -102,7 +104,12 @@ export default async function ProductsPage({
           <TabsTrigger value="adjustments">Stock adjustments</TabsTrigger>
         </TabsList>
         <TabsContent value="products" className="pt-4">
-          <ProductManager slug={slug} products={productData} perms={perms} />
+          <ProductManager
+            slug={slug}
+            products={productData}
+            categories={categories}
+            perms={perms}
+          />
         </TabsContent>
         <TabsContent value="suppliers" className="pt-4">
           <SupplierManager slug={slug} suppliers={suppliers} perms={perms} />

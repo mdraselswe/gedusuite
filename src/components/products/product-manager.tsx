@@ -11,6 +11,7 @@ import {
   addVariant,
   deleteVariant,
 } from "@/server/actions/products";
+import { createProductCategory } from "@/server/actions/product-categories";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,8 +24,17 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Package } from "lucide-react";
+
+const ADD_NEW_CATEGORY = "__add_new__";
 
 type Variant = {
   id: string;
@@ -91,10 +101,12 @@ function variantText(v: { size: string | null; color: string | null }) {
 export function ProductManager({
   slug,
   products,
+  categories,
   perms,
 }: {
   slug: string;
   products: Product[];
+  categories: string[];
   perms: Perms;
 }) {
   const router = useRouter();
@@ -102,6 +114,12 @@ export function ProductManager({
   const [editing, setEditing] = useState<Product | null>(null);
   const [loading, setLoading] = useState(false);
   const [query, setQuery] = useState("");
+  const [categoryList, setCategoryList] = useState(categories);
+
+  // Add-category dialog (opened from the product form's category select).
+  const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [categorySaving, setCategorySaving] = useState(false);
 
   const shown = products.filter((p) => {
     const q = query.toLowerCase();
@@ -167,6 +185,24 @@ export function ProductManager({
     } catch {
       toast.error("Couldn't process that image");
     }
+  }
+
+  async function onCreateCategory(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newCategoryName.trim()) return;
+    setCategorySaving(true);
+    const res = await createProductCategory(slug, newCategoryName.trim());
+    setCategorySaving(false);
+    if (!res.ok) {
+      toast.error(res.error);
+      return;
+    }
+    if (!categoryList.includes(res.name)) {
+      setCategoryList([...categoryList, res.name].sort());
+    }
+    setCategory(res.name);
+    setCategoryDialogOpen(false);
+    toast.success("Category added");
   }
 
   async function onSubmitProduct(e: React.FormEvent) {
@@ -343,8 +379,34 @@ export function ProductManager({
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
-                <Label htmlFor="p-cat">Category</Label>
-                <Input id="p-cat" value={category} onChange={(e) => setCategory(e.target.value)} />
+                <Label>Category</Label>
+                <Select
+                  value={category}
+                  onValueChange={(v) => {
+                    if (v === ADD_NEW_CATEGORY) {
+                      setNewCategoryName("");
+                      setCategoryDialogOpen(true);
+                      return;
+                    }
+                    setCategory(v ?? "");
+                  }}
+                  items={[
+                    ...categoryList.map((c) => ({ value: c, label: c })),
+                    { value: ADD_NEW_CATEGORY, label: "+ Add new category…" },
+                  ]}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select a category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {categoryList.map((c) => (
+                      <SelectItem key={c} value={c}>
+                        {c}
+                      </SelectItem>
+                    ))}
+                    <SelectItem value={ADD_NEW_CATEGORY}>+ Add new category…</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="p-threshold">Low-stock threshold</Label>
@@ -489,6 +551,32 @@ export function ProductManager({
             </div>
             <DialogFooter>
               <Button type="submit">Add variant</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add-category dialog */}
+      <Dialog open={categoryDialogOpen} onOpenChange={setCategoryDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add category</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={onCreateCategory} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="new-cat-name">Name</Label>
+              <Input
+                id="new-cat-name"
+                value={newCategoryName}
+                onChange={(e) => setNewCategoryName(e.target.value)}
+                autoFocus
+                required
+              />
+            </div>
+            <DialogFooter>
+              <Button type="submit" disabled={categorySaving}>
+                {categorySaving ? "Saving…" : "Add category"}
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>
