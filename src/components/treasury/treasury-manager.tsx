@@ -7,6 +7,7 @@ import {
   createTreasuryEntry,
   deleteTreasuryEntry,
 } from "@/server/actions/treasury";
+import { markCashDeposited, unmarkCashDeposited } from "@/server/actions/cash-custody";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -31,6 +32,7 @@ type Entry = {
   note: string | null;
   partnerName: string | null;
   fromDeposit: boolean;
+  fromOrder: boolean;
 };
 type Overdue = {
   orderId: string;
@@ -46,6 +48,15 @@ type HeldCash = {
   amount: number;
   orderCount: number;
 };
+type NotDeposited = {
+  orderId: string;
+  date: string;
+  customerName: string;
+  amount: number;
+  paymentMethod: string;
+  heldByName: string | null;
+  isCourierCollection: boolean;
+};
 const ALL = "__all__";
 const NONE = "__none__";
 
@@ -55,6 +66,7 @@ export function TreasuryManager({
   partnerOptions,
   overdue,
   heldCash,
+  notDeposited,
   canManage,
 }: {
   slug: string;
@@ -63,9 +75,34 @@ export function TreasuryManager({
   partnerOptions: { id: string; label: string }[];
   overdue: Overdue[];
   heldCash: HeldCash[];
+  notDeposited: NotDeposited[];
   canManage: boolean;
 }) {
   const router = useRouter();
+  const [depositing, setDepositing] = useState<string | null>(null);
+  const withCourier = notDeposited.filter((o) => o.isCourierCollection);
+  const withMembers = notDeposited.filter((o) => !o.isCourierCollection);
+  const courierTotal = withCourier.reduce((s, o) => s + o.amount, 0);
+  const membersTotal = withMembers.reduce((s, o) => s + o.amount, 0);
+
+  async function onMarkDeposited(orderId: string) {
+    setDepositing(orderId);
+    const res = await markCashDeposited(slug, orderId);
+    setDepositing(null);
+    if (!res.ok) return toast.error(res.error);
+    toast.success("Marked as deposited to treasury");
+    router.refresh();
+  }
+
+  async function onUnmarkDeposited(orderId: string) {
+    if (!confirm("Undo this deposit? The linked treasury entry will be removed.")) return;
+    setDepositing(orderId);
+    const res = await unmarkCashDeposited(slug, orderId);
+    setDepositing(null);
+    if (!res.ok) return toast.error(res.error);
+    toast.success("Undone");
+    router.refresh();
+  }
   const [type, setType] = useState("IN");
   const [partnerId, setPartnerId] = useState(NONE);
   const [loading, setLoading] = useState(false);
@@ -110,13 +147,14 @@ export function TreasuryManager({
 
   return (
     <div className="space-y-6">
-      {/* Cash currently held by team members — every unpaid/partial order with
-          a holder, not just the ones old enough to count as overdue. */}
+      {/* Outstanding dues by responsible team member — every unpaid/partial
+          order with a holder assigned, not just the ones old enough to count
+          as overdue. This is money NOT yet collected from the customer. */}
       {heldCash.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="text-base">
-              Cash held by team members — {heldCash.reduce((s, h) => s + h.amount, 0).toFixed(2)}{" "}
+              Outstanding dues by team member — {heldCash.reduce((s, h) => s + h.amount, 0).toFixed(2)}{" "}
               across {heldCash.reduce((s, h) => s + h.orderCount, 0)} order(s)
             </CardTitle>
           </CardHeader>
@@ -124,23 +162,133 @@ export function TreasuryManager({
             <DataTable
               rows={heldCash}
               rowKey={(h) => h.membershipId}
-              empty={{ title: "No one is currently holding unpaid cash" }}
+              empty={{ title: "No outstanding dues" }}
               columns={
                 [
                   {
                     key: "holder",
-                    header: "Holder",
+                    header: "Responsible",
                     cardTitle: true,
                     cell: (h) => h.holderName,
                   },
                   { key: "orders", header: "Orders", align: "right", cell: (h) => h.orderCount },
                   {
                     key: "amount",
-                    header: "Amount held",
+                    header: "Amount due",
                     align: "right",
                     cell: (h) => <span className="font-medium">{h.amount.toFixed(2)}</span>,
                   },
                 ] as Column<HeldCash>[]
+              }
+            />
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Paid, but the cash isn't confirmed in the treasury yet — either sitting
+          with the courier (collected from the customer, not yet remitted) or
+          with whichever team member collected it directly. */}
+      {withCourier.length > 0 && (
+        <Card className="border-blue-300 dark:border-blue-800">
+          <CardHeader>
+            <CardTitle className="text-base text-blue-800 dark:text-blue-300">
+              Cash with courier (paid, not yet remitted) — {courierTotal.toFixed(2)} across{" "}
+              {withCourier.length} order(s)
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <DataTable
+              rows={withCourier}
+              rowKey={(o) => o.orderId}
+              empty={{ title: "Nothing pending from courier" }}
+              columns={
+                [
+                  { key: "date", header: "Date", cell: (o) => o.date },
+                  {
+                    key: "customer",
+                    header: "Customer",
+                    cardTitle: true,
+                    cell: (o) => o.customerName,
+                  },
+                  {
+                    key: "amount",
+                    header: "Amount",
+                    align: "right",
+                    cell: (o) => <span className="font-medium">{o.amount.toFixed(2)}</span>,
+                  },
+                  ...(canManage
+                    ? [
+                        {
+                          key: "actions",
+                          header: "",
+                          cardFullWidth: true,
+                          cell: (o: NotDeposited) => (
+                            <Button
+                              size="sm"
+                              onClick={() => onMarkDeposited(o.orderId)}
+                              disabled={depositing === o.orderId}
+                            >
+                              {depositing === o.orderId ? "Saving…" : "Mark remitted"}
+                            </Button>
+                          ),
+                        },
+                      ]
+                    : []),
+                ] as Column<NotDeposited>[]
+              }
+            />
+          </CardContent>
+        </Card>
+      )}
+
+      {withMembers.length > 0 && (
+        <Card className="border-blue-300 dark:border-blue-800">
+          <CardHeader>
+            <CardTitle className="text-base text-blue-800 dark:text-blue-300">
+              Cash with team members (paid, not yet deposited) — {membersTotal.toFixed(2)} across{" "}
+              {withMembers.length} order(s)
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <DataTable
+              rows={withMembers}
+              rowKey={(o) => o.orderId}
+              empty={{ title: "Nothing pending deposit" }}
+              columns={
+                [
+                  { key: "date", header: "Date", cell: (o) => o.date },
+                  {
+                    key: "customer",
+                    header: "Customer",
+                    cardTitle: true,
+                    cell: (o) => o.customerName,
+                  },
+                  { key: "holder", header: "Held by", cell: (o) => o.heldByName ?? "—" },
+                  {
+                    key: "amount",
+                    header: "Amount",
+                    align: "right",
+                    cell: (o) => <span className="font-medium">{o.amount.toFixed(2)}</span>,
+                  },
+                  ...(canManage
+                    ? [
+                        {
+                          key: "actions",
+                          header: "",
+                          cardFullWidth: true,
+                          cell: (o: NotDeposited) => (
+                            <Button
+                              size="sm"
+                              onClick={() => onMarkDeposited(o.orderId)}
+                              disabled={depositing === o.orderId}
+                            >
+                              {depositing === o.orderId ? "Saving…" : "Mark deposited"}
+                            </Button>
+                          ),
+                        },
+                      ]
+                    : []),
+                ] as Column<NotDeposited>[]
               }
             />
           </CardContent>
@@ -327,6 +475,8 @@ export function TreasuryManager({
                       cell: (e: Entry) =>
                         e.fromDeposit ? (
                           <span className="text-xs text-muted-foreground">from deposit</span>
+                        ) : e.fromOrder ? (
+                          <span className="text-xs text-muted-foreground">from order</span>
                         ) : (
                           <Button variant="ghost" size="sm" onClick={() => onDelete(e.id)}>
                             Delete

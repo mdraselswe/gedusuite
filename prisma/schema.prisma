@@ -308,13 +308,15 @@ model Order {
   giftCost      Decimal       @default(0) @db.Decimal(12, 2)
   discount      Decimal       @default(0) @db.Decimal(12, 2) // order-level discount
   heldByMembershipId String? // which partner/member currently holds this order's cash
+  cashInTreasury Boolean      @default(false) // true once this PAID order's cash is confirmed deposited into the shared treasury
   notes         String?
   createdAt     DateTime      @default(now())
 
-  workspace Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  customer  Customer?   @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  heldBy    Membership? @relation("OrderHeldBy", fields: [heldByMembershipId], references: [id], onDelete: SetNull)
-  items     OrderItem[]
+  workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  customer      Customer?      @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  heldBy        Membership?    @relation("OrderHeldBy", fields: [heldByMembershipId], references: [id], onDelete: SetNull)
+  items         OrderItem[]
+  treasuryEntry TreasuryEntry?
 
   @@index([workspaceId])
   @@index([workspaceId, date])
@@ -419,11 +421,13 @@ model TreasuryEntry {
   date         DateTime          @default(now())
   partnerId    String? // which partner this entry is attributed to (optional)
   partnerTxnId String?           @unique // set when auto-created from a partner txn
+  orderId      String?           @unique // set when auto-created by "mark cash deposited" on an order
   createdAt    DateTime          @default(now())
 
   workspace   Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   partner     Partner?    @relation(fields: [partnerId], references: [id], onDelete: SetNull)
   partnerTxn  PartnerTxn? @relation(fields: [partnerTxnId], references: [id], onDelete: Cascade)
+  order       Order?      @relation(fields: [orderId], references: [id], onDelete: SetNull)
 
   @@index([workspaceId])
   @@index([workspaceId, date])

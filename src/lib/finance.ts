@@ -268,6 +268,60 @@ export async function cashHeldByMember(workspaceId: string): Promise<HeldCash[]>
   return [...map.values()].sort((a, b) => b.amount - a.amount);
 }
 
+/** Total the customer still owes, across every non-cancelled UNPAID/PARTIAL order. */
+export async function totalDue(workspaceId: string): Promise<number> {
+  const orders = await prisma.order.findMany({
+    where: { workspaceId, status: { not: "CANCELLED" }, paymentStatus: { in: ["UNPAID", "PARTIAL"] } },
+    include: { items: { include: { returns: true } } },
+  });
+  return round2(orders.reduce((s, o) => s + computeOrderTotals(o).customerTotal, 0));
+}
+
+export type PaidNotDeposited = {
+  orderId: string;
+  date: string;
+  customerName: string;
+  amount: number;
+  paymentMethod: string;
+  heldByName: string | null;
+  isCourierCollection: boolean;
+};
+
+/**
+ * Orders where the customer HAS paid, but that cash hasn't been confirmed as
+ * deposited into the shared treasury yet — i.e. it's still physically either
+ * (a) with the courier company (COURIER_COLLECTION — they collected it from
+ * the customer and haven't remitted it back yet), or (b) with whichever team
+ * member collected it directly (CASH/BKASH/NAGAD/self-delivery). Paying and
+ * "money safely in the business" are NOT the same event — this is the gap
+ * between them. Cleared by markCashDeposited() once confirmed.
+ */
+export async function paidNotDeposited(workspaceId: string): Promise<PaidNotDeposited[]> {
+  const orders = await prisma.order.findMany({
+    where: {
+      workspaceId,
+      status: { not: "CANCELLED" },
+      paymentStatus: "PAID",
+      cashInTreasury: false,
+    },
+    include: {
+      items: { include: { returns: true } },
+      customer: { select: { name: true } },
+      heldBy: { include: { user: { select: { name: true, email: true } } } },
+    },
+    orderBy: { date: "asc" },
+  });
+  return orders.map((o) => ({
+    orderId: o.id,
+    date: o.date.toISOString().slice(0, 10),
+    customerName: o.customer?.name ?? "Walk-in",
+    amount: computeOrderTotals(o).customerTotal,
+    paymentMethod: o.paymentMethod,
+    heldByName: o.heldBy ? (o.heldBy.user.name ?? o.heldBy.user.email) : null,
+    isCourierCollection: o.paymentMethod === "COURIER_COLLECTION",
+  }));
+}
+
 /** Reconcile OVERDUE_PAYMENT notifications with the current overdue set. */
 export async function refreshOverdueAlerts(
   workspaceId: string,

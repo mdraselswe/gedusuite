@@ -74,13 +74,19 @@ export async function deleteTreasuryEntry(
 
   const entry = await prisma.treasuryEntry.findFirst({
     where: { id, workspaceId: gate.access.workspaceId },
-    select: { partnerTxnId: true },
+    select: { partnerTxnId: true, orderId: true },
   });
   if (!entry) return { ok: false, error: "Entry not found" };
   if (entry.partnerTxnId) {
     return {
       ok: false,
       error: "This entry came from a partner deposit — delete that transaction instead",
+    };
+  }
+  if (entry.orderId) {
+    return {
+      ok: false,
+      error: "This entry came from an order's cash deposit — unmark it from the order instead",
     };
   }
 
