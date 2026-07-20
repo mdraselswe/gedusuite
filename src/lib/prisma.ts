@@ -10,14 +10,17 @@ function withPoolDefaults(url: string | undefined) {
   if (!url) return url;
   const parsed = new URL(url);
 
-  // Neon pooled connections are still easy to exhaust when a single page
-  // renders several server components/actions at once. Keep each app process
-  // modest and wait a little longer instead of failing after the default 10s.
+  // Neon's pooled (-pooler) endpoint runs pgbouncer in transaction mode and
+  // comfortably handles far more than 5 concurrent logical connections. A
+  // limit of 5 was too tight for pages that fan out several queries at once
+  // (e.g. /sales/orders: 4 top-level + variantStockMap's own 4 internal
+  // parallel queries = ~8 concurrent) — the overflow queued and occasionally
+  // hit the pool timeout. 10 gives real headroom without over-provisioning.
   if (!parsed.searchParams.has("connection_limit")) {
-    parsed.searchParams.set("connection_limit", process.env.PRISMA_CONNECTION_LIMIT ?? "5");
+    parsed.searchParams.set("connection_limit", process.env.PRISMA_CONNECTION_LIMIT ?? "10");
   }
   if (!parsed.searchParams.has("pool_timeout")) {
-    parsed.searchParams.set("pool_timeout", process.env.PRISMA_POOL_TIMEOUT ?? "20");
+    parsed.searchParams.set("pool_timeout", process.env.PRISMA_POOL_TIMEOUT ?? "30");
   }
 
   return parsed.toString();
