@@ -2298,6 +2298,14 @@ hono@^4.11.4:
   resolved "https://registry.yarnpkg.com/hono/-/hono-4.12.30.tgz#4d57b051c66617b003b7ba318910cb5b79c4c7ac"
   integrity sha512-emn+JoJjrN9YTpRDS5it/UI2SO9BAE37T6I3d963RxcZ81G9A4pr2SZTEiiaiKbzx+NKRg5BZ89fCL7gCJCUog==
 
+html2canvas-pro@^2.2.4:
+  version "2.2.4"
+  resolved "https://registry.yarnpkg.com/html2canvas-pro/-/html2canvas-pro-2.2.4.tgz#cd91f02e93f2cef27a26d3128060515ab78c48e9"
+  integrity sha512-fo/VOiQZ3oWykAPvnMNHymUHzLWJE7c7C7VWPh+ydb+NquFTwqY5rHQRoxkgsaXo/iciVryPNffTvLzYg98xhg==
+  dependencies:
+    css-line-break "^2.1.0"
+    text-segmentation "^1.0.3"
+
 html2canvas@^1.0.0-rc.5:
   version "1.4.1"
   resolved "https://registry.yarnpkg.com/html2canvas/-/html2canvas-1.4.1.tgz#7cef1888311b5011d507794a066041b14669a543"

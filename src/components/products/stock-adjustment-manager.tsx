@@ -19,10 +19,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { AsyncCombobox } from "@/components/ui/async-combobox";
+import { searchVariants, type VariantOption } from "@/server/actions/search";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { ClipboardList } from "lucide-react";
 
-type VariantOption = { id: string; label: string; stock: number };
 type Adjustment = {
   id: string;
   date: string;
@@ -42,27 +43,27 @@ const LABEL: Record<string, string> = {
 
 export function StockAdjustmentManager({
   slug,
-  variantOptions,
+  hasProducts,
   adjustments,
   canEdit,
 }: {
   slug: string;
-  variantOptions: VariantOption[];
+  hasProducts: boolean;
   adjustments: Adjustment[];
   canEdit: boolean;
 }) {
   const router = useRouter();
-  const [variantId, setVariantId] = useState("");
+  const [variant, setVariant] = useState<VariantOption | null>(null);
   const [type, setType] = useState("DAMAGED");
   const [direction, setDirection] = useState("REMOVE");
   const [loading, setLoading] = useState(false);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!variantId) return toast.error("Select a product variant");
+    if (!variant) return toast.error("Select a product variant");
     setLoading(true);
     const fd = new FormData(e.currentTarget);
-    fd.set("productVariantId", variantId);
+    fd.set("productVariantId", variant.value);
     fd.set("type", type);
     fd.set("direction", type === "CORRECTION" ? direction : "REMOVE");
     const res = await createStockAdjustment(slug, fd);
@@ -70,7 +71,7 @@ export function StockAdjustmentManager({
     if (!res.ok) return toast.error(res.error);
     toast.success("Adjustment recorded");
     (e.target as HTMLFormElement).reset();
-    setVariantId("");
+    setVariant(null);
     router.refresh();
   }
 
@@ -90,31 +91,27 @@ export function StockAdjustmentManager({
             <CardTitle className="text-base">Record stock adjustment</CardTitle>
           </CardHeader>
           <CardContent>
-            {variantOptions.length === 0 ? (
+            {!hasProducts ? (
               <p className="text-sm text-muted-foreground">Add a product variant first.</p>
             ) : (
               <form onSubmit={onSubmit} className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-2 sm:col-span-2">
                   <Label>Product / variant</Label>
-                  <Select
-                    value={variantId}
-                    onValueChange={(v) => setVariantId(v ?? "")}
-                    items={variantOptions.map((v) => ({
-                      value: v.id,
-                      label: `${v.label} · ${v.stock} in stock`,
-                    }))}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Select a product variant" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {variantOptions.map((v) => (
-                        <SelectItem key={v.id} value={v.id}>
-                          {v.label} · {v.stock} in stock
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <AsyncCombobox
+                    value={variant}
+                    onChange={setVariant}
+                    fetchPage={async (q, cursor) => {
+                      const res = await searchVariants(slug, q, cursor);
+                      return res.ok ? { items: res.items, next: res.next } : { items: [], next: null };
+                    }}
+                    placeholder="Search product…"
+                    renderItem={(o) => (
+                      <>
+                        <span className="truncate">{o.label}</span>
+                        <span className="shrink-0 text-xs text-muted-foreground">{o.stock} in stock</span>
+                      </>
+                    )}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label>Type</Label>

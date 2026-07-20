@@ -16,17 +16,23 @@ export const STOCK_CONSUMING_STATUSES = [
  */
 export async function variantStockMap(
   workspaceId: string,
+  // When given, only these variants' stock is computed — used by the async
+  // product search so we don't aggregate every variant in the workspace just
+  // to show one page of results.
+  variantIds?: string[],
 ): Promise<Map<string, number>> {
+  const idFilter = variantIds ? { productVariantId: { in: variantIds } } : {};
   const [purchased, sold, returns, adjustments] = await Promise.all([
     prisma.purchase.groupBy({
       by: ["productVariantId"],
-      where: { workspaceId },
+      where: { workspaceId, ...idFilter },
       _sum: { quantity: true },
     }),
     prisma.orderItem.groupBy({
       by: ["productVariantId"],
       where: {
         order: { workspaceId, status: { in: [...STOCK_CONSUMING_STATUSES] } },
+        ...idFilter,
       },
       _sum: { quantity: true },
     }),
@@ -36,13 +42,16 @@ export async function variantStockMap(
       // the return too would add phantom stock.
       where: {
         workspaceId,
-        orderItem: { order: { status: { in: [...STOCK_CONSUMING_STATUSES] } } },
+        orderItem: {
+          order: { status: { in: [...STOCK_CONSUMING_STATUSES] } },
+          ...(variantIds ? { productVariantId: { in: variantIds } } : {}),
+        },
       },
       select: { quantity: true, orderItem: { select: { productVariantId: true } } },
     }),
     prisma.stockAdjustment.groupBy({
       by: ["productVariantId"],
-      where: { workspaceId },
+      where: { workspaceId, ...idFilter },
       _sum: { delta: true },
     }),
   ]);

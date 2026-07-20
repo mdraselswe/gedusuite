@@ -6,6 +6,8 @@ import { computeOrderTotals } from "@/lib/orders";
 import { serverT } from "@/lib/session";
 import { CustomerManager } from "@/components/customers/customer-manager";
 import { Pagination, parsePage } from "@/components/ui/pagination";
+import { PageHeader } from "@/components/ui/page-header";
+import { Users } from "lucide-react";
 
 const PAGE_SIZE = 50;
 
@@ -63,7 +65,7 @@ export default async function CustomersPage({
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <h1 className="text-2xl font-bold">{(await serverT())("customers")}</h1>
+      <PageHeader icon={<Users />} color="pink" title={(await serverT())("customers")} />
       <CustomerManager slug={slug} customers={rows} perms={perms} />
       <Pagination
         page={page}

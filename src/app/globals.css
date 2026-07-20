@@ -7,8 +7,8 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans), "Noto Sans Bengali", "Noto Sans", ui-sans-serif,
-    system-ui, sans-serif;
+  --font-sans: var(--font-lang-primary), var(--font-lang-secondary), "Noto Sans Bengali",
+    "Noto Sans", ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-mono), ui-monospace, monospace;
   --font-heading: var(--font-sans), "Noto Sans Bengali", sans-serif;
   --color-sidebar-ring: var(--sidebar-ring);
@@ -50,6 +50,8 @@
 }
 
 :root {
+  --font-lang-primary: var(--font-en);
+  --font-lang-secondary: var(--font-bn);
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -129,6 +131,12 @@
     @apply font-sans;
   }
 }
+/* ── Fonts: swap which script is primary based on html[lang] ───────── */
+html[lang="bn"] {
+  --font-lang-primary: var(--font-bn);
+  --font-lang-secondary: var(--font-en);
+}
+
 /* ── Phase 7: color presets (set via html[data-preset]) ───────────── */
 [data-preset="indigo"] {
   --primary: oklch(0.51 0.23 277);

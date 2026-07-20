@@ -1,16 +1,26 @@
 import type { Metadata, Viewport } from "next";
-import { Anek_Bangla, Geist_Mono } from "next/font/google";
+import { Inter, Hind_Siliguri, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/providers";
 import { auth } from "@/lib/session";
 import { getUserPrefs } from "@/lib/user-prefs";
 import { isLocale, type Locale } from "@/lib/i18n";
 
-// Anek Bangla renders Bangla + Latin in one visual rhythm — primary UI font
-// (TECH_SPEC §10). Loaded as the --font-sans variable.
-const anekBangla = Anek_Bangla({
-  variable: "--font-sans",
+// Separate, script-optimized fonts instead of one font for both: Inter reads
+// better for English UI text, Hind Siliguri reads better for Bangla. Which one
+// is primary swaps with `html[lang]` (see globals.css); the other stays as a
+// fallback so mixed-script content (e.g. a Bangla name on an English-locale
+// page) still renders with its own well-hinted font instead of tofu/system.
+const inter = Inter({
+  variable: "--font-en",
+  subsets: ["latin"],
+  display: "swap",
+});
+
+const hindSiliguri = Hind_Siliguri({
+  variable: "--font-bn",
   subsets: ["bengali", "latin"],
+  weight: ["300", "400", "500", "600", "700"],
   display: "swap",
 });
 
@@ -55,7 +65,7 @@ export default async function RootLayout({
     <html
       lang={locale}
       data-preset={preset}
-      className={`${anekBangla.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${inter.variable} ${hindSiliguri.variable} ${geistMono.variable} h-full antialiased`}
       suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col" suppressHydrationWarning>

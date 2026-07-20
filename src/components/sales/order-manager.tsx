@@ -8,6 +8,7 @@ import {
   createOrder,
   updateOrderStatus,
   updatePaymentStatus,
+  updateCourierTrackingId,
   createReturn,
   deleteOrder,
 } from "@/server/actions/orders";
@@ -30,8 +31,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { AsyncCombobox, type ComboOption } from "@/components/ui/async-combobox";
+import {
+  searchVariants,
+  searchCustomers,
+  type VariantOption as SearchVariantOption,
+} from "@/server/actions/search";
 import { DataTable, type Column } from "@/components/ui/data-table";
-import { Plus, ShoppingCart, Trash2 } from "lucide-react";
+import { Plus, ShoppingCart, Trash2, MoreVertical } from "lucide-react";
 
 type VariantOption = { id: string; label: string; stock: number };
 type OrderItem = {
@@ -47,6 +60,8 @@ type OrderRow = {
   date: string;
   customerName: string;
   status: string;
+  deliveryType: string;
+  courierTrackingId: string | null;
   paymentStatus: string;
   paymentMethod: string;
   heldByName: string | null;
@@ -54,7 +69,12 @@ type OrderRow = {
   items: OrderItem[];
 };
 type Perms = { canAdd: boolean; canEdit: boolean; canViewProfit: boolean };
-type ItemDraft = { variantId: string; unitPrice: string; quantity: string; discount: string };
+type ItemDraft = {
+  variant: SearchVariantOption | null;
+  unitPrice: string;
+  quantity: string;
+  discount: string;
+};
 
 const STATUSES = ["PENDING", "CONFIRMED", "SHIPPED", "DELIVERED", "CANCELLED"];
 const DELIVERY = ["SELF", "COURIER"];
@@ -63,7 +83,7 @@ const PAY_STATUS = ["UNPAID", "PAID", "PARTIAL"];
 const NONE = "__none__";
 
 function emptyItem(): ItemDraft {
-  return { variantId: "", unitPrice: "", quantity: "1", discount: "0" };
+  return { variant: null, unitPrice: "", quantity: "1", discount: "0" };
 }
 
 function todayInputValue() {
@@ -87,17 +107,80 @@ function formatMoney(value: number) {
   })}`;
 }
 
+/** Inline click-to-edit courier order/consignment number — usually unknown
+ * at order creation time and filled in later once the courier is booked. */
+function CourierIdCell({
+  slug,
+  orderId,
+  value,
+  canEdit,
+}: {
+  slug: string;
+  orderId: string;
+  value: string | null;
+  canEdit: boolean;
+}) {
+  const router = useRouter();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value ?? "");
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    setSaving(true);
+    const res = await updateCourierTrackingId(slug, orderId, draft);
+    setSaving(false);
+    if (!res.ok) return toast.error(res.error);
+    setEditing(false);
+    router.refresh();
+  }
+
+  if (!canEdit) {
+    return <span>{value ?? "—"}</span>;
+  }
+
+  if (!editing) {
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          setDraft(value ?? "");
+          setEditing(true);
+        }}
+        className="text-left underline-offset-4 hover:underline"
+      >
+        {value ?? <span className="text-muted-foreground">Add courier ID</span>}
+      </button>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-1">
+      <Input
+        autoFocus
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") save();
+          if (e.key === "Escape") setEditing(false);
+        }}
+        className="h-8 w-32"
+      />
+      <Button size="sm" onClick={save} disabled={saving}>
+        {saving ? "…" : "Save"}
+      </Button>
+    </div>
+  );
+}
+
 export function OrderManager({
   slug,
-  variantOptions,
-  customers,
+  hasProducts,
   members,
   orders,
   perms,
 }: {
   slug: string;
-  variantOptions: VariantOption[];
-  customers: { id: string; name: string }[];
+  hasProducts: boolean;
   members: { id: string; label: string }[];
   orders: OrderRow[];
   perms: Perms;
@@ -108,7 +191,7 @@ export function OrderManager({
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState<ItemDraft[]>([emptyItem()]);
-  const [customerId, setCustomerId] = useState(NONE);
+  const [customer, setCustomer] = useState<ComboOption | null>(null);
   const [heldById, setHeldById] = useState(NONE);
   const [status, setStatus] = useState("PENDING");
   const [deliveryType, setDeliveryType] = useState("SELF");
@@ -137,7 +220,7 @@ export function OrderManager({
 
   function resetForm() {
     setItems([emptyItem()]);
-    setCustomerId(NONE);
+    setCustomer(null);
     setHeldById(NONE);
     setStatus("PENDING");
     setDeliveryType("SELF");
@@ -174,9 +257,9 @@ export function OrderManager({
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const cleanItems = items
-      .filter((it) => it.variantId && parseInt(it.quantity) > 0)
+      .filter((it) => it.variant && parseInt(it.quantity) > 0)
       .map((it) => ({
-        productVariantId: it.variantId,
+        productVariantId: it.variant!.value,
         unitPrice: parseFloat(it.unitPrice) || 0,
         quantity: parseInt(it.quantity) || 0,
         discount: parseFloat(it.discount) || 0,
@@ -187,7 +270,7 @@ export function OrderManager({
     }
     setLoading(true);
     const fd = new FormData(e.currentTarget);
-    fd.set("customerId", customerId === NONE ? "" : customerId);
+    fd.set("customerId", customer?.value ?? "");
     fd.set("heldByMembershipId", heldById === NONE ? "" : heldById);
     fd.set("status", status);
     fd.set("deliveryType", deliveryType);
@@ -337,6 +420,21 @@ export function OrderManager({
             },
             { key: "heldBy", header: "Held by", cell: (o) => o.heldByName ?? "—" },
             {
+              key: "courier",
+              header: "Courier ID",
+              cell: (o) =>
+                o.deliveryType === "COURIER" ? (
+                  <CourierIdCell
+                    slug={slug}
+                    orderId={o.id}
+                    value={o.courierTrackingId}
+                    canEdit={perms.canEdit}
+                  />
+                ) : (
+                  <span className="text-muted-foreground">—</span>
+                ),
+            },
+            {
               key: "total",
               header: "Total",
               align: "right",
@@ -357,30 +455,35 @@ export function OrderManager({
               header: "",
               cardFullWidth: true,
               cell: (o: OrderRow) => (
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <div className="flex flex-nowrap items-center gap-3">
                   <Link
                     href={`/${slug}/sales/orders/${o.id}/invoice`}
-                    className="inline-flex items-center text-sm underline underline-offset-4"
+                    className="inline-flex items-center whitespace-nowrap text-sm underline underline-offset-4"
                   >
                     Invoice
                   </Link>
                   {perms.canViewProfit && (
                     <Link
                       href={`/${slug}/sales/orders/${o.id}/breakdown`}
-                      className="inline-flex items-center text-sm underline underline-offset-4"
+                      className="inline-flex items-center whitespace-nowrap text-sm underline underline-offset-4"
                     >
                       Breakdown
                     </Link>
                   )}
                   {perms.canEdit && (
-                    <>
-                      <Button variant="ghost" size="sm" onClick={() => openReturn(o)}>
-                        Return
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={() => onDelete(o.id)}>
-                        Delete
-                      </Button>
-                    </>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger
+                        render={<Button variant="ghost" size="icon-sm" aria-label="More actions" />}
+                      >
+                        <MoreVertical className="size-4" />
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => openReturn(o)}>Return</DropdownMenuItem>
+                        <DropdownMenuItem variant="destructive" onClick={() => onDelete(o.id)}>
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   )}
                 </div>
               ),
@@ -398,7 +501,7 @@ export function OrderManager({
               Add products first, then payment and delivery details.
             </p>
           </DialogHeader>
-          {variantOptions.length === 0 ? (
+          {!hasProducts ? (
             <p className="px-5 pb-5 text-sm text-muted-foreground">
               Add a product with a variant (and some stock) first.
             </p>
@@ -426,7 +529,7 @@ export function OrderManager({
 
                   <div className="space-y-3">
                     {items.map((it, i) => {
-                      const selectedVariant = variantOptions.find((v) => v.id === it.variantId);
+                      const selectedVariant = it.variant;
                       const quantity = parseInt(it.quantity) || 0;
                       const itemTotal =
                         (parseFloat(it.unitPrice) || 0) * quantity - (parseFloat(it.discount) || 0);
@@ -464,25 +567,23 @@ export function OrderManager({
                           <div className="grid gap-3 lg:grid-cols-[minmax(16rem,1fr)_8rem_6rem_8rem]">
                             <div className="space-y-2 lg:col-span-1">
                               <Label>Product</Label>
-                              <Select
-                                value={it.variantId}
-                                onValueChange={(v) => updateItem(i, { variantId: v ?? "" })}
-                                items={variantOptions.map((v) => ({
-                                  value: v.id,
-                                  label: `${v.label} · ${v.stock} in stock`,
-                                }))}
-                              >
-                                <SelectTrigger className="h-10 w-full">
-                                  <SelectValue placeholder="Select product" />
-                                </SelectTrigger>
-                                <SelectContent align="start">
-                                  {variantOptions.map((v) => (
-                                    <SelectItem key={v.id} value={v.id}>
-                                      {v.label} · {v.stock} in stock
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
+                              <AsyncCombobox
+                                value={it.variant}
+                                onChange={(opt) => updateItem(i, { variant: opt })}
+                                fetchPage={async (q, cursor) => {
+                                  const res = await searchVariants(slug, q, cursor);
+                                  return res.ok ? { items: res.items, next: res.next } : { items: [], next: null };
+                                }}
+                                placeholder="Search product…"
+                                renderItem={(o) => (
+                                  <>
+                                    <span className="truncate">{o.label}</span>
+                                    <span className="shrink-0 text-xs text-muted-foreground">
+                                      {o.stock} in stock
+                                    </span>
+                                  </>
+                                )}
+                              />
                             </div>
                             <div className="space-y-2">
                               <Label>Price</Label>
@@ -545,26 +646,16 @@ export function OrderManager({
                   <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                     <div className="space-y-2">
                       <Label>Customer</Label>
-                      <Select
-                        value={customerId}
-                        onValueChange={(v) => setCustomerId(v ?? NONE)}
-                        items={[
-                          { value: NONE, label: "Walk-in" },
-                          ...customers.map((c) => ({ value: c.id, label: c.name })),
-                        ]}
-                      >
-                        <SelectTrigger className="h-10 w-full">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent align="start">
-                          <SelectItem value={NONE}>Walk-in</SelectItem>
-                          {customers.map((c) => (
-                            <SelectItem key={c.id} value={c.id}>
-                              {c.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <AsyncCombobox
+                        value={customer}
+                        onChange={setCustomer}
+                        fetchPage={async (q, cursor) => {
+                          const res = await searchCustomers(slug, q, cursor);
+                          return res.ok ? { items: res.items, next: res.next } : { items: [], next: null };
+                        }}
+                        placeholder="Walk-in — search to attach…"
+                        emptyText="No customers"
+                      />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="o-date">Date</Label>
@@ -649,20 +740,30 @@ export function OrderManager({
                         />
                       </div>
                       {deliveryType === "COURIER" && (
-                        <div className="space-y-2 sm:col-span-2">
-                          <Label htmlFor="o-delivery-cost">Actual courier cost</Label>
-                          <Input
-                            id="o-delivery-cost"
-                            name="deliveryCost"
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            inputMode="decimal"
-                            placeholder="Same as delivery charge if blank"
-                            value={deliveryCost}
-                            onChange={(e) => setDeliveryCost(e.target.value)}
-                          />
-                        </div>
+                        <>
+                          <div className="space-y-2 sm:col-span-2">
+                            <Label htmlFor="o-delivery-cost">Actual courier cost</Label>
+                            <Input
+                              id="o-delivery-cost"
+                              name="deliveryCost"
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              inputMode="decimal"
+                              placeholder="Same as delivery charge if blank"
+                              value={deliveryCost}
+                              onChange={(e) => setDeliveryCost(e.target.value)}
+                            />
+                          </div>
+                          <div className="space-y-2 sm:col-span-2">
+                            <Label htmlFor="o-courier-tracking">Courier order number</Label>
+                            <Input
+                              id="o-courier-tracking"
+                              name="courierTrackingId"
+                              placeholder="Leave blank if not known yet — add it later from the list"
+                            />
+                          </div>
+                        </>
                       )}
                     </div>
                   </div>

@@ -4,9 +4,10 @@ import { serverT } from "@/lib/session";
 import { can } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
 import { computeOrderTotals } from "@/lib/orders";
-import { variantStockMap } from "@/lib/inventory";
 import { OrderManager } from "@/components/sales/order-manager";
 import { Pagination, parsePage } from "@/components/ui/pagination";
+import { PageHeader } from "@/components/ui/page-header";
+import { Receipt } from "lucide-react";
 
 const PAGE_SIZE = 50;
 
@@ -37,29 +38,15 @@ export default async function OrdersPage({
     canViewProfit: can(access.role, "reports", "view", access.permissions),
   };
 
-  const [products, customers, members, stock, orderCount, orders] = await Promise.all([
-    // select (not include) — this page never renders images, so skip the
-    // ~1.4MB-max base64 imageUrl column entirely instead of fetching it for
-    // every product just to discard it.
-    prisma.product.findMany({
-      where: { workspaceId },
-      select: {
-        id: true,
-        name: true,
-        variants: { select: { id: true, size: true, color: true } },
-      },
-      orderBy: { name: "asc" },
-    }),
-    prisma.customer.findMany({
-      where: { workspaceId },
-      orderBy: { name: "asc" },
-      select: { id: true, name: true },
-    }),
+  // Products + customers are no longer bulk-loaded here — the order form's
+  // product/customer pickers search them on demand (async combobox). We only
+  // need a cheap existence check to gate the "add a product first" message.
+  const [productCount, members, orderCount, orders] = await Promise.all([
+    prisma.productVariant.count({ where: { product: { workspaceId } } }),
     prisma.membership.findMany({
       where: { workspaceId, role: { in: ["OWNER", "PARTNER"] } },
       include: { user: { select: { name: true, email: true } } },
     }),
-    variantStockMap(workspaceId),
     prisma.order.count({ where: { workspaceId } }),
     prisma.order.findMany({
       where: { workspaceId },
@@ -81,14 +68,6 @@ export default async function OrdersPage({
     }),
   ]);
 
-  const variantOptions = products.flatMap((p) =>
-    p.variants.map((v) => ({
-      id: v.id,
-      label: variantLabel(p.name, v.size, v.color),
-      stock: stock.get(v.id) ?? 0,
-    })),
-  );
-
   const memberOptions = members.map((m) => ({
     id: m.id,
     label: `${m.user.name ?? m.user.email} (${m.role})`,
@@ -101,6 +80,8 @@ export default async function OrdersPage({
       date: o.date.toISOString().slice(0, 10),
       customerName: o.customer?.name ?? "Walk-in",
       status: o.status,
+      deliveryType: o.deliveryType,
+      courierTrackingId: o.courierTrackingId,
       paymentStatus: o.paymentStatus,
       paymentMethod: o.paymentMethod,
       heldByName: o.heldBy ? (o.heldBy.user.name ?? o.heldBy.user.email) : null,
@@ -125,11 +106,10 @@ export default async function OrdersPage({
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
-      <h1 className="text-2xl font-bold">{(await serverT())("salesOrders")}</h1>
+      <PageHeader icon={<Receipt />} color="emerald" title={(await serverT())("salesOrders")} />
       <OrderManager
         slug={slug}
-        variantOptions={variantOptions}
-        customers={customers}
+        hasProducts={productCount > 0}
         members={memberOptions}
         orders={orderRows}
         perms={perms}

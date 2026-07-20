@@ -5,6 +5,8 @@ import { prisma } from "@/lib/prisma";
 import { InternalPurchaseManager } from "@/components/internal-purchases/internal-purchase-manager";
 import { serverT } from "@/lib/session";
 import { Pagination, parsePage } from "@/components/ui/pagination";
+import { PageHeader } from "@/components/ui/page-header";
+import { ClipboardList } from "lucide-react";
 
 const PAGE_SIZE = 50;
 
@@ -73,12 +75,16 @@ export default async function InternalPurchasesPage({
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <div className="flex items-baseline justify-between">
-        <h1 className="text-2xl font-bold">{(await serverT())("internalPurchases")}</h1>
-        <span className="text-sm text-muted-foreground">
-          Total spend: <span className="font-semibold">{totalSpend.toFixed(2)}</span>
-        </span>
-      </div>
+      <PageHeader
+        icon={<ClipboardList />}
+        color="indigo"
+        title={(await serverT())("internalPurchases")}
+        action={
+          <span className="text-sm text-muted-foreground">
+            Total spend: <span className="font-semibold">{totalSpend.toFixed(2)}</span>
+          </span>
+        }
+      />
       <InternalPurchaseManager
         slug={slug}
         items={rows}

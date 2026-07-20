@@ -15,6 +15,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { LoginIllustration } from "@/components/illustrations/login-illustration";
 
 function LoginForm() {
   const router = useRouter();
@@ -41,7 +42,7 @@ function LoginForm() {
   }
 
   return (
-    <Card className="w-full max-w-sm">
+    <Card className="w-full max-w-sm animate-in fade-in-0 slide-in-from-bottom-4 duration-500">
       <CardHeader>
         <CardTitle className="text-2xl">Sign in to GeduSuite</CardTitle>
         <CardDescription>Manage your business, all in one place.</CardDescription>
@@ -98,7 +99,8 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <main className="flex min-h-screen items-center justify-center p-4">
+    <main className="flex min-h-screen flex-col items-center justify-center gap-4 p-4">
+      <LoginIllustration className="h-32 w-40 animate-in fade-in-0 zoom-in-95 duration-500" />
       <Suspense>
         <LoginForm />
       </Suspense>

@@ -7,6 +7,8 @@ import { InviteForm } from "./invite-form";
 import { serverT } from "@/lib/session";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PageHeader } from "@/components/ui/page-header";
+import { UserCog } from "lucide-react";
 
 export default async function TeamPage({
   params,
@@ -34,7 +36,7 @@ export default async function TeamPage({
   return (
     <div className="mx-auto max-w-3xl space-y-8">
       <div>
-        <h1 className="text-2xl font-bold">{(await serverT())("team")}</h1>
+        <PageHeader icon={<UserCog />} color="slate" title={(await serverT())("team")} />
         <p className="text-sm text-muted-foreground">
           Invite people and assign roles.
         </p>

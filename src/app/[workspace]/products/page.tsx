@@ -10,6 +10,8 @@ import { SupplierManager } from "@/components/products/supplier-manager";
 import { StockAdjustmentManager } from "@/components/products/stock-adjustment-manager";
 import { listProductCategories } from "@/server/actions/product-categories";
 import { Pagination, parsePage } from "@/components/ui/pagination";
+import { PageHeader } from "@/components/ui/page-header";
+import { Package } from "lucide-react";
 
 const PAGE_SIZE = 50;
 
@@ -77,17 +79,7 @@ export default async function ProductsPage({
     })),
   }));
 
-  const variantOptions = products.flatMap((p) =>
-    p.variants.map((v) => ({
-      id: v.id,
-      label:
-        p.name +
-        ([v.size, v.color].filter(Boolean).length
-          ? ` (${[v.size, v.color].filter(Boolean).join(" / ")})`
-          : ""),
-      stock: stock.get(v.id) ?? 0,
-    })),
-  );
+  const hasVariants = products.some((p) => p.variants.length > 0);
 
   const adjustmentRows = adjustments.map((a) => ({
     id: a.id,
@@ -104,7 +96,7 @@ export default async function ProductsPage({
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <h1 className="text-2xl font-bold">{(await serverT())("productsSuppliers")}</h1>
+      <PageHeader icon={<Package />} color="violet" title={(await serverT())("productsSuppliers")} />
       <Tabs defaultValue={page > 1 ? "adjustments" : "products"}>
         <TabsList>
           <TabsTrigger value="products">Products</TabsTrigger>
@@ -125,7 +117,7 @@ export default async function ProductsPage({
         <TabsContent value="adjustments" className="pt-4">
           <StockAdjustmentManager
             slug={slug}
-            variantOptions={variantOptions}
+            hasProducts={hasVariants}
             adjustments={adjustmentRows}
             canEdit={perms.canEdit}
           />

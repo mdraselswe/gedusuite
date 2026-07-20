@@ -6,6 +6,8 @@ import { partnerBalances, totalBusinessProfit, businessCapitalSummary } from "@/
 import { serverT } from "@/lib/session";
 import { PartnerManager } from "@/components/partners/partner-manager";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PageHeader } from "@/components/ui/page-header";
+import { Handshake } from "lucide-react";
 
 export default async function PartnersPage({
   params,
@@ -70,12 +72,16 @@ export default async function PartnersPage({
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <div className="flex items-baseline justify-between">
-        <h1 className="text-2xl font-bold">{(await serverT())("partners")}</h1>
-        <span className="text-sm text-muted-foreground">
-          Total business profit: <span className="font-semibold">{profit.toFixed(2)}</span>
-        </span>
-      </div>
+      <PageHeader
+        icon={<Handshake />}
+        color="cyan"
+        title={(await serverT())("partners")}
+        action={
+          <span className="text-sm text-muted-foreground">
+            Total business profit: <span className="font-semibold">{profit.toFixed(2)}</span>
+          </span>
+        }
+      />
 
       <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-5">
         <Card>

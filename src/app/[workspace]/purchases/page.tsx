@@ -5,6 +5,8 @@ import { can } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
 import { PurchaseManager } from "@/components/purchases/purchase-manager";
 import { Pagination, parsePage } from "@/components/ui/pagination";
+import { PageHeader } from "@/components/ui/page-header";
+import { ShoppingCart } from "lucide-react";
 
 const PAGE_SIZE = 50;
 
@@ -28,19 +30,10 @@ export default async function PurchasesPage({
     canEdit: can(access.role, "purchases", "edit", access.permissions),
   };
 
-  const [products, suppliers, purchaseCount, purchases, partners] = await Promise.all([
-    // No `select` here previously meant every product's imageUrl (up to ~1.4MB
-    // base64 each) came along even though this page never renders images.
-    prisma.product.findMany({
-      where: { workspaceId: access.workspaceId },
-      select: {
-        id: true,
-        name: true,
-        expiryTracked: true,
-        variants: { select: { id: true, size: true, color: true } },
-      },
-      orderBy: { name: "asc" },
-    }),
+  // Products are searched on demand by the form's async picker, so we only
+  // need a cheap existence check here, not the full catalog.
+  const [productCount, suppliers, purchaseCount, purchases, partners] = await Promise.all([
+    prisma.productVariant.count({ where: { product: { workspaceId: access.workspaceId } } }),
     prisma.supplier.findMany({
       where: { workspaceId: access.workspaceId },
       orderBy: { name: "asc" },
@@ -56,7 +49,11 @@ export default async function PurchasesPage({
         supplier: { select: { name: true } },
         paidByPartner: { select: { user: { select: { name: true, email: true } } } },
         productVariant: {
-          select: { size: true, color: true, product: { select: { name: true } } },
+          select: {
+            size: true,
+            color: true,
+            product: { select: { name: true, expiryTracked: true } },
+          },
         },
       },
     }),
@@ -65,18 +62,6 @@ export default async function PurchasesPage({
       select: { id: true, user: { select: { name: true, email: true } } },
     }),
   ]);
-
-  const variantOptions = products.flatMap((p) =>
-    p.variants.map((v) => ({
-      id: v.id,
-      label:
-        p.name +
-        ([v.size, v.color].filter(Boolean).length
-          ? ` (${[v.size, v.color].filter(Boolean).join(" / ")})`
-          : ""),
-      expiryTracked: p.expiryTracked,
-    })),
-  );
 
   const purchaseRows = purchases.map((pu) => ({
     id: pu.id,
@@ -87,6 +72,7 @@ export default async function PurchasesPage({
       ([pu.productVariant.size, pu.productVariant.color].filter(Boolean).length
         ? ` (${[pu.productVariant.size, pu.productVariant.color].filter(Boolean).join(" / ")})`
         : ""),
+    expiryTracked: pu.productVariant.product.expiryTracked,
     supplierId: pu.supplierId,
     supplier: pu.supplier?.name ?? "—",
     paidByPartnerId: pu.paidByPartnerId,
@@ -105,10 +91,10 @@ export default async function PurchasesPage({
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <h1 className="text-2xl font-bold">{(await serverT())("purchases")}</h1>
+      <PageHeader icon={<ShoppingCart />} color="orange" title={(await serverT())("purchases")} />
       <PurchaseManager
         slug={slug}
-        variantOptions={variantOptions}
+        hasProducts={productCount > 0}
         suppliers={suppliers}
         partnerOptions={partnerOptions}
         purchases={purchaseRows}

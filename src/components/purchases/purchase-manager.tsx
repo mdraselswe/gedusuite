@@ -23,6 +23,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { AsyncCombobox } from "@/components/ui/async-combobox";
+import { searchVariants, type VariantOption } from "@/server/actions/search";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { PackageOpen } from "lucide-react";
 
@@ -36,12 +38,12 @@ function todayInputValue() {
   return date.toISOString().slice(0, 10);
 }
 
-type VariantOption = { id: string; label: string; expiryTracked: boolean };
 type PurchaseRow = {
   id: string;
   date: string;
   productVariantId: string;
   product: string;
+  expiryTracked: boolean;
   supplierId: string | null;
   supplier: string;
   paidByPartnerId: string | null;
@@ -57,55 +59,55 @@ const NO_PARTNER = "__none__";
 
 export function PurchaseManager({
   slug,
-  variantOptions,
+  hasProducts,
   suppliers,
   partnerOptions,
   purchases,
   perms,
 }: {
   slug: string;
-  variantOptions: VariantOption[];
+  hasProducts: boolean;
   suppliers: { id: string; name: string }[];
   partnerOptions: { id: string; label: string }[];
   purchases: PurchaseRow[];
   perms: Perms;
 }) {
   const router = useRouter();
-  const [variantId, setVariantId] = useState("");
+  const [variant, setVariant] = useState<VariantOption | null>(null);
   const [supplierId, setSupplierId] = useState<string>(NO_SUPPLIER);
   const [paidByPartnerId, setPaidByPartnerId] = useState<string>(NO_PARTNER);
   const [loading, setLoading] = useState(false);
 
-  const selectedVariant = variantOptions.find((v) => v.id === variantId);
-  const showExpiry = selectedVariant?.expiryTracked ?? false;
+  const showExpiry = variant?.expiryTracked ?? false;
 
   // Edit dialog state — separate controlled fields from the always-visible
   // "record a purchase" form above.
   const [editing, setEditing] = useState<PurchaseRow | null>(null);
-  const [editVariantId, setEditVariantId] = useState("");
+  const [editVariant, setEditVariant] = useState<VariantOption | null>(null);
   const [editSupplierId, setEditSupplierId] = useState<string>(NO_SUPPLIER);
   const [editPaidByPartnerId, setEditPaidByPartnerId] = useState<string>(NO_PARTNER);
   const [editLoading, setEditLoading] = useState(false);
 
-  const editSelectedVariant = variantOptions.find((v) => v.id === editVariantId);
-  const editShowExpiry = editSelectedVariant?.expiryTracked ?? false;
+  const editShowExpiry = editVariant?.expiryTracked ?? false;
 
   function openEdit(p: PurchaseRow) {
     setEditing(p);
-    setEditVariantId(p.productVariantId);
+    // Seed the combobox from the row itself (the variant may not be in any
+    // fetched search page). Stock isn't shown in this form, so 0 is fine.
+    setEditVariant({ value: p.productVariantId, label: p.product, stock: 0, expiryTracked: p.expiryTracked });
     setEditSupplierId(p.supplierId ?? NO_SUPPLIER);
     setEditPaidByPartnerId(p.paidByPartnerId ?? NO_PARTNER);
   }
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!variantId) {
+    if (!variant) {
       toast.error("Select a product variant");
       return;
     }
     setLoading(true);
     const fd = new FormData(e.currentTarget);
-    fd.set("productVariantId", variantId);
+    fd.set("productVariantId", variant.value);
     fd.set("supplierId", supplierId === NO_SUPPLIER ? "" : supplierId);
     fd.set("paidByPartnerId", paidByPartnerId === NO_PARTNER ? "" : paidByPartnerId);
     const payload = Object.fromEntries(fd.entries()) as Record<string, unknown>;
@@ -117,7 +119,7 @@ export function PurchaseManager({
     }
     toast.success(res.queued ? "Saved offline — will sync when online" : "Purchase recorded");
     (e.target as HTMLFormElement).reset();
-    setVariantId("");
+    setVariant(null);
     setSupplierId(NO_SUPPLIER);
     setPaidByPartnerId(NO_PARTNER);
     router.refresh();
@@ -126,13 +128,13 @@ export function PurchaseManager({
   async function onSubmitEdit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!editing) return;
-    if (!editVariantId) {
+    if (!editVariant) {
       toast.error("Select a product variant");
       return;
     }
     setEditLoading(true);
     const fd = new FormData(e.currentTarget);
-    fd.set("productVariantId", editVariantId);
+    fd.set("productVariantId", editVariant.value);
     fd.set("supplierId", editSupplierId === NO_SUPPLIER ? "" : editSupplierId);
     fd.set("paidByPartnerId", editPaidByPartnerId === NO_PARTNER ? "" : editPaidByPartnerId);
     const res = await updatePurchase(slug, editing.id, fd);
@@ -162,7 +164,7 @@ export function PurchaseManager({
             <CardTitle className="text-base">Record a purchase</CardTitle>
           </CardHeader>
           <CardContent>
-            {variantOptions.length === 0 ? (
+            {!hasProducts ? (
               <p className="text-sm text-muted-foreground">
                 Add a product with at least one variant first.
               </p>
@@ -170,22 +172,21 @@ export function PurchaseManager({
               <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2 sm:col-span-2">
                   <Label>Product / variant</Label>
-                  <Select
-                    value={variantId}
-                    onValueChange={(v) => setVariantId(v ?? "")}
-                    items={variantOptions.map((v) => ({ value: v.id, label: v.label }))}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Select a product variant" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {variantOptions.map((v) => (
-                        <SelectItem key={v.id} value={v.id}>
-                          {v.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <AsyncCombobox
+                    value={variant}
+                    onChange={setVariant}
+                    fetchPage={async (q, cursor) => {
+                      const res = await searchVariants(slug, q, cursor);
+                      return res.ok ? { items: res.items, next: res.next } : { items: [], next: null };
+                    }}
+                    placeholder="Search product…"
+                    renderItem={(o) => (
+                      <>
+                        <span className="truncate">{o.label}</span>
+                        <span className="shrink-0 text-xs text-muted-foreground">{o.stock} in stock</span>
+                      </>
+                    )}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label>Supplier</Label>
@@ -319,22 +320,21 @@ export function PurchaseManager({
             >
               <div className="space-y-2 sm:col-span-2">
                 <Label>Product / variant</Label>
-                <Select
-                  value={editVariantId}
-                  onValueChange={(v) => setEditVariantId(v ?? "")}
-                  items={variantOptions.map((v) => ({ value: v.id, label: v.label }))}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select a product variant" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {variantOptions.map((v) => (
-                      <SelectItem key={v.id} value={v.id}>
-                        {v.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <AsyncCombobox
+                  value={editVariant}
+                  onChange={setEditVariant}
+                  fetchPage={async (q, cursor) => {
+                    const res = await searchVariants(slug, q, cursor);
+                    return res.ok ? { items: res.items, next: res.next } : { items: [], next: null };
+                  }}
+                  placeholder="Search product…"
+                  renderItem={(o) => (
+                    <>
+                      <span className="truncate">{o.label}</span>
+                      <span className="shrink-0 text-xs text-muted-foreground">{o.stock} in stock</span>
+                    </>
+                  )}
+                />
               </div>
               <div className="space-y-2">
                 <Label>Supplier</Label>

@@ -3,6 +3,8 @@ import { auth } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { AppearanceForm } from "@/components/settings/appearance-form";
 import { serverT } from "@/lib/session";
+import { PageHeader } from "@/components/ui/page-header";
+import { Palette } from "lucide-react";
 
 export default async function AppearancePage() {
   const session = await auth();
@@ -15,7 +17,7 @@ export default async function AppearancePage() {
 
   return (
     <div className="mx-auto max-w-lg space-y-6">
-      <h1 className="text-2xl font-bold">{(await serverT())("appearance")}</h1>
+      <PageHeader icon={<Palette />} color="fuchsia" title={(await serverT())("appearance")} />
       <AppearanceForm
         initial={{
           theme: user?.theme ?? "system",

@@ -2,11 +2,13 @@ import { redirect } from "next/navigation";
 import { workspaceAccess } from "@/lib/authz";
 import { can } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
-import { isGoogleConfigured } from "@/lib/google";
+import { isGoogleConfigured, serviceAccountEmail } from "@/lib/google";
 import { BackupManager } from "@/components/backup/backup-manager";
 import { PersonalBackupCard } from "@/components/backup/personal-backup-card";
 import { getPersonalStatus } from "@/server/actions/personal-backup";
 import { serverT } from "@/lib/session";
+import { PageHeader } from "@/components/ui/page-header";
+import { DatabaseBackup } from "lucide-react";
 
 export default async function BackupSettingsPage({
   params,
@@ -43,13 +45,15 @@ export default async function BackupSettingsPage({
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
-      <h1 className="text-2xl font-bold">{(await serverT())("backupRecovery")}</h1>
+      <PageHeader icon={<DatabaseBackup />} color="rose" title={(await serverT())("backupRecovery")} />
       <BackupManager
         slug={slug}
         canManage={canManage}
         googleConfigured={isGoogleConfigured()}
+        serviceAccountEmail={serviceAccountEmail()}
         setting={{
           lastJsonAt: setting?.lastJsonAt?.toISOString().slice(0, 16).replace("T", " ") ?? null,
+          driveFolderId: setting?.driveFolderId ?? "",
         }}
         logs={logRows}
       />

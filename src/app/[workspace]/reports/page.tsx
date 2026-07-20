@@ -4,6 +4,8 @@ import { can } from "@/lib/rbac";
 import { buildReport, parseRange } from "@/lib/reports";
 import { ReportView } from "@/components/reports/report-view";
 import { serverT } from "@/lib/session";
+import { PageHeader } from "@/components/ui/page-header";
+import { BarChart3 } from "lucide-react";
 
 export default async function ReportsPage({
   params,
@@ -26,7 +28,7 @@ export default async function ReportsPage({
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
-      <h1 className="text-2xl font-bold">{(await serverT())("reports")}</h1>
+      <PageHeader icon={<BarChart3 />} color="teal" title={(await serverT())("reports")} />
       <ReportView
         slug={slug}
         report={report}

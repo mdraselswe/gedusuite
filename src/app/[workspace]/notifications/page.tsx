@@ -4,6 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { NotificationList } from "@/components/notifications/notification-list";
 import { serverT } from "@/lib/session";
 import { Pagination, parsePage } from "@/components/ui/pagination";
+import { PageHeader } from "@/components/ui/page-header";
+import { Bell } from "lucide-react";
 
 const PAGE_SIZE = 50;
 
@@ -39,7 +41,7 @@ export default async function NotificationsPage({
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
-      <h1 className="text-2xl font-bold">{(await serverT())("notifications")}</h1>
+      <PageHeader icon={<Bell />} color="blue" title={(await serverT())("notifications")} />
       <NotificationList slug={slug} notifications={rows} />
       <Pagination
         page={page}

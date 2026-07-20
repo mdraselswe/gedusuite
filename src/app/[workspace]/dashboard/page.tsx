@@ -6,7 +6,8 @@ import { computeInventoryAlerts } from "@/lib/inventory";
 import { overdueOrders, totalBusinessProfit, treasuryBalance } from "@/lib/finance";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTable, type Column } from "@/components/ui/data-table";
-import { Users } from "lucide-react";
+import { PageHeader } from "@/components/ui/page-header";
+import { LayoutDashboard, Users, Wallet, UserCog } from "lucide-react";
 
 export default async function DashboardPage({
   params,
@@ -62,7 +63,7 @@ export default async function DashboardPage({
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
-      <h1 className="text-2xl font-bold">{t("dashboard")}</h1>
+      <PageHeader icon={<LayoutDashboard />} color="blue" title={t("dashboard")} />
 
       {(alerts.length > 0 || overdue.length > 0) && (
         <div className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm dark:border-amber-800 dark:bg-amber-950/40">
@@ -86,21 +87,30 @@ export default async function DashboardPage({
       )}
 
       <div className="grid gap-4 sm:grid-cols-3">
-        <Card>
-          <CardHeader className="pb-2">
+        <Card className="animate-in fade-in-0 slide-in-from-bottom-2 duration-300">
+          <CardHeader className="flex flex-row items-center gap-3 space-y-0 pb-2">
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-slate-500/10 text-slate-600 dark:text-slate-400">
+              <UserCog className="size-4" />
+            </span>
             <CardTitle className="text-sm font-medium text-muted-foreground">Your role</CardTitle>
           </CardHeader>
           <CardContent className="text-2xl font-bold">{membership.role}</CardContent>
         </Card>
-        <Card>
-          <CardHeader className="pb-2">
+        <Card className="animate-in fade-in-0 slide-in-from-bottom-2 duration-300 delay-75">
+          <CardHeader className="flex flex-row items-center gap-3 space-y-0 pb-2">
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-pink-500/10 text-pink-600 dark:text-pink-400">
+              <Users className="size-4" />
+            </span>
             <CardTitle className="text-sm font-medium text-muted-foreground">Team members</CardTitle>
           </CardHeader>
           <CardContent className="text-2xl font-bold">{memberCount}</CardContent>
         </Card>
         {canViewTreasury && (
-          <Card>
-            <CardHeader className="pb-2">
+          <Card className="animate-in fade-in-0 slide-in-from-bottom-2 duration-300 delay-150">
+            <CardHeader className="flex flex-row items-center gap-3 space-y-0 pb-2">
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                <Wallet className="size-4" />
+              </span>
               <CardTitle className="text-sm font-medium text-muted-foreground">
                 Treasury balance
               </CardTitle>
