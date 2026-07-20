@@ -20,6 +20,17 @@ export type NavItem = {
   color: SectionColor;
 };
 
+// Standard header logo size, used everywhere the brand mark appears in the
+// nav chrome (desktop sidebar, mobile bar, mobile drawer) — kept identical
+// across all three so switching layouts doesn't change how the brand reads.
+function BrandMark({ logoUrl, name }: { logoUrl: string | null; name: string }) {
+  if (!logoUrl) return <span className="truncate">{name}</span>;
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={logoUrl} alt={name} className="h-8 w-auto max-w-32 shrink-0 object-contain" />
+  );
+}
+
 function NavLink({
   item,
   active,
@@ -56,6 +67,7 @@ function NavLink({
 export function AppShell({
   slug,
   workspaceName,
+  logoUrl,
   nav,
   unread,
   role,
@@ -64,6 +76,7 @@ export function AppShell({
 }: {
   slug: string;
   workspaceName: string;
+  logoUrl: string | null;
   nav: NavItem[];
   unread: number;
   role: string;
@@ -87,7 +100,7 @@ export function AppShell({
           href={`/${slug}/dashboard`}
           className="flex h-16 shrink-0 items-center gap-2 border-b px-4 font-bold"
         >
-          <span className="truncate">{workspaceName}</span>
+          <BrandMark logoUrl={logoUrl} name={workspaceName} />
         </Link>
         <nav className="flex-1 space-y-1 overflow-y-auto p-3">
           {nav.map((item, i) => (
@@ -118,8 +131,8 @@ export function AppShell({
             >
               <Menu className="size-5" />
             </button>
-            <Link href={`/${slug}/dashboard`} className="truncate font-bold">
-              {workspaceName}
+            <Link href={`/${slug}/dashboard`} className="font-bold">
+              <BrandMark logoUrl={logoUrl} name={workspaceName} />
             </Link>
           </div>
           <Link
@@ -144,7 +157,9 @@ export function AppShell({
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent side="left" className="w-72 max-w-[85vw]">
           <SheetHeader>
-            <SheetTitle>{workspaceName}</SheetTitle>
+            <SheetTitle>
+              <BrandMark logoUrl={logoUrl} name={workspaceName} />
+            </SheetTitle>
           </SheetHeader>
           <nav className="flex-1 space-y-1 overflow-y-auto">
             {nav.map((item) => (

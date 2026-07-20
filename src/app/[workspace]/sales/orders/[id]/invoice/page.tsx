@@ -48,7 +48,7 @@ export default async function InvoicePage({
     }),
     prisma.workspace.findUnique({
       where: { id: access.workspaceId },
-      select: { name: true },
+      select: { name: true, logoUrl: true },
     }),
   ]);
   if (!order) notFound();
@@ -75,9 +75,15 @@ export default async function InvoicePage({
 
       <div id="invoice-print-area" className="rounded-lg border p-8 print:border-0 print:p-0">
         <div className="flex items-start justify-between">
-          <div>
-            <h1 className="text-2xl font-bold">{workspace?.name}</h1>
-            <p className="text-sm text-muted-foreground">Invoice</p>
+          <div className="flex items-center gap-3">
+            {workspace?.logoUrl && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={workspace.logoUrl} alt={workspace.name} className="h-10 w-auto max-w-28 object-contain" />
+            )}
+            <div>
+              <h1 className="text-2xl font-bold">{workspace?.name}</h1>
+              <p className="text-sm text-muted-foreground">Invoice</p>
+            </div>
           </div>
           <div className="text-right text-sm">
             <div>#{orderNumber}</div>

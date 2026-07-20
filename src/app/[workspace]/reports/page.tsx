@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { workspaceAccess } from "@/lib/authz";
 import { can } from "@/lib/rbac";
+import { prisma } from "@/lib/prisma";
 import { buildReport, parseRange } from "@/lib/reports";
 import { ReportView } from "@/components/reports/report-view";
 import { serverT } from "@/lib/session";
@@ -24,7 +25,13 @@ export default async function ReportsPage({
   }
 
   const range = parseRange(from, to);
-  const report = await buildReport(access.workspaceId, range);
+  const [report, workspace] = await Promise.all([
+    buildReport(access.workspaceId, range),
+    prisma.workspace.findUnique({
+      where: { id: access.workspaceId },
+      select: { name: true, logoUrl: true },
+    }),
+  ]);
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
@@ -34,6 +41,8 @@ export default async function ReportsPage({
         report={report}
         from={range.from.toISOString().slice(0, 10)}
         to={range.to.toISOString().slice(0, 10)}
+        workspaceName={workspace?.name ?? "Report"}
+        logoUrl={workspace?.logoUrl ?? null}
       />
     </div>
   );

@@ -43,7 +43,7 @@ export default async function WorkspaceLayout({
   // concurrently, and reuse getUserPrefs (React cache()) so the root layout's
   // identical user-prefs query isn't fetched twice per request.
   const [workspace, dbUser, unread] = await Promise.all([
-    prisma.workspace.findUnique({ where: { slug }, select: { name: true } }),
+    prisma.workspace.findUnique({ where: { slug }, select: { name: true, logoUrl: true } }),
     getUserPrefs(user.id),
     prisma.notification.count({
       where: { workspaceId: membership.workspaceId, read: false },
@@ -141,6 +141,7 @@ export default async function WorkspaceLayout({
     <AppShell
       slug={slug}
       workspaceName={workspace.name}
+      logoUrl={workspace.logoUrl}
       nav={nav}
       unread={unread}
       role={membership.role}

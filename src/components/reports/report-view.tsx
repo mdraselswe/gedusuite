@@ -26,11 +26,15 @@ export function ReportView({
   report,
   from,
   to,
+  workspaceName,
+  logoUrl,
 }: {
   slug: string;
   report: Report;
   from: string;
   to: string;
+  workspaceName: string;
+  logoUrl: string | null;
 }) {
   const router = useRouter();
   const [f, setF] = useState(from);
@@ -49,7 +53,7 @@ export function ReportView({
     const XLSX = await import("xlsx");
     const wb = XLSX.utils.book_new();
     const summary = XLSX.utils.aoa_to_sheet([
-      ["GeduSuite report", `${from} to ${to}`],
+      [workspaceName, `${from} to ${to}`],
       [],
       ["Revenue", report.kpis.revenue],
       ["Net profit", report.kpis.profit],
@@ -88,10 +92,30 @@ export function ReportView({
     const { jsPDF } = await import("jspdf");
     const autoTable = (await import("jspdf-autotable")).default;
     const doc = new jsPDF();
+
+    // Standard header logo, same as every other place it's used: fixed
+    // height, width follows from its own aspect ratio (jsPDF has no way to
+    // know that itself, so it's measured client-side before addImage).
+    let titleX = 14;
+    if (logoUrl) {
+      const dims = await new Promise<{ w: number; h: number }>((resolve, reject) => {
+        const img = new window.Image();
+        img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
+        img.onerror = () => reject(new Error("Invalid logo"));
+        img.src = logoUrl;
+      }).catch(() => null);
+      if (dims) {
+        const targetH = 12;
+        const targetW = (dims.w / dims.h) * targetH;
+        doc.addImage(logoUrl, "PNG", 14, 6, targetW, targetH);
+        titleX = 14 + targetW + 4;
+      }
+    }
+
     doc.setFontSize(16);
-    doc.text("GeduSuite report", 14, 18);
+    doc.text(workspaceName, titleX, 15);
     doc.setFontSize(10);
-    doc.text(`${from} to ${to}`, 14, 25);
+    doc.text(`${from} to ${to}`, titleX, 21);
 
     autoTable(doc, {
       startY: 32,
