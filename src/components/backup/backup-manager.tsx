@@ -3,27 +3,16 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import {
-  backupNow,
-  syncSheets,
-  previewRestore,
-  applyRestore,
-  updateBackupSetting,
-} from "@/server/actions/backup";
+import { backupNow, previewRestore, applyRestore } from "@/server/actions/backup";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { DatabaseBackup } from "lucide-react";
 
 type Setting = {
-  googleSheetId: string;
-  driveFolderId: string;
-  autoJson: boolean;
   lastJsonAt: string | null;
-  lastSheetsAt: string | null;
 };
 type Log = {
   id: string;
@@ -72,16 +61,6 @@ export function BackupManager({
     router.refresh();
   }
 
-  async function onSyncSheets() {
-    setBusy("sheets");
-    const res = await syncSheets(slug);
-    setBusy(null);
-    if (!res.ok) return toast.error(res.error);
-    toast.success("Synced to Google Sheets");
-    window.open(res.url, "_blank");
-    router.refresh();
-  }
-
   async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     setCounts(null);
@@ -114,16 +93,6 @@ export function BackupManager({
     router.refresh();
   }
 
-  async function onSaveSettings(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setBusy("settings");
-    const res = await updateBackupSetting(slug, new FormData(e.currentTarget));
-    setBusy(null);
-    if (!res.ok) return toast.error(res.error);
-    toast.success("Settings saved");
-    router.refresh();
-  }
-
   return (
     <div className="space-y-6">
       {/* Status */}
@@ -140,15 +109,11 @@ export function BackupManager({
           </div>
           {!googleConfigured && (
             <p className="text-muted-foreground">
-              Set <code>GOOGLE_SERVICE_ACCOUNT_JSON</code> on the server and share the
-              target Sheet/Drive folder with the service-account email. JSON backup &
-              restore below work without it.
+              Set <code>GOOGLE_SERVICE_ACCOUNT_JSON</code> on the server to also upload each
+              JSON backup to Drive automatically. Backup & restore below work without it.
             </p>
           )}
-          <div className="text-muted-foreground">
-            Last JSON backup: {setting.lastJsonAt ?? "never"} · Last Sheets sync:{" "}
-            {setting.lastSheetsAt ?? "never"}
-          </div>
+          <div className="text-muted-foreground">Last JSON backup: {setting.lastJsonAt ?? "never"}</div>
         </CardContent>
       </Card>
 
@@ -161,13 +126,6 @@ export function BackupManager({
           <CardContent className="flex flex-wrap gap-2">
             <Button onClick={onBackupNow} disabled={busy !== null}>
               {busy === "json" ? "Backing up…" : "Download JSON backup"}
-            </Button>
-            <Button
-              variant="outline"
-              onClick={onSyncSheets}
-              disabled={busy !== null || !googleConfigured}
-            >
-              {busy === "sheets" ? "Syncing…" : "Sync to Google Sheets"}
             </Button>
           </CardContent>
         </Card>
@@ -201,33 +159,6 @@ export function BackupManager({
                 </div>
               </div>
             )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Google settings */}
-      {canManage && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Google settings</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={onSaveSettings} className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="sheetId">Google Sheet ID (optional)</Label>
-                <Input id="sheetId" name="googleSheetId" defaultValue={setting.googleSheetId} placeholder="auto-created if blank" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="folderId">Drive folder ID (optional)</Label>
-                <Input id="folderId" name="driveFolderId" defaultValue={setting.driveFolderId} />
-              </div>
-              <input type="hidden" name="autoJson" value={setting.autoJson ? "true" : "false"} />
-              <div className="sm:col-span-2">
-                <Button type="submit" disabled={busy !== null}>
-                  Save settings
-                </Button>
-              </div>
-            </form>
           </CardContent>
         </Card>
       )}

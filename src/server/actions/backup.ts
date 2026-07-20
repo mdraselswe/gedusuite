@@ -11,11 +11,7 @@ import {
   type RestoreMode,
   type SnapshotCounts,
 } from "@/lib/backup";
-import {
-  isGoogleConfigured,
-  syncSnapshotToSheets,
-  uploadJsonToDrive,
-} from "@/lib/google";
+import { isGoogleConfigured, uploadJsonToDrive } from "@/lib/google";
 
 export type BackupResult<T = unknown> =
   | ({ ok: true } & T)
@@ -100,57 +96,6 @@ export async function backupNow(
   }
 }
 
-/** Sync all modules to the workspace's Google Sheet. */
-export async function syncSheets(slug: string): Promise<BackupResult<{ url: string }>> {
-  const gate = await requireAccess(slug, "backup", "full");
-  if (!gate.ok) return gate;
-  const workspaceId = gate.access.workspaceId;
-
-  if (!isGoogleConfigured()) {
-    return { ok: false, error: "Google integration is not configured on the server" };
-  }
-
-  try {
-    const ws = await prisma.workspace.findUnique({
-      where: { id: workspaceId },
-      select: { name: true },
-    });
-    const [snapshot, summary, setting] = await Promise.all([
-      buildSnapshot(workspaceId),
-      computeBackupSummary(workspaceId, ws?.name ?? "Workspace"),
-      prisma.backupSetting.findUnique({ where: { workspaceId } }),
-    ]);
-    const { sheetId, url } = await syncSnapshotToSheets(
-      snapshot,
-      summary,
-      setting?.googleSheetId ?? null,
-    );
-    await prisma.backupSetting.upsert({
-      where: { workspaceId },
-      create: { workspaceId, googleSheetId: sheetId, lastSheetsAt: new Date() },
-      update: { googleSheetId: sheetId, lastSheetsAt: new Date() },
-    });
-    await prisma.backupLog.create({
-      data: {
-        workspaceId,
-        type: "SHEETS",
-        status: "SUCCESS",
-        triggeredBy: gate.access.userId,
-        fileUrl: url,
-      },
-    });
-    revalidatePath(`/${slug}/settings/backup`);
-    return { ok: true, url };
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "Unknown error";
-    await prisma.backupLog.create({
-      data: { workspaceId, type: "SHEETS", status: "FAILED", triggeredBy: gate.access.userId, error: msg },
-    });
-    await alertFailure(workspaceId, `Google Sheets sync failed: ${msg}`);
-    return { ok: false, error: msg };
-  }
-}
-
 /** Validate an uploaded JSON string and return per-table counts (no changes). */
 export async function previewRestore(
   slug: string,
@@ -224,23 +169,3 @@ export async function applyRestore(
   }
 }
 
-export async function updateBackupSetting(
-  slug: string,
-  formData: FormData,
-): Promise<BackupResult> {
-  const gate = await requireAccess(slug, "backup", "full");
-  if (!gate.ok) return gate;
-  const workspaceId = gate.access.workspaceId;
-
-  const googleSheetId = String(formData.get("googleSheetId") ?? "").trim() || null;
-  const driveFolderId = String(formData.get("driveFolderId") ?? "").trim() || null;
-  const autoJson = formData.get("autoJson") === "true" || formData.get("autoJson") === "on";
-
-  await prisma.backupSetting.upsert({
-    where: { workspaceId },
-    create: { workspaceId, googleSheetId, driveFolderId, autoJson },
-    update: { googleSheetId, driveFolderId, autoJson },
-  });
-  revalidatePath(`/${slug}/settings/backup`);
-  return { ok: true };
-}

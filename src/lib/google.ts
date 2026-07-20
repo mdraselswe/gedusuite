@@ -305,15 +305,6 @@ export async function writeFormattedWorkbook(
   return { sheetId, url: `https://docs.google.com/spreadsheets/d/${sheetId}` };
 }
 
-/** Company-level sync (service account auth). */
-export async function syncSnapshotToSheets(
-  snapshot: Snapshot,
-  summary: BackupSummary,
-  sheetId: string | null,
-): Promise<{ sheetId: string; url: string }> {
-  return writeFormattedWorkbook(serviceAuth(), sheetId, snapshot, summary);
-}
-
 /** Personal sync (per-user OAuth auth). */
 export async function syncSnapshotForUser(
   auth: SheetsAuth,

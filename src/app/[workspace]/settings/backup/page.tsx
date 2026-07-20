@@ -49,11 +49,7 @@ export default async function BackupSettingsPage({
         canManage={canManage}
         googleConfigured={isGoogleConfigured()}
         setting={{
-          googleSheetId: setting?.googleSheetId ?? "",
-          driveFolderId: setting?.driveFolderId ?? "",
-          autoJson: setting?.autoJson ?? false,
           lastJsonAt: setting?.lastJsonAt?.toISOString().slice(0, 16).replace("T", " ") ?? null,
-          lastSheetsAt: setting?.lastSheetsAt?.toISOString().slice(0, 16).replace("T", " ") ?? null,
         }}
         logs={logRows}
       />
