@@ -4,13 +4,19 @@ import { serverT } from "@/lib/session";
 import { can } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
 import { PurchaseManager } from "@/components/purchases/purchase-manager";
+import { Pagination, parsePage } from "@/components/ui/pagination";
+
+const PAGE_SIZE = 50;
 
 export default async function PurchasesPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ workspace: string }>;
+  searchParams: Promise<{ page?: string }>;
 }) {
   const { workspace: slug } = await params;
+  const page = parsePage((await searchParams).page);
   const access = await workspaceAccess(slug);
   if (!access) redirect("/");
   if (!can(access.role, "purchases", "view", access.permissions)) {
@@ -22,7 +28,7 @@ export default async function PurchasesPage({
     canEdit: can(access.role, "purchases", "edit", access.permissions),
   };
 
-  const [products, suppliers, purchases, partners] = await Promise.all([
+  const [products, suppliers, purchaseCount, purchases, partners] = await Promise.all([
     // No `select` here previously meant every product's imageUrl (up to ~1.4MB
     // base64 each) came along even though this page never renders images.
     prisma.product.findMany({
@@ -40,10 +46,12 @@ export default async function PurchasesPage({
       orderBy: { name: "asc" },
       select: { id: true, name: true },
     }),
+    prisma.purchase.count({ where: { workspaceId: access.workspaceId } }),
     prisma.purchase.findMany({
       where: { workspaceId: access.workspaceId },
       orderBy: { date: "desc" },
-      take: 100,
+      skip: (page - 1) * PAGE_SIZE,
+      take: PAGE_SIZE,
       include: {
         supplier: { select: { name: true } },
         paidByPartner: { select: { user: { select: { name: true, email: true } } } },
@@ -105,6 +113,11 @@ export default async function PurchasesPage({
         partnerOptions={partnerOptions}
         purchases={purchaseRows}
         perms={perms}
+      />
+      <Pagination
+        page={page}
+        totalPages={Math.ceil(purchaseCount / PAGE_SIZE)}
+        basePath={`/${slug}/purchases`}
       />
     </div>
   );

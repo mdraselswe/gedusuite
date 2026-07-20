@@ -9,13 +9,19 @@ import { ProductManager } from "@/components/products/product-manager";
 import { SupplierManager } from "@/components/products/supplier-manager";
 import { StockAdjustmentManager } from "@/components/products/stock-adjustment-manager";
 import { listProductCategories } from "@/server/actions/product-categories";
+import { Pagination, parsePage } from "@/components/ui/pagination";
+
+const PAGE_SIZE = 50;
 
 export default async function ProductsPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ workspace: string }>;
+  searchParams: Promise<{ page?: string }>;
 }) {
   const { workspace: slug } = await params;
+  const page = parsePage((await searchParams).page);
   const access = await workspaceAccess(slug);
   if (!access) redirect("/");
   if (!can(access.role, "products", "view", access.permissions)) {
@@ -27,7 +33,7 @@ export default async function ProductsPage({
     canEdit: can(access.role, "products", "edit", access.permissions),
   };
 
-  const [products, suppliers, stock, adjustments, categories] = await Promise.all([
+  const [products, suppliers, stock, adjustmentCount, adjustments, categories] = await Promise.all([
     prisma.product.findMany({
       where: { workspaceId: access.workspaceId },
       include: { variants: true },
@@ -38,10 +44,12 @@ export default async function ProductsPage({
       orderBy: { name: "asc" },
     }),
     variantStockMap(access.workspaceId),
+    prisma.stockAdjustment.count({ where: { workspaceId: access.workspaceId } }),
     prisma.stockAdjustment.findMany({
       where: { workspaceId: access.workspaceId },
       orderBy: { date: "desc" },
-      take: 100,
+      skip: (page - 1) * PAGE_SIZE,
+      take: PAGE_SIZE,
       include: {
         productVariant: {
           select: { size: true, color: true, product: { select: { name: true } } },
@@ -97,7 +105,7 @@ export default async function ProductsPage({
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <h1 className="text-2xl font-bold">{(await serverT())("productsSuppliers")}</h1>
-      <Tabs defaultValue="products">
+      <Tabs defaultValue={page > 1 ? "adjustments" : "products"}>
         <TabsList>
           <TabsTrigger value="products">Products</TabsTrigger>
           <TabsTrigger value="suppliers">Suppliers</TabsTrigger>
@@ -121,6 +129,13 @@ export default async function ProductsPage({
             adjustments={adjustmentRows}
             canEdit={perms.canEdit}
           />
+          <div className="mt-4">
+            <Pagination
+              page={page}
+              totalPages={Math.ceil(adjustmentCount / PAGE_SIZE)}
+              basePath={`/${slug}/products`}
+            />
+          </div>
         </TabsContent>
       </Tabs>
     </div>

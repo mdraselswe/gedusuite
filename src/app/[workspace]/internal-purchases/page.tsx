@@ -4,13 +4,19 @@ import { can } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
 import { InternalPurchaseManager } from "@/components/internal-purchases/internal-purchase-manager";
 import { serverT } from "@/lib/session";
+import { Pagination, parsePage } from "@/components/ui/pagination";
+
+const PAGE_SIZE = 50;
 
 export default async function InternalPurchasesPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ workspace: string }>;
+  searchParams: Promise<{ page?: string }>;
 }) {
   const { workspace: slug } = await params;
+  const page = parsePage((await searchParams).page);
   const access = await workspaceAccess(slug);
   if (!access) redirect("/");
   if (!can(access.role, "internal-purchases", "view", access.permissions)) {
@@ -22,11 +28,13 @@ export default async function InternalPurchasesPage({
     canEdit: can(access.role, "internal-purchases", "edit", access.permissions),
   };
 
-  const [items, partners] = await Promise.all([
+  const [itemCount, items, partners, allCostQuantities] = await Promise.all([
+    prisma.internalPurchase.count({ where: { workspaceId: access.workspaceId } }),
     prisma.internalPurchase.findMany({
       where: { workspaceId: access.workspaceId },
       orderBy: { date: "desc" },
-      take: 200,
+      skip: (page - 1) * PAGE_SIZE,
+      take: PAGE_SIZE,
       include: {
         paidByPartner: { select: { id: true, user: { select: { name: true, email: true } } } },
       },
@@ -34,6 +42,12 @@ export default async function InternalPurchasesPage({
     prisma.partner.findMany({
       where: { workspaceId: access.workspaceId },
       select: { id: true, user: { select: { name: true, email: true } } },
+    }),
+    // Lightweight full-table fetch (no relations) just for the total-spend
+    // figure — must reflect every row, not just the current page.
+    prisma.internalPurchase.findMany({
+      where: { workspaceId: access.workspaceId },
+      select: { cost: true, quantity: true },
     }),
   ]);
 
@@ -55,7 +69,7 @@ export default async function InternalPurchasesPage({
     label: p.user.name ?? p.user.email,
   }));
 
-  const totalSpend = rows.reduce((s, r) => s + r.cost * r.quantity, 0);
+  const totalSpend = allCostQuantities.reduce((s, r) => s + Number(r.cost) * r.quantity, 0);
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -70,6 +84,11 @@ export default async function InternalPurchasesPage({
         items={rows}
         partnerOptions={partnerOptions}
         perms={perms}
+      />
+      <Pagination
+        page={page}
+        totalPages={Math.ceil(itemCount / PAGE_SIZE)}
+        basePath={`/${slug}/internal-purchases`}
       />
     </div>
   );

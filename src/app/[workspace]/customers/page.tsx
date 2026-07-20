@@ -5,13 +5,19 @@ import { prisma } from "@/lib/prisma";
 import { computeOrderTotals } from "@/lib/orders";
 import { serverT } from "@/lib/session";
 import { CustomerManager } from "@/components/customers/customer-manager";
+import { Pagination, parsePage } from "@/components/ui/pagination";
+
+const PAGE_SIZE = 50;
 
 export default async function CustomersPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ workspace: string }>;
+  searchParams: Promise<{ page?: string }>;
 }) {
   const { workspace: slug } = await params;
+  const page = parsePage((await searchParams).page);
   const access = await workspaceAccess(slug);
   if (!access) redirect("/");
   if (!can(access.role, "customers", "view", access.permissions)) {
@@ -23,16 +29,21 @@ export default async function CustomersPage({
     canEdit: can(access.role, "customers", "edit", access.permissions),
   };
 
-  const customers = await prisma.customer.findMany({
-    where: { workspaceId: access.workspaceId },
-    orderBy: { name: "asc" },
-    include: {
-      orders: {
-        where: { status: { not: "CANCELLED" } },
-        include: { items: { include: { returns: true } } },
+  const [customerCount, customers] = await Promise.all([
+    prisma.customer.count({ where: { workspaceId: access.workspaceId } }),
+    prisma.customer.findMany({
+      where: { workspaceId: access.workspaceId },
+      orderBy: { name: "asc" },
+      skip: (page - 1) * PAGE_SIZE,
+      take: PAGE_SIZE,
+      include: {
+        orders: {
+          where: { status: { not: "CANCELLED" } },
+          include: { items: { include: { returns: true } } },
+        },
       },
-    },
-  });
+    }),
+  ]);
 
   const rows = customers.map((c) => {
     // Outstanding = total owed on non-cancelled orders not fully paid.
@@ -54,6 +65,11 @@ export default async function CustomersPage({
     <div className="mx-auto max-w-5xl space-y-6">
       <h1 className="text-2xl font-bold">{(await serverT())("customers")}</h1>
       <CustomerManager slug={slug} customers={rows} perms={perms} />
+      <Pagination
+        page={page}
+        totalPages={Math.ceil(customerCount / PAGE_SIZE)}
+        basePath={`/${slug}/customers`}
+      />
     </div>
   );
 }

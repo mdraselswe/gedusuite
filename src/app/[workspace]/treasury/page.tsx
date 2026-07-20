@@ -11,13 +11,19 @@ import {
 } from "@/lib/finance";
 import { serverT } from "@/lib/session";
 import { TreasuryManager } from "@/components/treasury/treasury-manager";
+import { Pagination, parsePage } from "@/components/ui/pagination";
+
+const PAGE_SIZE = 50;
 
 export default async function TreasuryPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ workspace: string }>;
+  searchParams: Promise<{ page?: string }>;
 }) {
   const { workspace: slug } = await params;
+  const page = parsePage((await searchParams).page);
   const access = await workspaceAccess(slug);
   if (!access) redirect("/");
   if (!can(access.role, "treasury", "view", access.permissions)) {
@@ -26,12 +32,14 @@ export default async function TreasuryPage({
   const workspaceId = access.workspaceId;
   const canManage = can(access.role, "treasury", "full", access.permissions);
 
-  const [balance, entries, partners, overdue, heldCash, due, notDeposited] = await Promise.all([
+  const [balance, entryCount, entries, partners, overdue, heldCash, due, notDeposited] = await Promise.all([
     treasuryBalance(workspaceId),
+    prisma.treasuryEntry.count({ where: { workspaceId } }),
     prisma.treasuryEntry.findMany({
       where: { workspaceId },
       orderBy: { date: "desc" },
-      take: 200,
+      skip: (page - 1) * PAGE_SIZE,
+      take: PAGE_SIZE,
       include: { partner: { include: { user: { select: { name: true, email: true } } } } },
     }),
     prisma.partner.findMany({
@@ -83,6 +91,11 @@ export default async function TreasuryPage({
         heldCash={heldCash}
         notDeposited={notDeposited}
         canManage={canManage}
+      />
+      <Pagination
+        page={page}
+        totalPages={Math.ceil(entryCount / PAGE_SIZE)}
+        basePath={`/${slug}/treasury`}
       />
     </div>
   );

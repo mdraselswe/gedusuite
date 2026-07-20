@@ -6,6 +6,9 @@ import { prisma } from "@/lib/prisma";
 import { computeOrderTotals } from "@/lib/orders";
 import { variantStockMap } from "@/lib/inventory";
 import { OrderManager } from "@/components/sales/order-manager";
+import { Pagination, parsePage } from "@/components/ui/pagination";
+
+const PAGE_SIZE = 50;
 
 function variantLabel(name: string, size: string | null, color: string | null) {
   const extra = [size, color].filter(Boolean).join(" / ");
@@ -14,10 +17,13 @@ function variantLabel(name: string, size: string | null, color: string | null) {
 
 export default async function OrdersPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ workspace: string }>;
+  searchParams: Promise<{ page?: string }>;
 }) {
   const { workspace: slug } = await params;
+  const page = parsePage((await searchParams).page);
   const access = await workspaceAccess(slug);
   if (!access) redirect("/");
   if (!can(access.role, "sales", "view", access.permissions)) {
@@ -31,7 +37,7 @@ export default async function OrdersPage({
     canViewProfit: can(access.role, "reports", "view", access.permissions),
   };
 
-  const [products, customers, members, stock, orders] = await Promise.all([
+  const [products, customers, members, stock, orderCount, orders] = await Promise.all([
     // select (not include) — this page never renders images, so skip the
     // ~1.4MB-max base64 imageUrl column entirely instead of fetching it for
     // every product just to discard it.
@@ -54,10 +60,12 @@ export default async function OrdersPage({
       include: { user: { select: { name: true, email: true } } },
     }),
     variantStockMap(workspaceId),
+    prisma.order.count({ where: { workspaceId } }),
     prisma.order.findMany({
       where: { workspaceId },
       orderBy: { date: "desc" },
-      take: 100,
+      skip: (page - 1) * PAGE_SIZE,
+      take: PAGE_SIZE,
       include: {
         customer: { select: { name: true } },
         heldBy: { include: { user: { select: { name: true, email: true } } } },
@@ -125,6 +133,11 @@ export default async function OrdersPage({
         members={memberOptions}
         orders={orderRows}
         perms={perms}
+      />
+      <Pagination
+        page={page}
+        totalPages={Math.ceil(orderCount / PAGE_SIZE)}
+        basePath={`/${slug}/sales/orders`}
       />
     </div>
   );
