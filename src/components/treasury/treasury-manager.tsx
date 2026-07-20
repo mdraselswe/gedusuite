@@ -40,6 +40,12 @@ type Overdue = {
   customerName: string;
   heldByName: string | null;
 };
+type HeldCash = {
+  membershipId: string;
+  holderName: string;
+  amount: number;
+  orderCount: number;
+};
 const ALL = "__all__";
 const NONE = "__none__";
 
@@ -48,6 +54,7 @@ export function TreasuryManager({
   entries,
   partnerOptions,
   overdue,
+  heldCash,
   canManage,
 }: {
   slug: string;
@@ -55,6 +62,7 @@ export function TreasuryManager({
   entries: Entry[];
   partnerOptions: { id: string; label: string }[];
   overdue: Overdue[];
+  heldCash: HeldCash[];
   canManage: boolean;
 }) {
   const router = useRouter();
@@ -102,6 +110,43 @@ export function TreasuryManager({
 
   return (
     <div className="space-y-6">
+      {/* Cash currently held by team members — every unpaid/partial order with
+          a holder, not just the ones old enough to count as overdue. */}
+      {heldCash.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">
+              Cash held by team members — {heldCash.reduce((s, h) => s + h.amount, 0).toFixed(2)}{" "}
+              across {heldCash.reduce((s, h) => s + h.orderCount, 0)} order(s)
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <DataTable
+              rows={heldCash}
+              rowKey={(h) => h.membershipId}
+              empty={{ title: "No one is currently holding unpaid cash" }}
+              columns={
+                [
+                  {
+                    key: "holder",
+                    header: "Holder",
+                    cardTitle: true,
+                    cell: (h) => h.holderName,
+                  },
+                  { key: "orders", header: "Orders", align: "right", cell: (h) => h.orderCount },
+                  {
+                    key: "amount",
+                    header: "Amount held",
+                    align: "right",
+                    cell: (h) => <span className="font-medium">{h.amount.toFixed(2)}</span>,
+                  },
+                ] as Column<HeldCash>[]
+              }
+            />
+          </CardContent>
+        </Card>
+      )}
+
       {/* Overdue receivables */}
       {overdue.length > 0 && (
         <Card className="border-amber-300 dark:border-amber-800">

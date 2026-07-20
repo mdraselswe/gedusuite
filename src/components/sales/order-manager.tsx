@@ -47,6 +47,8 @@ type OrderRow = {
   customerName: string;
   status: string;
   paymentStatus: string;
+  paymentMethod: string;
+  heldByName: string | null;
   totals: { customerTotal: number; netProfit: number; returnedUnits: number };
   items: OrderItem[];
 };
@@ -299,7 +301,7 @@ export function OrderManager({
               header: "Payment",
               cell: (o) => (
                 <span>
-                  {o.paymentStatus}
+                  {o.paymentStatus} · {o.paymentMethod}
                   {o.totals.returnedUnits > 0 && (
                     <Badge variant="outline" className="ml-2">
                       {o.totals.returnedUnits} returned
@@ -308,6 +310,7 @@ export function OrderManager({
                 </span>
               ),
             },
+            { key: "heldBy", header: "Held by", cell: (o) => o.heldByName ?? "—" },
             {
               key: "total",
               header: "Total",

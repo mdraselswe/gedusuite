@@ -221,6 +221,53 @@ export async function overdueOrders(
   }));
 }
 
+export type HeldCash = {
+  membershipId: string;
+  holderName: string;
+  amount: number;
+  orderCount: number;
+};
+
+/**
+ * How much uncollected sales cash is currently sitting with each team member
+ * — every UNPAID/PARTIAL order tagged with a holder, not just the ones old
+ * enough to count as "overdue". Answers "who's holding how much right now"
+ * before it becomes a 7-day-overdue problem.
+ */
+export async function cashHeldByMember(workspaceId: string): Promise<HeldCash[]> {
+  const orders = await prisma.order.findMany({
+    where: {
+      workspaceId,
+      status: { not: "CANCELLED" },
+      paymentStatus: { in: ["UNPAID", "PARTIAL"] },
+      heldByMembershipId: { not: null },
+    },
+    include: {
+      items: { include: { returns: true } },
+      heldBy: { include: { user: { select: { name: true, email: true } } } },
+    },
+  });
+
+  const map = new Map<string, HeldCash>();
+  for (const o of orders) {
+    if (!o.heldByMembershipId || !o.heldBy) continue;
+    const amount = computeOrderTotals(o).customerTotal;
+    const existing = map.get(o.heldByMembershipId);
+    if (existing) {
+      existing.amount = round2(existing.amount + amount);
+      existing.orderCount += 1;
+    } else {
+      map.set(o.heldByMembershipId, {
+        membershipId: o.heldByMembershipId,
+        holderName: o.heldBy.user.name ?? o.heldBy.user.email,
+        amount: round2(amount),
+        orderCount: 1,
+      });
+    }
+  }
+  return [...map.values()].sort((a, b) => b.amount - a.amount);
+}
+
 /** Reconcile OVERDUE_PAYMENT notifications with the current overdue set. */
 export async function refreshOverdueAlerts(
   workspaceId: string,

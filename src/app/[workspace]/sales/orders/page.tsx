@@ -60,6 +60,7 @@ export default async function OrdersPage({
       take: 100,
       include: {
         customer: { select: { name: true } },
+        heldBy: { include: { user: { select: { name: true, email: true } } } },
         items: {
           include: {
             returns: true,
@@ -93,6 +94,8 @@ export default async function OrdersPage({
       customerName: o.customer?.name ?? "Walk-in",
       status: o.status,
       paymentStatus: o.paymentStatus,
+      paymentMethod: o.paymentMethod,
+      heldByName: o.heldBy ? (o.heldBy.user.name ?? o.heldBy.user.email) : null,
       totals,
       items: o.items.map((it) => {
         const returned = it.returns.reduce((s, r) => s + r.quantity, 0);

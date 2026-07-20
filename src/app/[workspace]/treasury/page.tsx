@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { workspaceAccess } from "@/lib/authz";
 import { can } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
-import { treasuryBalance, refreshOverdueAlerts } from "@/lib/finance";
+import { treasuryBalance, refreshOverdueAlerts, cashHeldByMember } from "@/lib/finance";
 import { serverT } from "@/lib/session";
 import { TreasuryManager } from "@/components/treasury/treasury-manager";
 
@@ -20,7 +20,7 @@ export default async function TreasuryPage({
   const workspaceId = access.workspaceId;
   const canManage = can(access.role, "treasury", "full", access.permissions);
 
-  const [balance, entries, partners, overdue] = await Promise.all([
+  const [balance, entries, partners, overdue, heldCash] = await Promise.all([
     treasuryBalance(workspaceId),
     prisma.treasuryEntry.findMany({
       where: { workspaceId },
@@ -33,6 +33,7 @@ export default async function TreasuryPage({
       include: { user: { select: { name: true, email: true } } },
     }),
     refreshOverdueAlerts(workspaceId),
+    cashHeldByMember(workspaceId),
   ]);
 
   const entryRows = entries.map((e) => ({
@@ -65,6 +66,7 @@ export default async function TreasuryPage({
         entries={entryRows}
         partnerOptions={partnerOptions}
         overdue={overdue}
+        heldCash={heldCash}
         canManage={canManage}
       />
     </div>
