@@ -83,6 +83,69 @@ export async function createPurchase(
   return { ok: true };
 }
 
+export async function updatePurchase(
+  slug: string,
+  id: string,
+  formData: FormData,
+): Promise<ActionResult> {
+  const gate = await requireAccess(slug, "purchases", "edit");
+  if (!gate.ok) return gate;
+  const workspaceId = gate.access.workspaceId;
+
+  const parsed = PurchaseSchema.safeParse({
+    productVariantId: formData.get("productVariantId"),
+    supplierId: formData.get("supplierId") ?? undefined,
+    paidByPartnerId: formData.get("paidByPartnerId") ?? undefined,
+    date: formData.get("date"),
+    unitCost: formData.get("unitCost"),
+    quantity: formData.get("quantity"),
+    expiryDate: formData.get("expiryDate") ?? undefined,
+  });
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  }
+  const d = parsed.data;
+
+  const [existing, variant, supplier, partner] = await Promise.all([
+    prisma.purchase.findFirst({ where: { id, workspaceId }, select: { id: true } }),
+    prisma.productVariant.findFirst({
+      where: { id: d.productVariantId, product: { workspaceId } },
+      select: { id: true },
+    }),
+    d.supplierId
+      ? prisma.supplier.findFirst({ where: { id: d.supplierId, workspaceId }, select: { id: true } })
+      : Promise.resolve(null),
+    d.paidByPartnerId
+      ? prisma.partner.findFirst({ where: { id: d.paidByPartnerId, workspaceId }, select: { id: true } })
+      : Promise.resolve(null),
+  ]);
+  if (!existing) return { ok: false, error: "Purchase not found" };
+  if (!variant) return { ok: false, error: "Product variant not found" };
+  if (d.supplierId && !supplier) return { ok: false, error: "Supplier not found" };
+  if (d.paidByPartnerId && !partner) return { ok: false, error: "Partner not found" };
+
+  await prisma.purchase.update({
+    where: { id },
+    data: {
+      productVariantId: d.productVariantId,
+      supplierId: supplier?.id ?? null,
+      paidByPartnerId: partner?.id ?? null,
+      date: d.date,
+      unitCost: d.unitCost,
+      quantity: d.quantity,
+      expiryDate: d.expiryDate ? new Date(d.expiryDate) : null,
+    },
+  });
+
+  // Cost/quantity/variant may have changed → stock and alerts must recompute.
+  await refreshInventoryAlerts(workspaceId);
+
+  revalidatePath(`/${slug}/purchases`);
+  revalidatePath(`/${slug}/products`);
+  revalidatePath(`/${slug}/dashboard`);
+  return { ok: true };
+}
+
 export async function deletePurchase(
   slug: string,
   id: string,

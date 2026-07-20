@@ -73,12 +73,15 @@ export default async function PurchasesPage({
   const purchaseRows = purchases.map((pu) => ({
     id: pu.id,
     date: pu.date.toISOString().slice(0, 10),
+    productVariantId: pu.productVariantId,
     product:
       pu.productVariant.product.name +
       ([pu.productVariant.size, pu.productVariant.color].filter(Boolean).length
         ? ` (${[pu.productVariant.size, pu.productVariant.color].filter(Boolean).join(" / ")})`
         : ""),
+    supplierId: pu.supplierId,
     supplier: pu.supplier?.name ?? "—",
+    paidByPartnerId: pu.paidByPartnerId,
     paidBy: pu.paidByPartner
       ? (pu.paidByPartner.user.name ?? pu.paidByPartner.user.email)
       : null,
