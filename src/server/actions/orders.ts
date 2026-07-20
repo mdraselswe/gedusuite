@@ -31,6 +31,10 @@ const OrderSchema = z.object({
     (v) => (v === "" || v == null ? undefined : v),
     z.coerce.number().nonnegative().optional(),
   ),
+  // The courier's own order/consignment number — usually only known once the
+  // courier is actually booked, so this is commonly filled in after the order
+  // already exists (see updateCourierTrackingId below), not just at creation.
+  courierTrackingId: z.string().trim().max(100).optional().or(z.literal("")),
   paymentMethod: z.enum(["CASH", "BKASH", "NAGAD", "COURIER_COLLECTION", "OTHER"]),
   paymentStatus: z.enum(["PAID", "UNPAID", "PARTIAL"]),
   packagingCost: z.coerce.number().nonnegative().default(0),
@@ -88,6 +92,7 @@ export async function createOrder(
     deliveryType: formData.get("deliveryType"),
     deliveryCharge: formData.get("deliveryCharge") ?? 0,
     deliveryCost: formData.get("deliveryCost") ?? undefined,
+    courierTrackingId: formData.get("courierTrackingId") ?? undefined,
     paymentMethod: formData.get("paymentMethod"),
     paymentStatus: formData.get("paymentStatus"),
     packagingCost: formData.get("packagingCost") ?? 0,
@@ -176,6 +181,7 @@ export async function createOrder(
         deliveryType: d.deliveryType,
         deliveryCharge: d.deliveryCharge,
         deliveryCost: d.deliveryCost ?? null,
+        courierTrackingId: d.courierTrackingId?.trim() || null,
         paymentMethod: d.paymentMethod,
         paymentStatus: d.paymentStatus,
         packagingCost: d.packagingCost,
@@ -278,6 +284,34 @@ export async function updatePaymentStatus(
   revalidatePath(`/${slug}/sales/orders`);
   revalidatePath(`/${slug}/dashboard`);
   revalidatePath(`/${slug}/treasury`);
+  return { ok: true };
+}
+
+/** Set/clear the courier's own order number for a COURIER-delivery order. */
+export async function updateCourierTrackingId(
+  slug: string,
+  orderId: string,
+  courierTrackingId: string,
+): Promise<ActionResult> {
+  const gate = await requireAccess(slug, "sales", "edit");
+  if (!gate.ok) return gate;
+  const workspaceId = gate.access.workspaceId;
+
+  const order = await prisma.order.findFirst({
+    where: { id: orderId, workspaceId },
+    select: { id: true, deliveryType: true },
+  });
+  if (!order) return { ok: false, error: "Order not found" };
+  if (order.deliveryType !== "COURIER") {
+    return { ok: false, error: "Only courier-delivery orders have a courier order number" };
+  }
+
+  await prisma.order.update({
+    where: { id: orderId },
+    data: { courierTrackingId: courierTrackingId.trim() || null },
+  });
+
+  revalidatePath(`/${slug}/sales/orders`);
   return { ok: true };
 }
 

@@ -303,6 +303,7 @@ model Order {
   deliveryType  DeliveryType  @default(SELF)
   deliveryCharge Decimal      @default(0) @db.Decimal(12, 2) // charged to the customer
   deliveryCost  Decimal?      @db.Decimal(12, 2) // actual amount paid to the courier; null = assume it equals deliveryCharge (pure pass-through)
+  courierTrackingId String? // the courier's own order/consignment number (deliveryType=COURIER); shown on the invoice instead of the internal id
   paymentMethod PaymentMethod @default(CASH)
   paymentStatus PaymentStatus @default(UNPAID)
   packagingCost Decimal       @default(0) @db.Decimal(12, 2)

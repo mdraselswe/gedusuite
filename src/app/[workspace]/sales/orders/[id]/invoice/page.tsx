@@ -4,7 +4,7 @@ import { workspaceAccess } from "@/lib/authz";
 import { can } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
 import { computeOrderTotals } from "@/lib/orders";
-import { PrintButton } from "@/components/print-button";
+import { DownloadInvoicePdfButton } from "@/components/invoice-actions";
 import {
   Table,
   TableBody,
@@ -55,23 +55,32 @@ export default async function InvoicePage({
 
   const totals = computeOrderTotals(order);
 
+  // If this was a courier delivery and the courier's own order number has
+  // been recorded, that's what actually identifies the shipment — show it
+  // instead of the internal id. Self-delivery (or no courier id yet) keeps
+  // the auto-generated internal order number.
+  const orderNumber =
+    order.deliveryType === "COURIER" && order.courierTrackingId
+      ? order.courierTrackingId
+      : order.id.slice(-8).toUpperCase();
+
   return (
     <div className="mx-auto max-w-2xl space-y-6 print:max-w-full">
       <div className="flex items-center justify-between print:hidden">
         <Link href={`/${slug}/sales/orders`} className="text-sm text-muted-foreground underline">
           ← Orders
         </Link>
-        <PrintButton />
+        <DownloadInvoicePdfButton targetId="invoice-print-area" filename={`invoice-${orderNumber}`} />
       </div>
 
-      <div className="rounded-lg border p-8 print:border-0 print:p-0">
+      <div id="invoice-print-area" className="rounded-lg border p-8 print:border-0 print:p-0">
         <div className="flex items-start justify-between">
           <div>
             <h1 className="text-2xl font-bold">{workspace?.name}</h1>
             <p className="text-sm text-muted-foreground">Invoice</p>
           </div>
           <div className="text-right text-sm">
-            <div>#{order.id.slice(-8).toUpperCase()}</div>
+            <div>#{orderNumber}</div>
             <div className="text-muted-foreground">{order.date.toISOString().slice(0, 10)}</div>
             <div className="text-muted-foreground">{order.status}</div>
           </div>
