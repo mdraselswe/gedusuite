@@ -74,9 +74,21 @@ export async function deleteTreasuryEntry(
 
   const entry = await prisma.treasuryEntry.findFirst({
     where: { id, workspaceId: gate.access.workspaceId },
-    select: { partnerTxnId: true, orderId: true },
+    select: {
+      partnerTxnId: true,
+      orderId: true,
+      purchaseId: true,
+      internalPurchaseId: true,
+      distributionId: true,
+    },
   });
   if (!entry) return { ok: false, error: "Entry not found" };
+  if (entry.distributionId) {
+    return {
+      ok: false,
+      error: "This entry came from a profit distribution — delete the whole distribution instead",
+    };
+  }
   if (entry.partnerTxnId) {
     return {
       ok: false,
@@ -87,6 +99,18 @@ export async function deleteTreasuryEntry(
     return {
       ok: false,
       error: "This entry came from an order's cash deposit — unmark it from the order instead",
+    };
+  }
+  if (entry.purchaseId) {
+    return {
+      ok: false,
+      error: "This entry came from a treasury-funded purchase — change its funding source or delete the purchase instead",
+    };
+  }
+  if (entry.internalPurchaseId) {
+    return {
+      ok: false,
+      error: "This entry came from a treasury-funded internal purchase — change its funding source or delete the entry instead",
     };
   }
 

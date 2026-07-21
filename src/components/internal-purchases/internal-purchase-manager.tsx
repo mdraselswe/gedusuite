@@ -38,12 +38,20 @@ type Item = {
   supplierName: string | null;
   paidBy: string | null;
   paidByPartnerId: string | null;
+  paidFromTreasury: boolean;
   cost: number;
   quantity: number;
   category: string;
 };
 type Perms = { canAdd: boolean; canEdit: boolean };
+type FundingSource = "NONE" | "PARTNER" | "TREASURY";
 const NO_PARTNER = "__none__";
+
+function fundingSourceOf(i: { paidByPartnerId: string | null; paidFromTreasury: boolean }): FundingSource {
+  if (i.paidFromTreasury) return "TREASURY";
+  if (i.paidByPartnerId) return "PARTNER";
+  return "NONE";
+}
 
 const CATEGORIES = [
   "OFFICE_SUPPLIES",
@@ -64,17 +72,20 @@ export function InternalPurchaseManager({
   slug,
   items,
   partnerOptions,
+  treasuryBalance,
   perms,
 }: {
   slug: string;
   items: Item[];
   partnerOptions: { id: string; label: string }[];
+  treasuryBalance: number;
   perms: Perms;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Item | null>(null);
   const [category, setCategory] = useState("OTHER");
+  const [fundingSource, setFundingSource] = useState<FundingSource>("NONE");
   const [paidByPartnerId, setPaidByPartnerId] = useState(NO_PARTNER);
   const [loading, setLoading] = useState(false);
   const [catFilter, setCatFilter] = useState("__all__");
@@ -84,12 +95,14 @@ export function InternalPurchaseManager({
   function openNew() {
     setEditing(null);
     setCategory("OTHER");
+    setFundingSource("NONE");
     setPaidByPartnerId(NO_PARTNER);
     setOpen(true);
   }
   function openEdit(i: Item) {
     setEditing(i);
     setCategory(i.category);
+    setFundingSource(fundingSourceOf(i));
     setPaidByPartnerId(i.paidByPartnerId ?? NO_PARTNER);
     setOpen(true);
   }
@@ -99,7 +112,8 @@ export function InternalPurchaseManager({
     setLoading(true);
     const fd = new FormData(e.currentTarget);
     fd.set("category", category);
-    fd.set("paidByPartnerId", paidByPartnerId === NO_PARTNER ? "" : paidByPartnerId);
+    fd.set("fundingSource", fundingSource);
+    fd.set("paidByPartnerId", fundingSource === "PARTNER" && paidByPartnerId !== NO_PARTNER ? paidByPartnerId : "");
     const res = editing
       ? await updateInternalPurchase(slug, editing.id, fd)
       : await createInternalPurchase(slug, fd);
@@ -169,7 +183,11 @@ export function InternalPurchaseManager({
               cell: (i) => <Badge variant="secondary">{LABEL[i.category] ?? i.category}</Badge>,
             },
             { key: "supplier", header: "Supplier", cell: (i) => i.supplierName ?? "—" },
-            { key: "paidBy", header: "Paid by", cell: (i) => i.paidBy ?? "—" },
+            {
+              key: "funding",
+              header: "Funding",
+              cell: (i) => (i.paidFromTreasury ? "Treasury" : i.paidBy ? `Partner: ${i.paidBy}` : "—"),
+            },
             { key: "cost", header: "Cost", align: "right", cell: (i) => i.cost.toFixed(2) },
             { key: "qty", header: "Qty", align: "right", cell: (i) => i.quantity },
             {
@@ -236,28 +254,48 @@ export function InternalPurchaseManager({
                 <Input id="ip-supplier" name="supplierName" defaultValue={editing?.supplierName ?? ""} />
               </div>
               <div className="space-y-2">
-                <Label>Paid by (partner)</Label>
+                <Label>Funding source</Label>
                 <Select
-                  value={paidByPartnerId}
-                  onValueChange={(v) => setPaidByPartnerId(v ?? NO_PARTNER)}
-                  items={[
-                    { value: NO_PARTNER, label: "Not tracked" },
-                    ...partnerOptions.map((p) => ({ value: p.id, label: p.label })),
-                  ]}
+                  value={fundingSource}
+                  onValueChange={(v) => setFundingSource((v as FundingSource) ?? "NONE")}
                 >
                   <SelectTrigger className="w-full">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value={NO_PARTNER}>Not tracked</SelectItem>
-                    {partnerOptions.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>
-                        {p.label}
-                      </SelectItem>
-                    ))}
+                    <SelectItem value="NONE">Not tracked</SelectItem>
+                    <SelectItem value="PARTNER">Partner</SelectItem>
+                    <SelectItem value="TREASURY">Treasury</SelectItem>
                   </SelectContent>
                 </Select>
+                {fundingSource === "TREASURY" && (
+                  <p className="text-xs text-muted-foreground">
+                    Treasury balance: {treasuryBalance.toFixed(2)}
+                    {editing?.paidFromTreasury ? " (excluding this entry's current amount)" : ""}
+                  </p>
+                )}
               </div>
+              {fundingSource === "PARTNER" && (
+                <div className="space-y-2">
+                  <Label>Partner</Label>
+                  <Select
+                    value={paidByPartnerId}
+                    onValueChange={(v) => setPaidByPartnerId(v ?? NO_PARTNER)}
+                    items={partnerOptions.map((p) => ({ value: p.id, label: p.label }))}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select partner" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {partnerOptions.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               <div className="space-y-2">
                 <Label htmlFor="ip-cost">Unit cost</Label>
                 <Input id="ip-cost" name="cost" type="number" step="0.01" min="0" required defaultValue={editing?.cost ?? ""} />

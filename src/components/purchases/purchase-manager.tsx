@@ -48,14 +48,22 @@ type PurchaseRow = {
   supplier: string;
   paidByPartnerId: string | null;
   paidBy: string | null;
+  paidFromTreasury: boolean;
   unitCost: number;
   quantity: number;
   expiryDate: string | null;
 };
 type Perms = { canAdd: boolean; canEdit: boolean };
+type FundingSource = "NONE" | "PARTNER" | "TREASURY";
 
 const NO_SUPPLIER = "__none__";
 const NO_PARTNER = "__none__";
+
+function fundingSourceOf(p: { paidByPartnerId: string | null; paidFromTreasury: boolean }): FundingSource {
+  if (p.paidFromTreasury) return "TREASURY";
+  if (p.paidByPartnerId) return "PARTNER";
+  return "NONE";
+}
 
 export function PurchaseManager({
   slug,
@@ -63,6 +71,7 @@ export function PurchaseManager({
   suppliers,
   partnerOptions,
   purchases,
+  treasuryBalance,
   perms,
 }: {
   slug: string;
@@ -70,11 +79,13 @@ export function PurchaseManager({
   suppliers: { id: string; name: string }[];
   partnerOptions: { id: string; label: string }[];
   purchases: PurchaseRow[];
+  treasuryBalance: number;
   perms: Perms;
 }) {
   const router = useRouter();
   const [variant, setVariant] = useState<VariantOption | null>(null);
   const [supplierId, setSupplierId] = useState<string>(NO_SUPPLIER);
+  const [fundingSource, setFundingSource] = useState<FundingSource>("NONE");
   const [paidByPartnerId, setPaidByPartnerId] = useState<string>(NO_PARTNER);
   const [loading, setLoading] = useState(false);
 
@@ -85,6 +96,7 @@ export function PurchaseManager({
   const [editing, setEditing] = useState<PurchaseRow | null>(null);
   const [editVariant, setEditVariant] = useState<VariantOption | null>(null);
   const [editSupplierId, setEditSupplierId] = useState<string>(NO_SUPPLIER);
+  const [editFundingSource, setEditFundingSource] = useState<FundingSource>("NONE");
   const [editPaidByPartnerId, setEditPaidByPartnerId] = useState<string>(NO_PARTNER);
   const [editLoading, setEditLoading] = useState(false);
 
@@ -96,6 +108,7 @@ export function PurchaseManager({
     // fetched search page). Stock isn't shown in this form, so 0 is fine.
     setEditVariant({ value: p.productVariantId, label: p.product, stock: 0, expiryTracked: p.expiryTracked });
     setEditSupplierId(p.supplierId ?? NO_SUPPLIER);
+    setEditFundingSource(fundingSourceOf(p));
     setEditPaidByPartnerId(p.paidByPartnerId ?? NO_PARTNER);
   }
 
@@ -109,7 +122,8 @@ export function PurchaseManager({
     const fd = new FormData(e.currentTarget);
     fd.set("productVariantId", variant.value);
     fd.set("supplierId", supplierId === NO_SUPPLIER ? "" : supplierId);
-    fd.set("paidByPartnerId", paidByPartnerId === NO_PARTNER ? "" : paidByPartnerId);
+    fd.set("fundingSource", fundingSource);
+    fd.set("paidByPartnerId", fundingSource === "PARTNER" && paidByPartnerId !== NO_PARTNER ? paidByPartnerId : "");
     const payload = Object.fromEntries(fd.entries()) as Record<string, unknown>;
     const res = await submitOrQueue("purchase.create", slug, payload);
     setLoading(false);
@@ -121,6 +135,7 @@ export function PurchaseManager({
     (e.target as HTMLFormElement).reset();
     setVariant(null);
     setSupplierId(NO_SUPPLIER);
+    setFundingSource("NONE");
     setPaidByPartnerId(NO_PARTNER);
     router.refresh();
   }
@@ -136,7 +151,11 @@ export function PurchaseManager({
     const fd = new FormData(e.currentTarget);
     fd.set("productVariantId", editVariant.value);
     fd.set("supplierId", editSupplierId === NO_SUPPLIER ? "" : editSupplierId);
-    fd.set("paidByPartnerId", editPaidByPartnerId === NO_PARTNER ? "" : editPaidByPartnerId);
+    fd.set("fundingSource", editFundingSource);
+    fd.set(
+      "paidByPartnerId",
+      editFundingSource === "PARTNER" && editPaidByPartnerId !== NO_PARTNER ? editPaidByPartnerId : "",
+    );
     const res = await updatePurchase(slug, editing.id, fd);
     setEditLoading(false);
     if (!res.ok) {
@@ -212,28 +231,47 @@ export function PurchaseManager({
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>Paid by (partner)</Label>
+                  <Label>Funding source</Label>
                   <Select
-                    value={paidByPartnerId}
-                    onValueChange={(v) => setPaidByPartnerId(v ?? NO_PARTNER)}
-                    items={[
-                      { value: NO_PARTNER, label: "Not tracked" },
-                      ...partnerOptions.map((p) => ({ value: p.id, label: p.label })),
-                    ]}
+                    value={fundingSource}
+                    onValueChange={(v) => setFundingSource((v as FundingSource) ?? "NONE")}
                   >
                     <SelectTrigger className="w-full">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value={NO_PARTNER}>Not tracked</SelectItem>
-                      {partnerOptions.map((p) => (
-                        <SelectItem key={p.id} value={p.id}>
-                          {p.label}
-                        </SelectItem>
-                      ))}
+                      <SelectItem value="NONE">Not tracked</SelectItem>
+                      <SelectItem value="PARTNER">Partner</SelectItem>
+                      <SelectItem value="TREASURY">Treasury</SelectItem>
                     </SelectContent>
                   </Select>
+                  {fundingSource === "TREASURY" && (
+                    <p className="text-xs text-muted-foreground">
+                      Treasury balance: {treasuryBalance.toFixed(2)}
+                    </p>
+                  )}
                 </div>
+                {fundingSource === "PARTNER" && (
+                  <div className="space-y-2">
+                    <Label>Partner</Label>
+                    <Select
+                      value={paidByPartnerId}
+                      onValueChange={(v) => setPaidByPartnerId(v ?? NO_PARTNER)}
+                      items={partnerOptions.map((p) => ({ value: p.id, label: p.label }))}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select partner" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {partnerOptions.map((p) => (
+                          <SelectItem key={p.id} value={p.id}>
+                            {p.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
                 <div className="space-y-2">
                   <Label htmlFor="date">Date</Label>
                   <Input id="date" name="date" type="date" required defaultValue={todayInputValue()} />
@@ -274,7 +312,11 @@ export function PurchaseManager({
               { key: "date", header: "Date", cell: (p) => p.date },
               { key: "product", header: "Product", cardTitle: true, cell: (p) => p.product },
               { key: "supplier", header: "Supplier", cell: (p) => p.supplier },
-              { key: "paidBy", header: "Paid by", cell: (p) => p.paidBy ?? "—" },
+              {
+                key: "funding",
+                header: "Funding",
+                cell: (p) => (p.paidFromTreasury ? "Treasury" : p.paidBy ? `Partner: ${p.paidBy}` : "—"),
+              },
               {
                 key: "unitCost",
                 header: "Unit cost",
@@ -282,6 +324,12 @@ export function PurchaseManager({
                 cell: (p) => p.unitCost.toFixed(2),
               },
               { key: "quantity", header: "Qty", align: "right", cell: (p) => p.quantity },
+              {
+                key: "total",
+                header: "Total",
+                align: "right",
+                cell: (p) => <span className="font-medium">{(p.unitCost * p.quantity).toFixed(2)}</span>,
+              },
               { key: "expiry", header: "Expiry", cell: (p) => p.expiryDate ?? "—" },
               ...(perms.canEdit
                 ? [
@@ -360,28 +408,48 @@ export function PurchaseManager({
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Paid by (partner)</Label>
+                <Label>Funding source</Label>
                 <Select
-                  value={editPaidByPartnerId}
-                  onValueChange={(v) => setEditPaidByPartnerId(v ?? NO_PARTNER)}
-                  items={[
-                    { value: NO_PARTNER, label: "Not tracked" },
-                    ...partnerOptions.map((p) => ({ value: p.id, label: p.label })),
-                  ]}
+                  value={editFundingSource}
+                  onValueChange={(v) => setEditFundingSource((v as FundingSource) ?? "NONE")}
                 >
                   <SelectTrigger className="w-full">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value={NO_PARTNER}>Not tracked</SelectItem>
-                    {partnerOptions.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>
-                        {p.label}
-                      </SelectItem>
-                    ))}
+                    <SelectItem value="NONE">Not tracked</SelectItem>
+                    <SelectItem value="PARTNER">Partner</SelectItem>
+                    <SelectItem value="TREASURY">Treasury</SelectItem>
                   </SelectContent>
                 </Select>
+                {editFundingSource === "TREASURY" && (
+                  <p className="text-xs text-muted-foreground">
+                    Treasury balance: {treasuryBalance.toFixed(2)}
+                    {editing?.paidFromTreasury ? " (excluding this entry's current amount)" : ""}
+                  </p>
+                )}
               </div>
+              {editFundingSource === "PARTNER" && (
+                <div className="space-y-2">
+                  <Label>Partner</Label>
+                  <Select
+                    value={editPaidByPartnerId}
+                    onValueChange={(v) => setEditPaidByPartnerId(v ?? NO_PARTNER)}
+                    items={partnerOptions.map((p) => ({ value: p.id, label: p.label }))}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select partner" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {partnerOptions.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               <div className="space-y-2">
                 <Label htmlFor="edit-date">Date</Label>
                 <Input

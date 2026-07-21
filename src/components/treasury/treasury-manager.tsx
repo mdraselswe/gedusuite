@@ -8,11 +8,19 @@ import {
   deleteTreasuryEntry,
 } from "@/server/actions/treasury";
 import { markCashDeposited, unmarkCashDeposited } from "@/server/actions/cash-custody";
+import { createDistribution, deleteDistribution } from "@/server/actions/distributions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -33,6 +41,15 @@ type Entry = {
   partnerName: string | null;
   fromDeposit: boolean;
   fromOrder: boolean;
+  fromPurchase: boolean;
+  fromDistribution: boolean;
+};
+type SharePartner = { id: string; label: string; percent: number };
+type Distribution = {
+  id: string;
+  date: string;
+  totalAmount: number;
+  note: string | null;
 };
 type Overdue = {
   orderId: string;
@@ -62,8 +79,11 @@ const NONE = "__none__";
 
 export function TreasuryManager({
   slug,
+  balance,
   entries,
   partnerOptions,
+  sharePartners,
+  distributions,
   overdue,
   heldCash,
   notDeposited,
@@ -73,6 +93,8 @@ export function TreasuryManager({
   balance: number;
   entries: Entry[];
   partnerOptions: { id: string; label: string }[];
+  sharePartners: SharePartner[];
+  distributions: Distribution[];
   overdue: Overdue[];
   heldCash: HeldCash[];
   notDeposited: NotDeposited[];
@@ -80,6 +102,41 @@ export function TreasuryManager({
 }) {
   const router = useRouter();
   const [depositing, setDepositing] = useState<string | null>(null);
+  const [distOpen, setDistOpen] = useState(false);
+  const [distAmount, setDistAmount] = useState("");
+  const [distLoading, setDistLoading] = useState(false);
+
+  const totalPercent = sharePartners.reduce((s, p) => s + p.percent, 0);
+  const distAmountNum = parseFloat(distAmount) || 0;
+  const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
+  const preview =
+    totalPercent > 0
+      ? sharePartners.map((p) => ({
+          ...p,
+          cut: round2((p.percent / totalPercent) * distAmountNum),
+        }))
+      : [];
+
+  async function onSubmitDistribution(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setDistLoading(true);
+    const fd = new FormData(e.currentTarget);
+    const res = await createDistribution(slug, fd);
+    setDistLoading(false);
+    if (!res.ok) return toast.error(res.error);
+    toast.success("Distributed to partners");
+    setDistOpen(false);
+    setDistAmount("");
+    router.refresh();
+  }
+
+  async function onDeleteDistribution(id: string) {
+    if (!confirm("Delete this whole distribution? Every partner's share from it will be removed too.")) return;
+    const res = await deleteDistribution(slug, id);
+    if (!res.ok) return toast.error(res.error);
+    toast.success("Distribution deleted");
+    router.refresh();
+  }
   const withCourier = notDeposited.filter((o) => o.isCourierCollection);
   const withMembers = notDeposited.filter((o) => !o.isCourierCollection);
   const courierTotal = withCourier.reduce((s, o) => s + o.amount, 0);
@@ -403,6 +460,110 @@ export function TreasuryManager({
         </Card>
       )}
 
+      {/* Distribute treasury cash to partners by profit share */}
+      {canManage && sharePartners.length > 0 && (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
+            <CardTitle className="text-base">Distribute to partners</CardTitle>
+            <Button size="sm" onClick={() => setDistOpen(true)}>
+              Distribute
+            </Button>
+          </CardHeader>
+          {distributions.length > 0 && (
+            <CardContent>
+              <DataTable
+                rows={distributions}
+                rowKey={(d) => d.id}
+                empty={{ title: "No distributions yet" }}
+                columns={
+                  [
+                    { key: "date", header: "Date", cell: (d) => d.date },
+                    { key: "note", header: "Note", cardTitle: true, cell: (d) => d.note ?? "—" },
+                    {
+                      key: "amount",
+                      header: "Amount",
+                      align: "right",
+                      cell: (d) => <span className="font-medium">{d.totalAmount.toFixed(2)}</span>,
+                    },
+                    {
+                      key: "actions",
+                      header: "",
+                      cardFullWidth: true,
+                      cell: (d: Distribution) => (
+                        <Button variant="ghost" size="sm" onClick={() => onDeleteDistribution(d.id)}>
+                          Delete
+                        </Button>
+                      ),
+                    },
+                  ] as Column<Distribution>[]
+                }
+              />
+            </CardContent>
+          )}
+        </Card>
+      )}
+
+      <Dialog open={distOpen} onOpenChange={setDistOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Distribute to partners</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={onSubmitDistribution} className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Treasury balance: <span className="font-medium text-foreground">{balance.toFixed(2)}</span>
+            </p>
+            <div className="space-y-2">
+              <Label htmlFor="dist-amount">Amount to distribute</Label>
+              <Input
+                id="dist-amount"
+                name="amount"
+                type="number"
+                step="0.01"
+                min="0"
+                required
+                value={distAmount}
+                onChange={(e) => setDistAmount(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="dist-date">Date</Label>
+              <Input id="dist-date" name="date" type="date" required defaultValue={new Date().toISOString().slice(0, 10)} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="dist-note">Note (optional)</Label>
+              <Input id="dist-note" name="note" />
+            </div>
+            {distAmountNum > 0 && (
+              <div className="rounded-md bg-muted p-3 text-sm">
+                <div className="mb-2 font-medium">
+                  Preview{totalPercent !== 100 ? ` (shares normalized to ${totalPercent.toFixed(2)}% → 100%)` : ""}
+                </div>
+                <div className="space-y-1">
+                  {preview.map((p) => (
+                    <div key={p.id} className="flex justify-between">
+                      <span className="text-muted-foreground">
+                        {p.label} ({p.percent.toFixed(2)}%)
+                      </span>
+                      <span className="font-medium">{p.cut.toFixed(2)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {distAmountNum > balance && (
+              <p className="text-sm text-destructive">
+                Amount exceeds current treasury balance ({balance.toFixed(2)}).
+              </p>
+            )}
+            <DialogFooter>
+              <Button type="submit" disabled={distLoading || distAmountNum <= 0 || distAmountNum > balance}>
+                {distLoading ? "Distributing…" : "Distribute"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
       {/* Ledger + filters */}
       <div>
         <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -477,6 +638,10 @@ export function TreasuryManager({
                           <span className="text-xs text-muted-foreground">from deposit</span>
                         ) : e.fromOrder ? (
                           <span className="text-xs text-muted-foreground">from order</span>
+                        ) : e.fromPurchase ? (
+                          <span className="text-xs text-muted-foreground">from purchase</span>
+                        ) : e.fromDistribution ? (
+                          <span className="text-xs text-muted-foreground">from distribution</span>
                         ) : (
                           <Button variant="ghost" size="sm" onClick={() => onDelete(e.id)}>
                             Delete

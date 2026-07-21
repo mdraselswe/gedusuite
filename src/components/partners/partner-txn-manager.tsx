@@ -24,6 +24,7 @@ type Txn = {
   type: string;
   amount: number;
   purpose: string | null;
+  fromDistribution: boolean;
 };
 
 const TYPES = ["INVESTMENT", "EXPENSE", "WITHDRAWAL", "DEPOSIT_TO_TREASURY"];
@@ -147,11 +148,14 @@ export function PartnerTxnManager({
                       key: "actions",
                       header: "",
                       cardFullWidth: true,
-                      cell: (t: Txn) => (
-                        <Button variant="ghost" size="sm" onClick={() => onDelete(t.id)}>
-                          Delete
-                        </Button>
-                      ),
+                      cell: (t: Txn) =>
+                        t.fromDistribution ? (
+                          <span className="text-xs text-muted-foreground">from distribution</span>
+                        ) : (
+                          <Button variant="ghost" size="sm" onClick={() => onDelete(t.id)}>
+                            Delete
+                          </Button>
+                        ),
                     },
                   ]
                 : []),

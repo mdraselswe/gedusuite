@@ -166,6 +166,19 @@ export async function deletePartnerTxn(
   // Editing/deleting finance records is OWNER-level (partners "edit").
   const gate = await requireAccess(slug, "partners", "edit");
   if (!gate.ok) return gate;
+
+  const txn = await prisma.partnerTxn.findFirst({
+    where: { id, workspaceId: gate.access.workspaceId },
+    select: { distributionId: true },
+  });
+  if (!txn) return { ok: false, error: "Transaction not found" };
+  if (txn.distributionId) {
+    return {
+      ok: false,
+      error: "This came from a profit distribution — delete the whole distribution instead",
+    };
+  }
+
   await prisma.partnerTxn.deleteMany({
     where: { id, workspaceId: gate.access.workspaceId },
   });

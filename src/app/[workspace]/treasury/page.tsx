@@ -34,25 +34,31 @@ export default async function TreasuryPage({
   const workspaceId = access.workspaceId;
   const canManage = can(access.role, "treasury", "full", access.permissions);
 
-  const [balance, entryCount, entries, partners, overdue, heldCash, due, notDeposited] = await Promise.all([
-    treasuryBalance(workspaceId),
-    prisma.treasuryEntry.count({ where: { workspaceId } }),
-    prisma.treasuryEntry.findMany({
-      where: { workspaceId },
-      orderBy: { date: "desc" },
-      skip: (page - 1) * PAGE_SIZE,
-      take: PAGE_SIZE,
-      include: { partner: { include: { user: { select: { name: true, email: true } } } } },
-    }),
-    prisma.partner.findMany({
-      where: { workspaceId },
-      include: { user: { select: { name: true, email: true } } },
-    }),
-    refreshOverdueAlerts(workspaceId),
-    cashHeldByMember(workspaceId),
-    totalDue(workspaceId),
-    paidNotDeposited(workspaceId),
-  ]);
+  const [balance, entryCount, entries, partners, overdue, heldCash, due, notDeposited, distributions] =
+    await Promise.all([
+      treasuryBalance(workspaceId),
+      prisma.treasuryEntry.count({ where: { workspaceId } }),
+      prisma.treasuryEntry.findMany({
+        where: { workspaceId },
+        orderBy: { date: "desc" },
+        skip: (page - 1) * PAGE_SIZE,
+        take: PAGE_SIZE,
+        include: { partner: { include: { user: { select: { name: true, email: true } } } } },
+      }),
+      prisma.partner.findMany({
+        where: { workspaceId },
+        include: { user: { select: { name: true, email: true } } },
+      }),
+      refreshOverdueAlerts(workspaceId),
+      cashHeldByMember(workspaceId),
+      totalDue(workspaceId),
+      paidNotDeposited(workspaceId),
+      prisma.profitDistribution.findMany({
+        where: { workspaceId },
+        orderBy: { date: "desc" },
+        take: 20,
+      }),
+    ]);
 
   const entryRows = entries.map((e) => ({
     id: e.id,
@@ -64,11 +70,28 @@ export default async function TreasuryPage({
     partnerName: e.partner ? (e.partner.user.name ?? e.partner.user.email) : null,
     fromDeposit: !!e.partnerTxnId,
     fromOrder: !!e.orderId,
+    fromPurchase: !!e.purchaseId || !!e.internalPurchaseId,
+    fromDistribution: !!e.distributionId,
   }));
 
   const partnerOptions = partners.map((p) => ({
     id: p.id,
     label: p.user.name ?? p.user.email,
+  }));
+
+  const sharePartners = partners
+    .filter((p) => Number(p.profitSharePercent) > 0)
+    .map((p) => ({
+      id: p.id,
+      label: p.user.name ?? p.user.email,
+      percent: Number(p.profitSharePercent),
+    }));
+
+  const distributionRows = distributions.map((d) => ({
+    id: d.id,
+    date: d.date.toISOString().slice(0, 10),
+    totalAmount: Number(d.totalAmount),
+    note: d.note,
   }));
 
   return (
@@ -93,6 +116,8 @@ export default async function TreasuryPage({
         balance={balance}
         entries={entryRows}
         partnerOptions={partnerOptions}
+        sharePartners={sharePartners}
+        distributions={distributionRows}
         overdue={overdue}
         heldCash={heldCash}
         notDeposited={notDeposited}

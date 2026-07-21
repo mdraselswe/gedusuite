@@ -3,6 +3,7 @@ import { workspaceAccess } from "@/lib/authz";
 import { can } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
 import { InternalPurchaseManager } from "@/components/internal-purchases/internal-purchase-manager";
+import { treasuryBalance } from "@/lib/finance";
 import { serverT } from "@/lib/session";
 import { Pagination, parsePage } from "@/components/ui/pagination";
 import { PageHeader } from "@/components/ui/page-header";
@@ -30,7 +31,7 @@ export default async function InternalPurchasesPage({
     canEdit: can(access.role, "internal-purchases", "edit", access.permissions),
   };
 
-  const [itemCount, items, partners, allCostQuantities] = await Promise.all([
+  const [itemCount, items, partners, allCostQuantities, treasury] = await Promise.all([
     prisma.internalPurchase.count({ where: { workspaceId: access.workspaceId } }),
     prisma.internalPurchase.findMany({
       where: { workspaceId: access.workspaceId },
@@ -51,6 +52,7 @@ export default async function InternalPurchasesPage({
       where: { workspaceId: access.workspaceId },
       select: { cost: true, quantity: true },
     }),
+    treasuryBalance(access.workspaceId),
   ]);
 
   const rows = items.map((i) => ({
@@ -61,6 +63,7 @@ export default async function InternalPurchasesPage({
     supplierName: i.supplierName,
     paidBy: i.paidByPartner ? (i.paidByPartner.user.name ?? i.paidByPartner.user.email) : null,
     paidByPartnerId: i.paidByPartnerId,
+    paidFromTreasury: i.paidFromTreasury,
     cost: Number(i.cost),
     quantity: i.quantity,
     category: i.category,
@@ -89,6 +92,7 @@ export default async function InternalPurchasesPage({
         slug={slug}
         items={rows}
         partnerOptions={partnerOptions}
+        treasuryBalance={treasury}
         perms={perms}
       />
       <Pagination

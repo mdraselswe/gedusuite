@@ -46,6 +46,7 @@ model Workspace {
   stockAdjustments StockAdjustment[]
   productCategories ProductCategory[]
   userGoogleConnections UserGoogleConnection[]
+  profitDistributions ProfitDistribution[]
 }
 
 model User {
@@ -209,6 +210,7 @@ model Purchase {
   supplierId       String?
   productVariantId String
   paidByPartnerId  String? // which partner's money funded this purchase (optional)
+  paidFromTreasury Boolean   @default(false) // funded from the shared treasury instead of a partner (mutually exclusive with paidByPartnerId)
   date             DateTime  @default(now())
   unitCost         Decimal   @db.Decimal(12, 2)
   quantity         Int
@@ -219,6 +221,7 @@ model Purchase {
   supplier       Supplier?      @relation(fields: [supplierId], references: [id], onDelete: SetNull)
   productVariant ProductVariant @relation(fields: [productVariantId], references: [id], onDelete: Cascade)
   paidByPartner  Partner?       @relation(fields: [paidByPartnerId], references: [id], onDelete: SetNull)
+  treasuryEntry  TreasuryEntry?
 
   @@index([workspaceId])
   @@index([workspaceId, date])
@@ -394,23 +397,26 @@ model Partner {
 }
 
 model PartnerTxn {
-  id          String         @id @default(cuid())
-  workspaceId String
-  partnerId   String
-  type        PartnerTxnType
-  amount      Decimal        @db.Decimal(12, 2)
-  purpose     String?
-  date        DateTime       @default(now())
-  createdAt   DateTime       @default(now())
+  id             String         @id @default(cuid())
+  workspaceId    String
+  partnerId      String
+  type           PartnerTxnType
+  amount         Decimal        @db.Decimal(12, 2)
+  purpose        String?
+  date           DateTime       @default(now())
+  distributionId String? // set when auto-created by a treasury profit distribution (batch, not unique — one distribution fans out to many partner txns)
+  createdAt      DateTime       @default(now())
 
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  partner   Partner   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  workspace    Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  partner      Partner             @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  distribution ProfitDistribution? @relation(fields: [distributionId], references: [id], onDelete: Cascade)
   // A DEPOSIT_TO_TREASURY txn auto-creates one linked treasury entry.
   treasuryEntry TreasuryEntry?
 
   @@index([workspaceId])
   @@index([workspaceId, date])
   @@index([partnerId])
+  @@index([distributionId])
 }
 
 model TreasuryEntry {
@@ -424,16 +430,42 @@ model TreasuryEntry {
   partnerId    String? // which partner this entry is attributed to (optional)
   partnerTxnId String?           @unique // set when auto-created from a partner txn
   orderId      String?           @unique // set when auto-created by "mark cash deposited" on an order
+  purchaseId   String?           @unique // set when auto-created by a treasury-funded product purchase
+  internalPurchaseId String?     @unique // set when auto-created by a treasury-funded internal purchase
+  distributionId String?         @unique // set when auto-created by a treasury profit distribution
   createdAt    DateTime          @default(now())
 
-  workspace   Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  partner     Partner?    @relation(fields: [partnerId], references: [id], onDelete: SetNull)
-  partnerTxn  PartnerTxn? @relation(fields: [partnerTxnId], references: [id], onDelete: Cascade)
-  order       Order?      @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  workspace        Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  partner          Partner?            @relation(fields: [partnerId], references: [id], onDelete: SetNull)
+  partnerTxn       PartnerTxn?         @relation(fields: [partnerTxnId], references: [id], onDelete: Cascade)
+  order            Order?              @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  purchase         Purchase?           @relation(fields: [purchaseId], references: [id], onDelete: SetNull)
+  internalPurchase InternalPurchase?   @relation(fields: [internalPurchaseId], references: [id], onDelete: SetNull)
+  distribution     ProfitDistribution? @relation(fields: [distributionId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId])
   @@index([workspaceId, date])
   @@index([partnerId])
+}
+
+// A single "distribute treasury cash to partners by profit share" batch —
+// one treasury OUT (the whole amount taken out) fanning out to one
+// WITHDRAWAL PartnerTxn per partner (their normalized cut). Grouped under
+// one id so the whole batch is deleted/undone together, never partially.
+model ProfitDistribution {
+  id          String   @id @default(cuid())
+  workspaceId String
+  totalAmount Decimal  @db.Decimal(12, 2)
+  note        String?
+  date        DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  workspace     Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  treasuryEntry TreasuryEntry?
+  partnerTxns   PartnerTxn[]
+
+  @@index([workspaceId])
+  @@index([workspaceId, date])
 }
 
 // ── Phase 4: Internal Purchases (non-sales) ─────────────────────────
@@ -457,11 +489,13 @@ model InternalPurchase {
   quantity        Int             @default(1)
   category        ExpenseCategory @default(OTHER)
   paidByPartnerId String? // which partner's money funded this purchase (optional)
+  paidFromTreasury Boolean        @default(false) // funded from the shared treasury instead of a partner (mutually exclusive with paidByPartnerId)
   date            DateTime        @default(now())
   createdAt       DateTime        @default(now())
 
   workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   paidByPartner Partner?  @relation(fields: [paidByPartnerId], references: [id], onDelete: SetNull)
+  treasuryEntry TreasuryEntry?
 
   @@index([workspaceId])
   @@index([workspaceId, date])

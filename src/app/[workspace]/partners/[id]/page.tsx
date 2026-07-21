@@ -45,6 +45,7 @@ export default async function PartnerDetailPage({
     type: t.type,
     amount: Number(t.amount),
     purpose: t.purpose,
+    fromDistribution: !!t.distributionId,
   }));
 
   const cards: [string, number][] = [
