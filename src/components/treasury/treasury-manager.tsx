@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 import {
   createTreasuryEntry,
   deleteTreasuryEntry,
@@ -131,7 +132,13 @@ export function TreasuryManager({
   }
 
   async function onDeleteDistribution(id: string) {
-    if (!confirm("Delete this whole distribution? Every partner's share from it will be removed too.")) return;
+    const ok = await confirmDialog({
+      title: "Delete distribution?",
+      description: "Every partner's share from this distribution will be removed too.",
+      confirmText: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     const res = await deleteDistribution(slug, id);
     if (!res.ok) return toast.error(res.error);
     toast.success("Distribution deleted");
@@ -152,7 +159,13 @@ export function TreasuryManager({
   }
 
   async function onUnmarkDeposited(orderId: string) {
-    if (!confirm("Undo this deposit? The linked treasury entry will be removed.")) return;
+    const ok = await confirmDialog({
+      title: "Undo deposit?",
+      description: "The linked treasury entry will be removed.",
+      confirmText: "Undo",
+      destructive: true,
+    });
+    if (!ok) return;
     setDepositing(orderId);
     const res = await unmarkCashDeposited(slug, orderId);
     setDepositing(null);
@@ -195,7 +208,13 @@ export function TreasuryManager({
   }
 
   async function onDelete(id: string) {
-    if (!confirm("Delete this entry?")) return;
+    const ok = await confirmDialog({
+      title: "Delete entry?",
+      description: "This treasury entry will be permanently removed.",
+      confirmText: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     const res = await deleteTreasuryEntry(slug, id);
     if (!res.ok) return toast.error(res.error);
     toast.success("Entry deleted");

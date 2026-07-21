@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { updateCustomer, deleteCustomer } from "@/server/actions/customers";
 import { submitOrQueue } from "@/lib/offline-queue";
 import { Button } from "@/components/ui/button";
@@ -84,7 +85,13 @@ export function CustomerManager({
   }
 
   async function onDelete(c: Customer) {
-    if (!confirm(`Delete customer "${c.name}"?`)) return;
+    const ok = await confirmDialog({
+      title: "Delete customer?",
+      description: `"${c.name}" will be permanently deleted.`,
+      confirmText: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     const res = await deleteCustomer(slug, c.id);
     if (!res.ok) return toast.error(res.error);
     toast.success("Customer deleted");

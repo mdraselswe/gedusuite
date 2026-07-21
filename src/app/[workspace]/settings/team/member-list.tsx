@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { updateMemberRole, removeMember } from "@/server/actions/team";
 import { Button } from "@/components/ui/button";
 import {
@@ -44,7 +45,13 @@ export function MemberList({
   }
 
   async function onRemove(membershipId: string, label: string) {
-    if (!confirm(`Remove ${label} from this workspace?`)) return;
+    const ok = await confirmDialog({
+      title: "Remove member?",
+      description: `${label} will lose access to this workspace.`,
+      confirmText: "Remove",
+      destructive: true,
+    });
+    if (!ok) return;
     setBusy(membershipId);
     const res = await removeMember(slug, membershipId);
     setBusy(null);

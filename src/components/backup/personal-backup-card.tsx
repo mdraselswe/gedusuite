@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { personalSyncNow, disconnectPersonal } from "@/server/actions/personal-backup";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -31,7 +32,13 @@ export function PersonalBackupCard({ slug, status }: { slug: string; status: Sta
   }
 
   async function onDisconnect() {
-    if (!confirm("Disconnect personal backup? Your token will be revoked.")) return;
+    const ok = await confirmDialog({
+      title: "Disconnect personal backup?",
+      description: "Your Google token will be revoked. The Sheet and JSON files stay in your Drive.",
+      confirmText: "Disconnect",
+      destructive: true,
+    });
+    if (!ok) return;
     setBusy("disconnect");
     const res = await disconnectPersonal(slug);
     setBusy(null);

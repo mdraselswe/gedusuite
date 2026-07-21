@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { backupNow, previewRestore, applyRestore } from "@/server/actions/backup";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -74,11 +75,22 @@ export function BackupManager({
 
   async function onRestore(mode: "MERGE" | "OVERWRITE") {
     if (!fileText) return;
-    const warn =
+    const ok = await confirmDialog(
       mode === "OVERWRITE"
-        ? "OVERWRITE will delete all current business data and replace it. A safety snapshot is taken first. Continue?"
-        : "MERGE will add rows from the backup that don't already exist. Continue?";
-    if (!confirm(warn)) return;
+        ? {
+            title: "Overwrite all data?",
+            description:
+              "All current business data will be deleted and replaced by the backup. A safety snapshot is taken first.",
+            confirmText: "Overwrite",
+            destructive: true,
+          }
+        : {
+            title: "Merge backup?",
+            description: "Rows from the backup that don't already exist will be added.",
+            confirmText: "Merge",
+          },
+    );
+    if (!ok) return;
     setBusy("restore");
     const res = await applyRestore(slug, fileText, mode);
     setBusy(null);

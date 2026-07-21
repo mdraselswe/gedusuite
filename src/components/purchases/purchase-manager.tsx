@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { updatePurchase, deletePurchase } from "@/server/actions/purchases";
 import { submitOrQueue } from "@/lib/offline-queue";
 import { Button } from "@/components/ui/button";
@@ -168,7 +169,13 @@ export function PurchaseManager({
   }
 
   async function onDelete(id: string) {
-    if (!confirm("Delete this purchase entry?")) return;
+    const ok = await confirmDialog({
+      title: "Delete purchase?",
+      description: "The purchased stock will be removed; a linked treasury deduction (if any) is reversed.",
+      confirmText: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     const res = await deletePurchase(slug, id);
     if (!res.ok) return toast.error(res.error);
     toast.success("Purchase deleted");

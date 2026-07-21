@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 import {
   createPartner,
   updatePartner,
@@ -87,7 +88,13 @@ export function PartnerManager({
   }
 
   async function onDelete(p: PartnerRow) {
-    if (!confirm(`Remove partner "${p.name}"? Their transactions will be deleted.`)) return;
+    const ok = await confirmDialog({
+      title: "Remove partner?",
+      description: `"${p.name}" and all their transactions will be deleted.`,
+      confirmText: "Remove",
+      destructive: true,
+    });
+    if (!ok) return;
     const res = await deletePartner(slug, p.id);
     if (!res.ok) return toast.error(res.error);
     toast.success("Partner removed");

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 import {
   createStockAdjustment,
   deleteStockAdjustment,
@@ -76,7 +77,13 @@ export function StockAdjustmentManager({
   }
 
   async function onDelete(id: string) {
-    if (!confirm("Delete this adjustment?")) return;
+    const ok = await confirmDialog({
+      title: "Delete adjustment?",
+      description: "The stock change from this adjustment will be reversed.",
+      confirmText: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     const res = await deleteStockAdjustment(slug, id);
     if (!res.ok) return toast.error(res.error);
     toast.success("Deleted");

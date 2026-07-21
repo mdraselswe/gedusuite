@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { createPartnerTxn, deletePartnerTxn } from "@/server/actions/partners";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -67,7 +68,13 @@ export function PartnerTxnManager({
   }
 
   async function onDelete(id: string) {
-    if (!confirm("Delete this transaction?")) return;
+    const ok = await confirmDialog({
+      title: "Delete transaction?",
+      description: "This partner transaction will be permanently removed.",
+      confirmText: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     const res = await deletePartnerTxn(slug, id);
     if (!res.ok) return toast.error(res.error);
     toast.success("Transaction deleted");

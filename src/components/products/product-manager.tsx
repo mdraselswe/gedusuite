@@ -4,6 +4,7 @@ import { useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 import {
   createProduct,
   updateProduct,
@@ -233,7 +234,13 @@ export function ProductManager({
   }
 
   async function onDeleteProduct(p: Product) {
-    if (!confirm(`Delete "${p.name}" and all its variants/purchases?`)) return;
+    const ok = await confirmDialog({
+      title: "Delete product?",
+      description: `"${p.name}" and all its variants and purchase history will be permanently deleted.`,
+      confirmText: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     const res = await deleteProduct(slug, p.id);
     if (!res.ok) return toast.error(res.error);
     toast.success("Product deleted");
@@ -241,7 +248,13 @@ export function ProductManager({
   }
 
   async function onDeleteVariant(v: Variant) {
-    if (!confirm("Delete this variant?")) return;
+    const ok = await confirmDialog({
+      title: "Delete variant?",
+      description: "This size/color option will be removed from the product.",
+      confirmText: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     const res = await deleteVariant(slug, v.id);
     if (!res.ok) return toast.error(res.error);
     toast.success("Variant deleted");

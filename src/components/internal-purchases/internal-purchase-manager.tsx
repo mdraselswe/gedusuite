@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 import {
   createInternalPurchase,
   updateInternalPurchase,
@@ -134,7 +135,13 @@ export function InternalPurchaseManager({
   }
 
   async function onDelete(i: Item) {
-    if (!confirm(`Delete "${i.itemName}"?`)) return;
+    const ok = await confirmDialog({
+      title: "Delete entry?",
+      description: `"${i.itemName}" will be deleted; a linked treasury deduction (if any) is reversed.`,
+      confirmText: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     const res = await deleteInternalPurchase(slug, i.id);
     if (!res.ok) return toast.error(res.error);
     toast.success("Deleted");

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 import {
   createSupplier,
   updateSupplier,
@@ -84,7 +85,13 @@ export function SupplierManager({
   }
 
   async function onDelete(s: Supplier) {
-    if (!confirm(`Delete supplier "${s.name}"?`)) return;
+    const ok = await confirmDialog({
+      title: "Delete supplier?",
+      description: `"${s.name}" will be removed. Existing purchases keep their records.`,
+      confirmText: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     const res = await deleteSupplier(slug, s.id);
     if (!res.ok) {
       toast.error(res.error);

@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 import {
   createOrder,
   updateOrderStatus,
@@ -342,7 +343,13 @@ export function OrderManager({
   }
 
   async function onDelete(orderId: string) {
-    if (!confirm("Delete this order?")) return;
+    const ok = await confirmDialog({
+      title: "Delete order?",
+      description: "The order, its items, and any gifts are permanently removed; stock is restored.",
+      confirmText: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     const res = await deleteOrder(slug, orderId);
     if (!res.ok) return toast.error(res.error);
     toast.success("Order deleted");

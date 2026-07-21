@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter, Hind_Siliguri, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/providers";
+import { ConfirmDialogHost } from "@/components/ui/confirm-dialog";
 import { auth } from "@/lib/session";
 import { getUserPrefs } from "@/lib/user-prefs";
 import { isLocale, type Locale } from "@/lib/i18n";
@@ -70,7 +71,10 @@ export default async function RootLayout({
       suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col" suppressHydrationWarning>
-        <Providers prefs={{ theme, preset, locale }}>{children}</Providers>
+        <Providers prefs={{ theme, preset, locale }}>
+          {children}
+          <ConfirmDialogHost />
+        </Providers>
       </body>
     </html>
   );
