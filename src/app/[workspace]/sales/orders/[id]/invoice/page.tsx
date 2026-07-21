@@ -81,7 +81,7 @@ export default async function InvoicePage({
               <img src={workspace.logoUrl} alt={workspace.name} className="h-10 w-auto max-w-28 object-contain" />
             )}
             <div>
-              <h1 className="text-2xl font-bold">{workspace?.name}</h1>
+              <h1 className="text-2xl font-bold text-primary">{workspace?.name}</h1>
               <p className="text-sm text-muted-foreground">Invoice</p>
             </div>
           </div>
