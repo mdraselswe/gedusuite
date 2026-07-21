@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { useSession } from "next-auth/react";
@@ -31,12 +31,21 @@ export function AppearanceForm({
   initial: { theme: string; colorPreset: string; locale: "en" | "bn" };
 }) {
   const router = useRouter();
-  const { setTheme } = useTheme();
+  const { theme: liveTheme, setTheme } = useTheme();
   const { update } = useSession();
   const [theme, setThemeState] = useState(initial.theme);
   const [preset, setPreset] = useState(initial.colorPreset);
   const [locale, setLocale] = useState<"en" | "bn">(initial.locale);
   const [loading, setLoading] = useState(false);
+
+  // The DB value (`initial.theme`) can go stale: picking a theme live-previews
+  // it via next-themes (persisted to localStorage) immediately, before Save
+  // is ever clicked. If the user navigates away without saving, the page
+  // keeps the previewed theme but this form would otherwise keep showing the
+  // old DB value on next load. Sync the dropdown to whatever's really active.
+  useEffect(() => {
+    if (liveTheme) setThemeState(liveTheme);
+  }, [liveTheme]);
 
   function applyPreset(p: string) {
     setPreset(p);
