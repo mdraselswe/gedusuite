@@ -21,7 +21,7 @@ const CATEGORIES = [
 const Schema = z.object({
   itemName: z.string().trim().min(1, "Item name is required").max(160),
   description: z.string().trim().max(500).optional().or(z.literal("")),
-  supplierName: z.string().trim().max(160).optional().or(z.literal("")),
+  supplierId: z.string().optional().or(z.literal("")),
   // Funding source is one of three mutually exclusive states — driven by a
   // single field instead of trying to infer exclusivity from two raw ones.
   fundingSource: z.enum(["NONE", "PARTNER", "TREASURY"]).default("NONE"),
@@ -36,7 +36,7 @@ function parse(formData: FormData) {
   return Schema.safeParse({
     itemName: formData.get("itemName"),
     description: formData.get("description") ?? undefined,
-    supplierName: formData.get("supplierName") ?? undefined,
+    supplierId: formData.get("supplierId") ?? undefined,
     fundingSource: formData.get("fundingSource") ?? "NONE",
     paidByPartnerId: formData.get("paidByPartnerId") ?? undefined,
     cost: formData.get("cost"),
@@ -48,6 +48,16 @@ function parse(formData: FormData) {
 
 const clean = (s?: string) => (s && s.trim() ? s.trim() : null);
 const MODULE = "internal-purchases" as const;
+
+/** Resolve a supplierId to {id, name} within the workspace, or null if none given. */
+async function resolveSupplier(workspaceId: string, supplierId?: string) {
+  if (!supplierId) return null;
+  const supplier = await prisma.supplier.findFirst({
+    where: { id: supplierId, workspaceId },
+    select: { id: true, name: true },
+  });
+  return supplier;
+}
 
 export async function createInternalPurchase(
   slug: string,
@@ -76,6 +86,7 @@ export async function createInternalPurchase(
     paidByPartnerId = partner.id;
   }
   const paidFromTreasury = d.fundingSource === "TREASURY";
+  const supplier = await resolveSupplier(workspaceId, d.supplierId);
 
   const cost = round2(d.cost * d.quantity);
   if (paidFromTreasury) {
@@ -94,7 +105,8 @@ export async function createInternalPurchase(
         workspaceId,
         itemName: d.itemName,
         description: clean(d.description),
-        supplierName: clean(d.supplierName),
+        supplierId: supplier?.id ?? null,
+        supplierName: supplier?.name ?? null,
         paidByPartnerId,
         paidFromTreasury,
         cost: d.cost,
@@ -157,6 +169,7 @@ export async function updateInternalPurchase(
     paidByPartnerId = partner.id;
   }
   const paidFromTreasury = d.fundingSource === "TREASURY";
+  const supplier = await resolveSupplier(workspaceId, d.supplierId);
   const newCost = round2(d.cost * d.quantity);
   const wasTreasuryFunded = existing.paidFromTreasury;
   const oldEntryAmount = existing.treasuryEntry ? Number(existing.treasuryEntry.amount) : 0;
@@ -182,7 +195,8 @@ export async function updateInternalPurchase(
       data: {
         itemName: d.itemName,
         description: clean(d.description),
-        supplierName: clean(d.supplierName),
+        supplierId: supplier?.id ?? null,
+        supplierName: supplier?.name ?? null,
         paidByPartnerId,
         paidFromTreasury,
         cost: d.cost,

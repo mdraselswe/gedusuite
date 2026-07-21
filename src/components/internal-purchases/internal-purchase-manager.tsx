@@ -35,6 +35,7 @@ type Item = {
   date: string;
   itemName: string;
   description: string | null;
+  supplierId: string | null;
   supplierName: string | null;
   paidBy: string | null;
   paidByPartnerId: string | null;
@@ -52,6 +53,8 @@ function fundingSourceOf(i: { paidByPartnerId: string | null; paidFromTreasury: 
   if (i.paidByPartnerId) return "PARTNER";
   return "NONE";
 }
+
+const NO_SUPPLIER = "__none__";
 
 const CATEGORIES = [
   "OFFICE_SUPPLIES",
@@ -71,12 +74,14 @@ const LABEL: Record<string, string> = {
 export function InternalPurchaseManager({
   slug,
   items,
+  suppliers,
   partnerOptions,
   treasuryBalance,
   perms,
 }: {
   slug: string;
   items: Item[];
+  suppliers: { id: string; name: string }[];
   partnerOptions: { id: string; label: string }[];
   treasuryBalance: number;
   perms: Perms;
@@ -85,6 +90,7 @@ export function InternalPurchaseManager({
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Item | null>(null);
   const [category, setCategory] = useState("OTHER");
+  const [supplierId, setSupplierId] = useState(NO_SUPPLIER);
   const [fundingSource, setFundingSource] = useState<FundingSource>("NONE");
   const [paidByPartnerId, setPaidByPartnerId] = useState(NO_PARTNER);
   const [loading, setLoading] = useState(false);
@@ -95,6 +101,7 @@ export function InternalPurchaseManager({
   function openNew() {
     setEditing(null);
     setCategory("OTHER");
+    setSupplierId(NO_SUPPLIER);
     setFundingSource("NONE");
     setPaidByPartnerId(NO_PARTNER);
     setOpen(true);
@@ -102,6 +109,7 @@ export function InternalPurchaseManager({
   function openEdit(i: Item) {
     setEditing(i);
     setCategory(i.category);
+    setSupplierId(i.supplierId ?? NO_SUPPLIER);
     setFundingSource(fundingSourceOf(i));
     setPaidByPartnerId(i.paidByPartnerId ?? NO_PARTNER);
     setOpen(true);
@@ -112,6 +120,7 @@ export function InternalPurchaseManager({
     setLoading(true);
     const fd = new FormData(e.currentTarget);
     fd.set("category", category);
+    fd.set("supplierId", supplierId === NO_SUPPLIER ? "" : supplierId);
     fd.set("fundingSource", fundingSource);
     fd.set("paidByPartnerId", fundingSource === "PARTNER" && paidByPartnerId !== NO_PARTNER ? paidByPartnerId : "");
     const res = editing
@@ -250,8 +259,27 @@ export function InternalPurchaseManager({
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="ip-supplier">Supplier / shop</Label>
-                <Input id="ip-supplier" name="supplierName" defaultValue={editing?.supplierName ?? ""} />
+                <Label>Supplier / shop</Label>
+                <Select
+                  value={supplierId}
+                  onValueChange={(v) => setSupplierId(v ?? NO_SUPPLIER)}
+                  items={[
+                    { value: NO_SUPPLIER, label: "No supplier" },
+                    ...suppliers.map((s) => ({ value: s.id, label: s.name })),
+                  ]}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NO_SUPPLIER}>No supplier</SelectItem>
+                    {suppliers.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
                 <Label>Funding source</Label>
