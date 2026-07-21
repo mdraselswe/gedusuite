@@ -3,8 +3,9 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { updateWorkspaceLogo } from "@/server/actions/workspace";
+import { updateWorkspaceLogo, updateWorkspaceName } from "@/server/actions/workspace";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -44,14 +45,28 @@ function downscaleLogo(file: File): Promise<string> {
 
 export function BrandingForm({
   slug,
+  initialName,
   initialLogoUrl,
 }: {
   slug: string;
+  initialName: string;
   initialLogoUrl: string | null;
 }) {
   const router = useRouter();
+  const [name, setName] = useState(initialName);
+  const [nameSaving, setNameSaving] = useState(false);
   const [logoUrl, setLogoUrl] = useState(initialLogoUrl);
   const [saving, setSaving] = useState(false);
+
+  async function onSaveName(e: React.FormEvent) {
+    e.preventDefault();
+    setNameSaving(true);
+    const res = await updateWorkspaceName(slug, name);
+    setNameSaving(false);
+    if (!res.ok) return toast.error(res.error);
+    toast.success("Name updated");
+    router.refresh();
+  }
 
   async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -85,12 +100,36 @@ export function BrandingForm({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Brand logo</CardTitle>
+        <CardTitle className="text-base">Branding</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-3">
-        <p className="text-sm text-muted-foreground">
-          Shown in the sidebar/header and on invoices and report PDFs, at a standard size.
-        </p>
+      <CardContent className="space-y-5">
+        <form onSubmit={onSaveName} className="space-y-2">
+          <Label htmlFor="ws-name">Business name</Label>
+          <div className="flex flex-wrap gap-2">
+            <Input
+              id="ws-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+              minLength={2}
+              maxLength={100}
+              className="max-w-xs flex-1"
+            />
+            <Button type="submit" disabled={nameSaving || name.trim() === initialName}>
+              {nameSaving ? "Saving…" : "Save"}
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Shown on invoices and in the header when no logo is set. The URL/address stays the same.
+          </p>
+        </form>
+
+        <div className="space-y-2">
+          <Label>Brand logo</Label>
+          <p className="text-sm text-muted-foreground">
+            Shown in the sidebar/header and on invoices and report PDFs, at a standard size.
+          </p>
+        </div>
         <div className="flex flex-wrap items-center gap-4">
           <div className="flex size-16 shrink-0 items-center justify-center rounded-lg border bg-muted/30">
             {logoUrl ? (

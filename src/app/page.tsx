@@ -1,11 +1,19 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/session";
+import { prisma } from "@/lib/prisma";
 import { SignOutButton } from "@/components/sign-out-button";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default async function HomePage() {
   const user = await requireUser();
+  // Display names come fresh from the DB — the JWT membership snapshot only
+  // carries slugs, and names can be renamed at any time.
+  const names = await prisma.workspace.findMany({
+    where: { id: { in: user.memberships.map((m) => m.workspaceId) } },
+    select: { id: true, name: true },
+  });
+  const nameById = new Map(names.map((w) => [w.id, w.name]));
   const workspaces = user.memberships;
 
   return (
@@ -43,7 +51,12 @@ export default async function HomePage() {
               <Link href={`/${w.slug}/dashboard`}>
                 <Card className="transition-colors hover:bg-accent">
                   <CardHeader className="flex-row items-center justify-between">
-                    <CardTitle className="text-base">{w.slug}</CardTitle>
+                    <div className="min-w-0">
+                      <CardTitle className="text-base">
+                        {nameById.get(w.workspaceId) ?? w.slug}
+                      </CardTitle>
+                      <p className="text-xs text-muted-foreground">/{w.slug}</p>
+                    </div>
                     <span className="text-xs font-medium text-muted-foreground">
                       {w.role}
                     </span>

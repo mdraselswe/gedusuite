@@ -25,14 +25,21 @@ export default async function AppearancePage({
       where: { id: session.user.id },
       select: { theme: true, colorPreset: true, locale: true },
     }),
-    prisma.workspace.findUnique({ where: { id: access.workspaceId }, select: { logoUrl: true } }),
+    prisma.workspace.findUnique({
+      where: { id: access.workspaceId },
+      select: { name: true, logoUrl: true },
+    }),
   ]);
 
   return (
     <div className="space-y-6">
       <PageHeader icon={<Palette />} color="fuchsia" title={(await serverT())("appearance")} />
       {access.role === "OWNER" && (
-        <BrandingForm slug={slug} initialLogoUrl={workspace?.logoUrl ?? null} />
+        <BrandingForm
+          slug={slug}
+          initialName={workspace?.name ?? ""}
+          initialLogoUrl={workspace?.logoUrl ?? null}
+        />
       )}
       <AppearanceForm
         initial={{
