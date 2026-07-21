@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { requireAccess } from "@/lib/authz";
 import { buildSnapshot, computeBackupSummary } from "@/lib/backup";
-import { syncSnapshotForUser } from "@/lib/google";
+import { syncSnapshotForUser, uploadJsonBackupToDrive } from "@/lib/google";
 import {
   clientForConnection,
   revokeToken,
@@ -20,6 +20,7 @@ export async function getPersonalStatus(): Promise<{
   configured: boolean;
   connected: boolean;
   sheetUrl: string | null;
+  lastJsonUrl: string | null;
   lastSyncedAt: string | null;
 }> {
   const user = await requireUser();
@@ -28,6 +29,7 @@ export async function getPersonalStatus(): Promise<{
     configured: personalBackupConfigured(),
     connected: !!conn,
     sheetUrl: conn?.sheetId ? `https://docs.google.com/spreadsheets/d/${conn.sheetId}` : null,
+    lastJsonUrl: conn?.lastJsonUrl ?? null,
     lastSyncedAt: conn?.lastSyncedAt?.toISOString().slice(0, 16).replace("T", " ") ?? null,
   };
 }
@@ -55,6 +57,13 @@ export async function personalSyncNow(slug: string): Promise<Result<{ url: strin
     const client = clientForConnection(conn);
     const { sheetId, url } = await syncSnapshotForUser(client, snapshot, summary, conn.sheetId);
 
+    const filename = `gedusuite-backup-${snapshot.exportedAt.slice(0, 10)}.json`;
+    const { url: jsonUrl } = await uploadJsonBackupToDrive(
+      client,
+      JSON.stringify(snapshot, null, 2),
+      filename,
+    );
+
     // Persist any refreshed access token + the (possibly new) sheet id.
     const creds = client.credentials;
     await prisma.userGoogleConnection.update({
@@ -62,6 +71,7 @@ export async function personalSyncNow(slug: string): Promise<Result<{ url: strin
       data: {
         sheetId,
         workspaceId,
+        lastJsonUrl: jsonUrl,
         lastSyncedAt: new Date(),
         ...(creds.access_token ? { accessToken: encrypt(creds.access_token) } : {}),
         ...(creds.expiry_date ? { expiryDate: BigInt(creds.expiry_date) } : {}),

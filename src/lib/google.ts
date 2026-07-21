@@ -291,3 +291,24 @@ export async function syncSnapshotForUser(
 ): Promise<{ sheetId: string; url: string }> {
   return writeFormattedWorkbook(auth, sheetId, snapshot, summary);
 }
+
+/**
+ * Upload a raw JSON snapshot as a new file in the user's own Drive (uses their
+ * personal OAuth token — drive.file scope — so it lands in their own storage,
+ * fully owned/quota-charged to them). A new dated file each run, no overwrite,
+ * so past snapshots stay available as history.
+ */
+export async function uploadJsonBackupToDrive(
+  auth: SheetsAuth,
+  json: string,
+  filename: string,
+): Promise<{ fileId: string; url: string }> {
+  const drive = google.drive({ version: "v3", auth });
+  const created = await drive.files.create({
+    requestBody: { name: filename, mimeType: "application/json" },
+    media: { mimeType: "application/json", body: json },
+    fields: "id",
+  });
+  const fileId = created.data.id!;
+  return { fileId, url: `https://drive.google.com/file/d/${fileId}/view` };
+}

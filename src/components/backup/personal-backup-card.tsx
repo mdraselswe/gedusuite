@@ -12,6 +12,7 @@ type Status = {
   configured: boolean;
   connected: boolean;
   sheetUrl: string | null;
+  lastJsonUrl: string | null;
   lastSyncedAt: string | null;
 };
 
@@ -47,10 +48,10 @@ export function PersonalBackupCard({ slug, status }: { slug: string; status: Sta
       <CardContent className="space-y-3 text-sm">
         <p className="text-muted-foreground">
           Connect <span className="font-medium">your own</span> Google account to keep a
-          personal copy of this workspace&apos;s data in a Sheet in your Drive. Opt-in and
-          separate from the company backup. Once connected, it syncs automatically every day
-          — use &quot;Sync to my Sheet&quot; any time you want it updated immediately instead
-          of waiting for the next scheduled run.
+          personal copy of this workspace&apos;s data — a readable Sheet plus a dated JSON
+          backup file — in your own Drive. Opt-in and separate from the company backup. Once
+          connected, both sync automatically every day — use &quot;Sync to my Sheet&quot; any
+          time you want it updated immediately instead of waiting for the next scheduled run.
         </p>
 
         {!status.configured ? (
@@ -72,6 +73,11 @@ export function PersonalBackupCard({ slug, status }: { slug: string; status: Sta
               {status.sheetUrl && (
                 <a href={status.sheetUrl} target="_blank" rel="noreferrer" className="underline">
                   Open my Sheet
+                </a>
+              )}
+              {status.lastJsonUrl && (
+                <a href={status.lastJsonUrl} target="_blank" rel="noreferrer" className="underline">
+                  Open latest JSON backup
                 </a>
               )}
             </div>

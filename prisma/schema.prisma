@@ -585,6 +585,7 @@ model UserGoogleConnection {
   refreshToken String?     @db.Text // encrypted
   expiryDate   BigInt? // access token expiry (ms epoch)
   sheetId      String? // the user's personal backup spreadsheet
+  lastJsonUrl  String? // most recent JSON snapshot file uploaded to the user's own Drive
   workspaceId  String? // which workspace this sheet backs up (set on connect/sync, used by the auto-sync cron)
   connectedAt  DateTime    @default(now())
   lastSyncedAt DateTime?

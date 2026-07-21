@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { buildSnapshot, computeBackupSummary } from "@/lib/backup";
-import { syncSnapshotForUser } from "@/lib/google";
+import { syncSnapshotForUser, uploadJsonBackupToDrive } from "@/lib/google";
 import { clientForConnection } from "@/lib/google-personal";
 import { encrypt } from "@/lib/crypto";
 
@@ -41,11 +41,19 @@ export async function GET(req: NextRequest) {
       const client = clientForConnection(conn);
       const { sheetId } = await syncSnapshotForUser(client, snapshot, summary, conn.sheetId);
 
+      const filename = `gedusuite-backup-${snapshot.exportedAt.slice(0, 10)}.json`;
+      const { url: jsonUrl } = await uploadJsonBackupToDrive(
+        client,
+        JSON.stringify(snapshot, null, 2),
+        filename,
+      );
+
       const creds = client.credentials;
       await prisma.userGoogleConnection.update({
         where: { userId: conn.userId },
         data: {
           sheetId,
+          lastJsonUrl: jsonUrl,
           lastSyncedAt: new Date(),
           ...(creds.access_token ? { accessToken: encrypt(creds.access_token) } : {}),
           ...(creds.expiry_date ? { expiryDate: BigInt(creds.expiry_date) } : {}),
