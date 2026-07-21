@@ -136,7 +136,11 @@ export default async function InvoicePage({
         <div className="mt-6 ml-auto max-w-xs space-y-1 text-sm">
           <Row label="Item discounts" value={-totals.itemDiscounts} />
           <Row label="Order discount" value={-totals.orderDiscount} />
-          <Row label="Delivery" value={totals.deliveryCharge} />
+          {/* Delivery always shows — a zero/absent charge prints as "Free". */}
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Delivery</span>
+            <span>{totals.deliveryCharge > 0 ? totals.deliveryCharge.toFixed(2) : "Free"}</span>
+          </div>
           <div className="flex justify-between border-t pt-2 text-base font-bold">
             <span>Total</span>
             <span>{totals.customerTotal.toFixed(2)}</span>
