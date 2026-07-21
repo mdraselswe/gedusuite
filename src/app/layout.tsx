@@ -33,6 +33,7 @@ export const metadata: Metadata = {
   title: "GeduSuite",
   description: "Multi-tenant business management PWA",
   manifest: "/manifest.webmanifest",
+  icons: { apple: "/icons/apple-touch-icon.png" },
   appleWebApp: { capable: true, statusBarStyle: "default", title: "GeduSuite" },
 };
 
