@@ -20,6 +20,7 @@ const TAB_SPECS: TabSpec[] = [
     columns: [
       { key: "name", label: "Name" },
       { key: "phone", label: "Phone" },
+      { key: "altPhone", label: "Alt phone" },
       { key: "address", label: "Address" },
       { key: "notes", label: "Notes" },
     ],
@@ -51,6 +52,7 @@ const TAB_SPECS: TabSpec[] = [
     columns: [
       { key: "name", label: "Name" },
       { key: "phone", label: "Phone" },
+      { key: "altPhone", label: "Alt phone" },
       { key: "address", label: "Address" },
     ],
   },
@@ -69,12 +71,30 @@ const TAB_SPECS: TabSpec[] = [
     ],
   },
   {
+    tab: "Order Gifts",
+    table: "orderGifts",
+    columns: [
+      { key: "label", label: "Gift" },
+      { key: "quantity", label: "Quantity" },
+      { key: "unitCost", label: "Unit cost", currency: true },
+    ],
+  },
+  {
     tab: "Partners",
     table: "partners",
     columns: [
       { key: "userId", label: "User" },
       { key: "profitSharePercent", label: "Profit share %" },
       { key: "notes", label: "Notes" },
+    ],
+  },
+  {
+    tab: "Profit Distributions",
+    table: "profitDistributions",
+    columns: [
+      { key: "date", label: "Date", date: true },
+      { key: "totalAmount", label: "Total amount", currency: true },
+      { key: "note", label: "Note" },
     ],
   },
   {

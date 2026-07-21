@@ -48,10 +48,12 @@ export async function buildSnapshot(workspaceId: string): Promise<Snapshot> {
     customers,
     purchases,
     partners,
+    profitDistributions,
     partnerTxns,
     treasuryEntries,
     orders,
     orderItems,
+    orderGifts,
     returns,
     internalPurchases,
   ] = await Promise.all([
@@ -61,10 +63,12 @@ export async function buildSnapshot(workspaceId: string): Promise<Snapshot> {
     prisma.customer.findMany({ where: { workspaceId } }),
     prisma.purchase.findMany({ where: { workspaceId } }),
     prisma.partner.findMany({ where: { workspaceId } }),
+    prisma.profitDistribution.findMany({ where: { workspaceId } }),
     prisma.partnerTxn.findMany({ where: { workspaceId } }),
     prisma.treasuryEntry.findMany({ where: { workspaceId } }),
     prisma.order.findMany({ where: { workspaceId } }),
     prisma.orderItem.findMany({ where: { order: { workspaceId } } }),
+    prisma.orderGift.findMany({ where: { order: { workspaceId } } }),
     prisma.return.findMany({ where: { workspaceId } }),
     prisma.internalPurchase.findMany({ where: { workspaceId } }),
   ]);
@@ -79,10 +83,12 @@ export async function buildSnapshot(workspaceId: string): Promise<Snapshot> {
     customers,
     purchases,
     partners,
+    profitDistributions,
     partnerTxns,
     treasuryEntries,
     orders,
     orderItems,
+    orderGifts,
     returns,
     internalPurchases,
     stockAdjustments,
@@ -158,9 +164,21 @@ export async function restoreSnapshot(
   // Skip partners whose user no longer exists (would violate the FK).
   const partners = force(rows("partners")).filter((p) => userIds.has(p.userId as string));
   const validPartnerIds = new Set(partners.map((p) => p.id as string));
-  const partnerTxns = force(rows("partnerTxns")).filter((x) =>
-    validPartnerIds.has(x.partnerId as string),
-  );
+  const profitDistributions = force(rows("profitDistributions"));
+  // Null dangling distribution links (e.g. backups from before distributions
+  // were included in the snapshot).
+  const validDistributionIds = new Set(profitDistributions.map((d) => d.id as string));
+  const partnerTxns = force(rows("partnerTxns"))
+    .filter((x) => validPartnerIds.has(x.partnerId as string))
+    .map(
+      (x) =>
+        ({
+          ...x,
+          distributionId: validDistributionIds.has(x.distributionId as string)
+            ? x.distributionId
+            : null,
+        }) as Row,
+    );
   const validTxnIds = new Set(partnerTxns.map((x) => x.id as string));
   const treasuryEntries = force(rows("treasuryEntries")).map(
     (e) =>
@@ -168,6 +186,9 @@ export async function restoreSnapshot(
         ...e,
         partnerId: validPartnerIds.has(e.partnerId as string) ? e.partnerId : null,
         partnerTxnId: validTxnIds.has(e.partnerTxnId as string) ? e.partnerTxnId : null,
+        distributionId: validDistributionIds.has(e.distributionId as string)
+          ? e.distributionId
+          : null,
       }) as Row,
   );
   const orders = force(rows("orders")).map(
@@ -180,6 +201,7 @@ export async function restoreSnapshot(
       }) as Row,
   );
   const orderItems = rows("orderItems");
+  const orderGifts = rows("orderGifts");
   const returns = force(rows("returns"));
   const internalPurchases = force(rows("internalPurchases"));
   const stockAdjustments = force(rows("stockAdjustments"));
@@ -191,10 +213,12 @@ export async function restoreSnapshot(
       if (mode === "OVERWRITE") {
         // Delete children → parents.
         await tx.return.deleteMany({ where: { workspaceId } });
+        await tx.orderGift.deleteMany({ where: { order: { workspaceId } } });
         await tx.orderItem.deleteMany({ where: { order: { workspaceId } } });
         await tx.order.deleteMany({ where: { workspaceId } });
         await tx.treasuryEntry.deleteMany({ where: { workspaceId } });
         await tx.partnerTxn.deleteMany({ where: { workspaceId } });
+        await tx.profitDistribution.deleteMany({ where: { workspaceId } });
         await tx.partner.deleteMany({ where: { workspaceId } });
         await tx.stockAdjustment.deleteMany({ where: { workspaceId } });
         await tx.purchase.deleteMany({ where: { workspaceId } });
@@ -227,10 +251,12 @@ export async function restoreSnapshot(
       await insert("customers", tx.customer, customers);
       await insert("purchases", tx.purchase, purchases);
       await insert("partners", tx.partner, partners);
+      await insert("profitDistributions", tx.profitDistribution, profitDistributions);
       await insert("partnerTxns", tx.partnerTxn, partnerTxns);
       await insert("treasuryEntries", tx.treasuryEntry, treasuryEntries);
       await insert("orders", tx.order, orders);
       await insert("orderItems", tx.orderItem, orderItems);
+      await insert("orderGifts", tx.orderGift, orderGifts);
       await insert("returns", tx.return, returns);
       await insert("internalPurchases", tx.internalPurchase, internalPurchases);
       await insert("stockAdjustments", tx.stockAdjustment, stockAdjustments);
