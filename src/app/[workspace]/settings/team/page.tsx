@@ -5,6 +5,8 @@ import { can } from "@/lib/rbac";
 import { revokeInvite } from "@/server/actions/team";
 import { InviteForm } from "./invite-form";
 import { MemberList } from "./member-list";
+import { CopyInviteButton } from "./copy-invite-button";
+import { DangerZone } from "@/components/settings/danger-zone";
 import { serverT } from "@/lib/session";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -22,7 +24,7 @@ export default async function TeamPage({
   // Team/Settings is OWNER-only (TECH_SPEC section 5).
   if (!can(membership.role, "team", "full", undefined)) redirect(`/${slug}/dashboard`);
 
-  const [members, invites] = await Promise.all([
+  const [members, invites, workspace] = await Promise.all([
     prisma.membership.findMany({
       where: { workspaceId: membership.workspaceId },
       include: { user: { select: { name: true, email: true } } },
@@ -31,6 +33,10 @@ export default async function TeamPage({
     prisma.invite.findMany({
       where: { workspaceId: membership.workspaceId, acceptedAt: null },
       orderBy: { createdAt: "desc" },
+    }),
+    prisma.workspace.findUnique({
+      where: { id: membership.workspaceId },
+      select: { name: true },
     }),
   ]);
 
@@ -69,23 +75,28 @@ export default async function TeamPage({
           </CardHeader>
           <CardContent className="space-y-3">
             {invites.map((inv) => (
-              <div key={inv.id} className="flex items-center justify-between text-sm">
-                <div>
-                  <div className="font-medium">{inv.email}</div>
+              <div key={inv.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                <div className="min-w-0">
+                  <div className="font-medium wrap-break-word">{inv.email}</div>
                   <div className="text-muted-foreground">{inv.role}</div>
                 </div>
-                <form action={revokeInvite}>
-                  <input type="hidden" name="slug" value={slug} />
-                  <input type="hidden" name="inviteId" value={inv.id} />
-                  <Button variant="ghost" size="sm" type="submit">
-                    Revoke
-                  </Button>
-                </form>
+                <div className="flex shrink-0 items-center gap-1">
+                  <CopyInviteButton token={inv.token} />
+                  <form action={revokeInvite}>
+                    <input type="hidden" name="slug" value={slug} />
+                    <input type="hidden" name="inviteId" value={inv.id} />
+                    <Button variant="ghost" size="sm" type="submit">
+                      Revoke
+                    </Button>
+                  </form>
+                </div>
               </div>
             ))}
           </CardContent>
         </Card>
       )}
+
+      <DangerZone slug={slug} workspaceName={workspace?.name ?? slug} />
     </div>
   );
 }
