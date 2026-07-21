@@ -23,7 +23,7 @@ const VariantInput = z.object({
 });
 
 const ProductSchema = z.object({
-  name: z.string().trim().min(1, "Name is required").max(160),
+  name: z.string().trim().min(1, "Name is required").max(300),
   category: z.string().trim().max(80).optional().or(z.literal("")),
   sku: z.string().trim().max(60).optional().or(z.literal("")),
   barcode: z.string().trim().max(60).optional().or(z.literal("")),
@@ -229,7 +229,7 @@ const ImportVariant = z.object({
 });
 
 const ImportProduct = z.object({
-  name: z.string().trim().min(1, "Every product needs a name").max(160),
+  name: z.string().trim().min(1, "Every product needs a name").max(300, "Name is too long (max 300 characters)"),
   category: z.string().trim().max(80).optional().or(z.literal("")),
   sku: z.string().trim().max(60).optional().or(z.literal("")),
   barcode: z.string().trim().max(60).optional().or(z.literal("")),
@@ -267,8 +267,20 @@ export async function importProducts(
   const parsed = ImportSchema.safeParse(data);
   if (!parsed.success) {
     const issue = parsed.error.issues[0];
-    const at = issue?.path?.length ? ` (at ${issue.path.join(".")})` : "";
-    return { ok: false, error: `${issue?.message ?? "Invalid format"}${at}` };
+    if (!issue) return { ok: false, error: "Invalid format" };
+    // Point at the exact product so a bad row in a big file is findable:
+    // path is like [24, "name"] — show it as "Product #25, field name".
+    const [idx, ...rest] = issue.path;
+    if (typeof idx === "number") {
+      const row = Array.isArray(data) ? (data[idx] as Record<string, unknown>) : undefined;
+      const label =
+        row && typeof row.name === "string" && row.name
+          ? ` ("${row.name.slice(0, 40)}${row.name.length > 40 ? "…" : ""}")`
+          : "";
+      const field = rest.length ? `, field ${rest.join(".")}` : "";
+      return { ok: false, error: `Product #${idx + 1}${label}${field}: ${issue.message}` };
+    }
+    return { ok: false, error: issue.message };
   }
 
   const existing = await prisma.product.findMany({
