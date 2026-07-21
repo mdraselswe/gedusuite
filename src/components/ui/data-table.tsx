@@ -96,8 +96,10 @@ export function DataTable<T>({
                   key={c.key}
                   className="flex items-center justify-between gap-3 py-0.5 text-sm"
                 >
-                  <span className="text-muted-foreground">{c.header}</span>
-                  <span className={cn(c.align === "right" && "text-right")}>{value}</span>
+                  <span className="shrink-0 text-muted-foreground">{c.header}</span>
+                  <span className={cn("min-w-0", c.align === "right" && "text-right")}>
+                    {value}
+                  </span>
                 </div>
               );
             })}

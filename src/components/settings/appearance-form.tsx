@@ -79,7 +79,7 @@ export function AppearanceForm({
         <div className="space-y-2">
           <Label>Theme</Label>
           <Select value={theme} onValueChange={(v) => applyTheme(v ?? "system")}>
-            <SelectTrigger className="w-full">
+            <SelectTrigger className="h-11 w-full sm:h-8">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -92,14 +92,15 @@ export function AppearanceForm({
 
         <div className="space-y-2">
           <Label>Color</Label>
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-3">
             {PRESETS.map((p) => (
               <button
                 key={p}
                 type="button"
                 onClick={() => applyPreset(p)}
                 aria-label={p}
-                className={`h-8 w-8 rounded-full border-2 ${
+                // Bigger tap target on touch screens, compact on desktop.
+                className={`h-10 w-10 rounded-full border-2 sm:h-8 sm:w-8 ${
                   preset === p ? "border-foreground" : "border-transparent"
                 }`}
                 style={{ backgroundColor: PRESET_COLOR[p] }}
@@ -111,7 +112,7 @@ export function AppearanceForm({
         <div className="space-y-2">
           <Label>Language</Label>
           <Select value={locale} onValueChange={(v) => setLocale((v as "en" | "bn") ?? "en")}>
-            <SelectTrigger className="w-full">
+            <SelectTrigger className="h-11 w-full sm:h-8">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -121,7 +122,7 @@ export function AppearanceForm({
           </Select>
         </div>
 
-        <Button onClick={onSave} disabled={loading}>
+        <Button onClick={onSave} disabled={loading} className="h-11 w-full sm:h-8 sm:w-auto">
           {loading ? "Saving…" : "Save"}
         </Button>
       </CardContent>

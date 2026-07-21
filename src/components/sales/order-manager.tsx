@@ -400,8 +400,8 @@ export function OrderManager({
         }}
         columns={
           [
-            { key: "date", header: "Date", cell: (o) => o.date },
             {
+              // First so the mobile card leads with its title line.
               key: "customer",
               header: "Customer",
               cardTitle: true,
@@ -419,6 +419,7 @@ export function OrderManager({
                 </span>
               ),
             },
+            { key: "date", header: "Date", cell: (o) => o.date },
             {
               key: "status",
               header: "Status",
@@ -444,7 +445,7 @@ export function OrderManager({
               key: "payment",
               header: "Payment",
               cell: (o) => (
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1 md:justify-start">
                   {perms.canEdit ? (
                     <Select
                       value={o.paymentStatus}
@@ -464,7 +465,9 @@ export function OrderManager({
                   ) : (
                     <span>{o.paymentStatus}</span>
                   )}
-                  <span className="text-muted-foreground">· {o.paymentMethod}</span>
+                  <span className="whitespace-nowrap text-muted-foreground">
+                    · {formatEnum(o.paymentMethod)}
+                  </span>
                   {o.totals.returnedUnits > 0 && (
                     <Badge variant="outline">{o.totals.returnedUnits} returned</Badge>
                   )}
@@ -617,8 +620,8 @@ export function OrderManager({
                             </Button>
                           </div>
 
-                          <div className="grid gap-3 lg:grid-cols-[minmax(16rem,1fr)_8rem_6rem_8rem]">
-                            <div className="space-y-2 lg:col-span-1">
+                          <div className="grid grid-cols-3 gap-3 lg:grid-cols-[minmax(16rem,1fr)_8rem_6rem_8rem]">
+                            <div className="col-span-3 space-y-2 lg:col-span-1">
                               <Label>Product</Label>
                               <AsyncCombobox
                                 value={it.variant}
@@ -733,8 +736,8 @@ export function OrderManager({
                                 <Trash2 />
                               </Button>
                             </div>
-                            <div className="grid gap-3 lg:grid-cols-[8rem_minmax(14rem,1fr)_6rem_8rem]">
-                              <div className="space-y-2">
+                            <div className="grid grid-cols-2 gap-3 lg:grid-cols-[8rem_minmax(14rem,1fr)_6rem_8rem]">
+                              <div className="col-span-2 space-y-2 lg:col-span-1">
                                 <Label>Type</Label>
                                 <Select
                                   value={g.mode}
@@ -752,7 +755,7 @@ export function OrderManager({
                                 </Select>
                               </div>
                               {g.mode === "PRODUCT" ? (
-                                <div className="space-y-2">
+                                <div className="col-span-2 space-y-2 lg:col-span-1">
                                   <Label>Product</Label>
                                   <AsyncCombobox
                                     value={g.variant}
@@ -783,7 +786,7 @@ export function OrderManager({
                                   />
                                 </div>
                               ) : (
-                                <div className="space-y-2">
+                                <div className="col-span-2 space-y-2 lg:col-span-1">
                                   <Label>Gift name</Label>
                                   <Input
                                     placeholder="e.g. Keychain, wrapping…"

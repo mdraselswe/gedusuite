@@ -91,7 +91,7 @@ export function BrandingForm({
         <p className="text-sm text-muted-foreground">
           Shown in the sidebar/header and on invoices and report PDFs, at a standard size.
         </p>
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-4">
           <div className="flex size-16 shrink-0 items-center justify-center rounded-lg border bg-muted/30">
             {logoUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
@@ -100,10 +100,10 @@ export function BrandingForm({
               <span className="text-xs text-muted-foreground">None</span>
             )}
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Label
               htmlFor="logo-upload"
-              className="inline-flex h-9 cursor-pointer items-center rounded-md border border-input bg-transparent px-3 text-sm font-medium hover:bg-muted"
+              className="inline-flex h-11 cursor-pointer items-center rounded-md border border-input bg-transparent px-4 text-sm font-medium hover:bg-muted sm:h-9 sm:px-3"
             >
               {saving ? "Saving…" : logoUrl ? "Replace" : "Upload"}
             </Label>
@@ -116,7 +116,13 @@ export function BrandingForm({
               onChange={onFile}
             />
             {logoUrl && (
-              <Button type="button" variant="outline" onClick={onRemove} disabled={saving}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onRemove}
+                disabled={saving}
+                className="h-11 px-4 sm:h-9 sm:px-3"
+              >
                 Remove
               </Button>
             )}

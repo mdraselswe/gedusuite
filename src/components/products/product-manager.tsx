@@ -283,29 +283,29 @@ export function ProductManager({
       ) : (
         <div className="space-y-3">
           {shown.map((p) => (
-            <div key={p.id} className="rounded-lg border p-4">
-              <div className="flex items-start gap-4">
+            <div key={p.id} className="rounded-lg border p-3 sm:p-4">
+              <div className="flex items-start gap-3 sm:gap-4">
                 {p.imageUrl ? (
                   <Image
                     src={p.imageUrl}
                     alt={p.name}
                     width={56}
                     height={56}
-                    className="h-14 w-14 rounded-md object-cover"
+                    className="h-12 w-12 shrink-0 rounded-md object-cover sm:h-14 sm:w-14"
                     unoptimized
                   />
                 ) : (
-                  <div className="flex h-14 w-14 items-center justify-center rounded-md bg-muted text-xs text-muted-foreground">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md bg-muted text-xs text-muted-foreground sm:h-14 sm:w-14">
                     No img
                   </div>
                 )}
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium">{p.name}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <span className="font-medium wrap-break-word">{p.name}</span>
                     {p.category && <Badge variant="secondary">{p.category}</Badge>}
                     {p.expiryTracked && <Badge variant="outline">Expiry tracked</Badge>}
                   </div>
-                  <div className="text-xs text-muted-foreground">
+                  <div className="text-xs wrap-break-word text-muted-foreground">
                     {p.sku && <>SKU {p.sku} · </>}
                     {p.barcode && <>Barcode {p.barcode} · </>}
                     Low-stock ≤ {p.lowStockThreshold}
@@ -340,8 +340,9 @@ export function ProductManager({
                     )}
                   </div>
                 </div>
+                {/* Desktop: action column beside the content */}
                 {perms.canEdit && (
-                  <div className="flex flex-col gap-1">
+                  <div className="hidden shrink-0 flex-col gap-1 sm:flex">
                     <Button variant="ghost" size="sm" onClick={() => openEdit(p)}>
                       Edit
                     </Button>
@@ -361,6 +362,33 @@ export function ProductManager({
                   </div>
                 )}
               </div>
+              {/* Mobile: action row under the content, full card width */}
+              {perms.canEdit && (
+                <div className="mt-3 flex gap-1 border-t pt-2 sm:hidden">
+                  <Button variant="ghost" size="sm" className="flex-1" onClick={() => openEdit(p)}>
+                    Edit
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => {
+                      setVariantFor(p);
+                      setVariantOpen(true);
+                    }}
+                  >
+                    + Variant
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => onDeleteProduct(p)}
+                  >
+                    Delete
+                  </Button>
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -377,7 +405,7 @@ export function ProductManager({
               <Label htmlFor="p-name">Name</Label>
               <Input id="p-name" value={name} onChange={(e) => setName(e.target.value)} required />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label>Category</Label>
                 <Select
@@ -467,7 +495,7 @@ export function ProductManager({
               <div className="space-y-2">
                 <Label>Variants (size / color / SKU)</Label>
                 {draftVariants.map((v, i) => (
-                  <div key={i} className="flex gap-2">
+                  <div key={i} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2">
                     <Input
                       placeholder="Size"
                       value={v.size}
