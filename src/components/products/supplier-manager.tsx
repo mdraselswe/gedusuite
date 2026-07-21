@@ -27,6 +27,7 @@ type Supplier = {
   name: string;
   address: string | null;
   phone: string | null;
+  altPhone: string | null;
   notes: string | null;
 };
 
@@ -49,7 +50,11 @@ export function SupplierManager({
 
   const shown = suppliers.filter((s) => {
     const q = query.toLowerCase();
-    return s.name.toLowerCase().includes(q) || (s.phone ?? "").includes(query);
+    return (
+      s.name.toLowerCase().includes(q) ||
+      (s.phone ?? "").includes(query) ||
+      (s.altPhone ?? "").includes(query)
+    );
   });
 
   function openNew() {
@@ -118,7 +123,20 @@ export function SupplierManager({
         columns={
           [
             { key: "name", header: "Name", cardTitle: true, cell: (s) => s.name },
-            { key: "phone", header: "Phone", cell: (s) => s.phone ?? "—" },
+            {
+              key: "phone",
+              header: "Phone",
+              cell: (s) => (
+                <span>
+                  {s.phone ?? "—"}
+                  {s.altPhone && (
+                    <span className="block text-xs font-normal text-muted-foreground">
+                      {s.altPhone}
+                    </span>
+                  )}
+                </span>
+              ),
+            },
             { key: "address", header: "Address", cell: (s) => s.address ?? "—" },
             ...(perms.canEdit
               ? [
@@ -156,6 +174,10 @@ export function SupplierManager({
             <div className="space-y-2">
               <Label htmlFor="s-phone">Phone</Label>
               <Input id="s-phone" name="phone" defaultValue={editing?.phone ?? ""} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="s-alt-phone">Alternate phone</Label>
+              <Input id="s-alt-phone" name="altPhone" defaultValue={editing?.altPhone ?? ""} />
             </div>
             <div className="space-y-2">
               <Label htmlFor="s-address">Address</Label>

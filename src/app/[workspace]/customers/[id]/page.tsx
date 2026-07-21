@@ -58,6 +58,7 @@ export default async function CustomerDetailPage({
         <h1 className="text-2xl font-bold">{customer.name}</h1>
         <p className="text-sm text-muted-foreground">
           {customer.phone ?? "no phone"}
+          {customer.altPhone ? ` / ${customer.altPhone}` : ""}
           {customer.address ? ` · ${customer.address}` : ""}
         </p>
       </div>

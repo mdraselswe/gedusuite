@@ -147,6 +147,7 @@ model Supplier {
   name        String
   address     String?
   phone       String?
+  altPhone    String?
   notes       String?
   createdAt   DateTime @default(now())
 
@@ -288,6 +289,7 @@ model Customer {
   workspaceId String
   name        String
   phone       String?
+  altPhone    String?
   address     String?
   notes       String?
   createdAt   DateTime @default(now())

@@ -56,6 +56,7 @@ export default async function CustomersPage({
       id: c.id,
       name: c.name,
       phone: c.phone,
+      altPhone: c.altPhone,
       address: c.address,
       notes: c.notes,
       orderCount: c.orders.length,

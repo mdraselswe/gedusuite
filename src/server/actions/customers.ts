@@ -10,6 +10,7 @@ export type ActionResult = { ok: true } | { ok: false; error: string };
 const CustomerSchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(120),
   phone: z.string().trim().max(40).optional().or(z.literal("")),
+  altPhone: z.string().trim().max(40).optional().or(z.literal("")),
   address: z.string().trim().max(300).optional().or(z.literal("")),
   notes: z.string().trim().max(500).optional().or(z.literal("")),
 });
@@ -18,6 +19,7 @@ function parse(formData: FormData) {
   return CustomerSchema.safeParse({
     name: formData.get("name"),
     phone: formData.get("phone") ?? undefined,
+    altPhone: formData.get("altPhone") ?? undefined,
     address: formData.get("address") ?? undefined,
     notes: formData.get("notes") ?? undefined,
   });
@@ -41,6 +43,7 @@ export async function createCustomer(
       workspaceId: gate.access.workspaceId,
       name: d.name,
       phone: clean(d.phone),
+      altPhone: clean(d.altPhone),
       address: clean(d.address),
       notes: clean(d.notes),
     },
@@ -66,6 +69,7 @@ export async function updateCustomer(
     data: {
       name: d.name,
       phone: clean(d.phone),
+      altPhone: clean(d.altPhone),
       address: clean(d.address),
       notes: clean(d.notes),
     },

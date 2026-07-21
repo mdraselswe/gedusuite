@@ -25,6 +25,7 @@ type Customer = {
   id: string;
   name: string;
   phone: string | null;
+  altPhone: string | null;
   address: string | null;
   notes: string | null;
   orderCount: number;
@@ -51,7 +52,8 @@ export function CustomerManager({
   const filtered = customers.filter((c) => {
     const matches =
       c.name.toLowerCase().includes(query.toLowerCase()) ||
-      (c.phone ?? "").includes(query);
+      (c.phone ?? "").includes(query) ||
+      (c.altPhone ?? "").includes(query);
     return matches && (!duesOnly || c.outstanding > 0);
   });
 
@@ -148,7 +150,20 @@ export function CustomerManager({
                 </span>
               ),
             },
-            { key: "phone", header: "Phone", cell: (c) => c.phone ?? "—" },
+            {
+              key: "phone",
+              header: "Phone",
+              cell: (c) => (
+                <span>
+                  {c.phone ?? "—"}
+                  {c.altPhone && (
+                    <span className="block text-xs font-normal text-muted-foreground">
+                      {c.altPhone}
+                    </span>
+                  )}
+                </span>
+              ),
+            },
             { key: "orders", header: "Orders", align: "right", cell: (c) => c.orderCount },
             {
               key: "outstanding",
@@ -212,6 +227,10 @@ export function CustomerManager({
             <div className="space-y-2">
               <Label htmlFor="c-phone">Phone</Label>
               <Input id="c-phone" name="phone" defaultValue={editing?.phone ?? ""} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="c-alt-phone">Alternate phone</Label>
+              <Input id="c-alt-phone" name="altPhone" defaultValue={editing?.altPhone ?? ""} />
             </div>
             <div className="space-y-2">
               <Label htmlFor="c-address">Address</Label>

@@ -11,6 +11,7 @@ const SupplierSchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(120),
   address: z.string().trim().max(300).optional().or(z.literal("")),
   phone: z.string().trim().max(40).optional().or(z.literal("")),
+  altPhone: z.string().trim().max(40).optional().or(z.literal("")),
   notes: z.string().trim().max(500).optional().or(z.literal("")),
 });
 
@@ -19,6 +20,7 @@ function parse(formData: FormData) {
     name: formData.get("name"),
     address: formData.get("address") ?? undefined,
     phone: formData.get("phone") ?? undefined,
+    altPhone: formData.get("altPhone") ?? undefined,
     notes: formData.get("notes") ?? undefined,
   });
 }
@@ -34,13 +36,14 @@ export async function createSupplier(
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
-  const { name, address, phone, notes } = parsed.data;
+  const { name, address, phone, altPhone, notes } = parsed.data;
   await prisma.supplier.create({
     data: {
       workspaceId: gate.access.workspaceId,
       name,
       address: address || null,
       phone: phone || null,
+      altPhone: altPhone || null,
       notes: notes || null,
     },
   });
@@ -60,7 +63,7 @@ export async function updateSupplier(
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
-  const { name, address, phone, notes } = parsed.data;
+  const { name, address, phone, altPhone, notes } = parsed.data;
   // Scope by workspaceId so one workspace can't edit another's rows.
   const result = await prisma.supplier.updateMany({
     where: { id, workspaceId: gate.access.workspaceId },
@@ -68,6 +71,7 @@ export async function updateSupplier(
       name,
       address: address || null,
       phone: phone || null,
+      altPhone: altPhone || null,
       notes: notes || null,
     },
   });
