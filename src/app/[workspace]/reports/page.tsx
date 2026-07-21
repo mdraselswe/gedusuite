@@ -34,7 +34,7 @@ export default async function ReportsPage({
   ]);
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
+    <div className="space-y-6">
       <PageHeader icon={<BarChart3 />} color="teal" title={(await serverT())("reports")} />
       <ReportView
         slug={slug}

@@ -40,7 +40,7 @@ export default async function NotificationsPage({
   }));
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
+    <div className="space-y-6">
       <PageHeader icon={<Bell />} color="blue" title={(await serverT())("notifications")} />
       <NotificationList slug={slug} notifications={rows} />
       <Pagination

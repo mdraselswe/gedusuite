@@ -65,7 +65,7 @@ export default async function CustomersPage({
   });
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className="space-y-6">
       <PageHeader icon={<Users />} color="pink" title={(await serverT())("customers")} />
       <CustomerManager slug={slug} customers={rows} perms={perms} />
       <Pagination

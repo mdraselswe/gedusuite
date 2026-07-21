@@ -62,7 +62,7 @@ export default async function DashboardPage({
   }
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
+    <div className="space-y-6">
       <PageHeader icon={<LayoutDashboard />} color="blue" title={t("dashboard")} />
 
       {(alerts.length > 0 || overdue.length > 0) && (

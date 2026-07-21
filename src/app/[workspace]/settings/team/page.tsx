@@ -35,7 +35,7 @@ export default async function TeamPage({
   ]);
 
   return (
-    <div className="mx-auto max-w-3xl space-y-8">
+    <div className="space-y-8">
       <div>
         <PageHeader icon={<UserCog />} color="slate" title={(await serverT())("team")} />
         <p className="text-sm text-muted-foreground">

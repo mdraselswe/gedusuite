@@ -43,7 +43,7 @@ export default async function BackupSettingsPage({
   }));
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
+    <div className="space-y-6">
       <PageHeader icon={<DatabaseBackup />} color="rose" title={(await serverT())("backupRecovery")} />
       <BackupManager
         slug={slug}

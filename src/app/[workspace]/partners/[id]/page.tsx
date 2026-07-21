@@ -61,7 +61,7 @@ export default async function PartnerDetailPage({
   ];
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
+    <div className="space-y-6">
       <Link href={`/${slug}/partners`} className="text-sm text-muted-foreground underline">
         ← Partners
       </Link>

@@ -84,7 +84,7 @@ export default async function InternalPurchasesPage({
   const totalSpend = allCostQuantities.reduce((s, r) => s + Number(r.cost) * r.quantity, 0);
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className="space-y-6">
       <PageHeader
         icon={<ClipboardList />}
         color="indigo"

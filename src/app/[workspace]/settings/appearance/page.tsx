@@ -29,7 +29,7 @@ export default async function AppearancePage({
   ]);
 
   return (
-    <div className="mx-auto max-w-lg space-y-6">
+    <div className="space-y-6">
       <PageHeader icon={<Palette />} color="fuchsia" title={(await serverT())("appearance")} />
       {access.role === "OWNER" && (
         <BrandingForm slug={slug} initialLogoUrl={workspace?.logoUrl ?? null} />

@@ -50,7 +50,7 @@ export default async function CustomerDetailPage({
     .reduce((s, o) => s + o.totals.customerTotal, 0);
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
+    <div className="space-y-6">
       <Link href={`/${slug}/customers`} className="text-sm text-muted-foreground underline">
         ← Customers
       </Link>

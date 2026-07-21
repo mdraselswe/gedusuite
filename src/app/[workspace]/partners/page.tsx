@@ -71,7 +71,7 @@ export default async function PartnersPage({
     .map((m) => ({ userId: m.userId, label: m.user.name ?? m.user.email }));
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className="space-y-6">
       <PageHeader
         icon={<Handshake />}
         color="cyan"

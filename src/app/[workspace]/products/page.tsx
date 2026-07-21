@@ -95,7 +95,7 @@ export default async function ProductsPage({
   }));
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className="space-y-6">
       <PageHeader icon={<Package />} color="violet" title={(await serverT())("productsSuppliers")} />
       <Tabs defaultValue={page > 1 ? "adjustments" : "products"}>
         <TabsList className="w-full sm:w-fit">
