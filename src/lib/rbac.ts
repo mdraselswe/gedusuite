@@ -116,8 +116,15 @@ export function can(
   return satisfies(effectiveAccess(role, module, permissions), need);
 }
 
-// First path segment -> module, for middleware route gating.
-export function moduleForSegment(segment: string): Module | null {
+// Path segments -> module, for middleware route gating. Settings pages map
+// per sub-page: /settings/team needs team access, /settings/backup needs
+// backup access, and /settings/appearance is open to every member (null).
+export function moduleForSegment(segment: string, subSegment?: string): Module | null {
+  if (segment === "settings") {
+    if (subSegment === "team") return "team";
+    if (subSegment === "backup") return "backup";
+    return null;
+  }
   const map: Record<string, Module> = {
     dashboard: "dashboard",
     products: "products",
@@ -128,7 +135,6 @@ export function moduleForSegment(segment: string): Module | null {
     treasury: "treasury",
     "internal-purchases": "internal-purchases",
     reports: "reports",
-    settings: "team", // /settings/team, /settings/backup gated further in-page
   };
   return map[segment] ?? null;
 }

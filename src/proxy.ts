@@ -54,7 +54,7 @@ export default async function proxy(req: NextRequest) {
   // Enforce module-level access from the RBAC matrix.
   const moduleSegment = segments[1];
   if (moduleSegment) {
-    const mod = moduleForSegment(moduleSegment);
+    const mod = moduleForSegment(moduleSegment, segments[2]);
     if (mod && !can(membership.role, mod, "view")) {
       const url = req.nextUrl.clone();
       url.pathname = `/${slug}/dashboard`;
