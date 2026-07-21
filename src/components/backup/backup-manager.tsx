@@ -3,10 +3,9 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { backupNow, previewRestore, applyRestore, updateDriveFolderId } from "@/server/actions/backup";
+import { backupNow, previewRestore, applyRestore } from "@/server/actions/backup";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTable, type Column } from "@/components/ui/data-table";
@@ -14,7 +13,6 @@ import { DatabaseBackup } from "lucide-react";
 
 type Setting = {
   lastJsonAt: string | null;
-  driveFolderId: string;
 };
 type Log = {
   id: string;
@@ -28,21 +26,16 @@ type Log = {
 export function BackupManager({
   slug,
   canManage,
-  googleConfigured,
-  serviceAccountEmail,
   setting,
   logs,
 }: {
   slug: string;
   canManage: boolean;
-  googleConfigured: boolean;
-  serviceAccountEmail: string | null;
   setting: Setting;
   logs: Log[];
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
-  const [folderId, setFolderId] = useState(setting.driveFolderId);
 
   // Restore state
   const [fileText, setFileText] = useState<string | null>(null);
@@ -62,17 +55,7 @@ export function BackupManager({
     a.download = res.filename;
     a.click();
     URL.revokeObjectURL(url);
-    toast.success(res.driveUrl ? "Backup downloaded + uploaded to Drive" : "Backup downloaded");
-    router.refresh();
-  }
-
-  async function onSaveFolder(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setBusy("folder");
-    const res = await updateDriveFolderId(slug, folderId);
-    setBusy(null);
-    if (!res.ok) return toast.error(res.error);
-    toast.success("Drive folder saved");
+    toast.success("Backup downloaded");
     router.refresh();
   }
 
@@ -113,59 +96,12 @@ export function BackupManager({
       {/* Status */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Connection</CardTitle>
+          <CardTitle className="text-base">Status</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-2 text-sm">
-          <div className="flex items-center gap-2">
-            Google integration:{" "}
-            <Badge variant={googleConfigured ? "secondary" : "outline"}>
-              {googleConfigured ? "Connected" : "Not configured"}
-            </Badge>
-          </div>
-          {!googleConfigured && (
-            <p className="text-muted-foreground">
-              Set <code>GOOGLE_SERVICE_ACCOUNT_JSON</code> on the server to also upload each
-              JSON backup to Drive automatically. Backup & restore below work without it.
-            </p>
-          )}
-          <div className="text-muted-foreground">Last JSON backup: {setting.lastJsonAt ?? "never"}</div>
+        <CardContent className="text-sm text-muted-foreground">
+          Last JSON backup: {setting.lastJsonAt ?? "never"}
         </CardContent>
       </Card>
-
-      {/* Drive folder — only meaningful once a service account is configured */}
-      {googleConfigured && canManage && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Drive backup folder</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3 text-sm">
-            <p className="text-muted-foreground">
-              Service accounts have no Drive storage of their own — create a folder in{" "}
-              <span className="font-medium">your</span> Drive, share it with{" "}
-              {serviceAccountEmail ? (
-                <code className="font-medium">{serviceAccountEmail}</code>
-              ) : (
-                "the service account"
-              )}{" "}
-              as Editor, then paste its folder ID below. Every JSON backup will upload there.
-            </p>
-            <form onSubmit={onSaveFolder} className="flex flex-wrap items-end gap-2">
-              <div className="flex-1 space-y-2">
-                <Label htmlFor="folderId">Drive folder ID</Label>
-                <Input
-                  id="folderId"
-                  value={folderId}
-                  onChange={(e) => setFolderId(e.target.value)}
-                  placeholder="from the folder's URL: drive.google.com/drive/folders/<id>"
-                />
-              </div>
-              <Button type="submit" disabled={busy !== null}>
-                {busy === "folder" ? "Saving…" : "Save"}
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Actions */}
       {canManage && (

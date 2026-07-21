@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { buildSnapshot } from "@/lib/backup";
-import { isGoogleConfigured, uploadJsonToDrive } from "@/lib/google";
 
 const KEEP = 10;
 
@@ -19,7 +18,7 @@ export async function GET(req: NextRequest) {
 
   const settings = await prisma.backupSetting.findMany({
     where: { autoJson: true },
-    select: { workspaceId: true, driveFolderId: true },
+    select: { workspaceId: true },
   });
 
   const results: { workspaceId: string; status: string }[] = [];
@@ -30,20 +29,6 @@ export async function GET(req: NextRequest) {
       const snapshot = await buildSnapshot(workspaceId);
       const json = JSON.stringify(snapshot);
 
-      let fileUrl: string | null = null;
-      if (isGoogleConfigured()) {
-        try {
-          const up = await uploadJsonToDrive(
-            `gedusuite-backup-${snapshot.exportedAt.slice(0, 10)}.json`,
-            json,
-            s.driveFolderId ?? null,
-          );
-          fileUrl = up.url;
-        } catch {
-          fileUrl = null;
-        }
-      }
-
       await prisma.backupLog.create({
         data: {
           workspaceId,
@@ -51,7 +36,6 @@ export async function GET(req: NextRequest) {
           status: "SUCCESS",
           triggeredBy: null,
           error: "scheduled",
-          fileUrl,
           payload: json,
         },
       });

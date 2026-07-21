@@ -7,11 +7,9 @@ import {
   buildSnapshot,
   validateSnapshot,
   restoreSnapshot,
-  computeBackupSummary,
   type RestoreMode,
   type SnapshotCounts,
 } from "@/lib/backup";
-import { isGoogleConfigured, uploadJsonToDrive } from "@/lib/google";
 
 export type BackupResult<T = unknown> =
   | ({ ok: true } & T)
@@ -44,7 +42,7 @@ async function pruneJsonPayloads(workspaceId: string) {
 /** Manual JSON backup — returns the JSON so the client can download it. */
 export async function backupNow(
   slug: string,
-): Promise<BackupResult<{ json: string; filename: string; driveUrl: string | null }>> {
+): Promise<BackupResult<{ json: string; filename: string }>> {
   const gate = await requireAccess(slug, "backup", "full");
   if (!gate.ok) return gate;
   const workspaceId = gate.access.workspaceId;
@@ -54,30 +52,12 @@ export async function backupNow(
     const json = JSON.stringify(snapshot, null, 2);
     const filename = `gedusuite-backup-${snapshot.exportedAt.slice(0, 10)}.json`;
 
-    // Optionally push to Drive if configured + a folder is set.
-    let driveUrl: string | null = null;
-    let driveError: string | null = null;
-    const setting = await prisma.backupSetting.findUnique({ where: { workspaceId } });
-    if (isGoogleConfigured()) {
-      try {
-        const up = await uploadJsonToDrive(filename, json, setting?.driveFolderId ?? null);
-        driveUrl = up.url;
-      } catch (e) {
-        // Drive upload failure shouldn't block the local download, but it
-        // should be visible somewhere — otherwise a wrong/unshared folder id
-        // fails silently forever.
-        driveError = e instanceof Error ? e.message : "Unknown Drive error";
-      }
-    }
-
     await prisma.backupLog.create({
       data: {
         workspaceId,
         type: "JSON",
         status: "SUCCESS",
         triggeredBy: gate.access.userId,
-        fileUrl: driveUrl,
-        error: driveError ? `Drive upload failed: ${driveError}` : null,
         payload: json,
       },
     });
@@ -89,7 +69,7 @@ export async function backupNow(
     await pruneJsonPayloads(workspaceId);
 
     revalidatePath(`/${slug}/settings/backup`);
-    return { ok: true, json, filename, driveUrl };
+    return { ok: true, json, filename };
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Unknown error";
     await prisma.backupLog.create({
@@ -98,25 +78,6 @@ export async function backupNow(
     await alertFailure(workspaceId, `JSON backup failed: ${msg}`);
     return { ok: false, error: msg };
   }
-}
-
-/** Set which Drive folder JSON backups get uploaded into. */
-export async function updateDriveFolderId(
-  slug: string,
-  folderId: string,
-): Promise<BackupResult> {
-  const gate = await requireAccess(slug, "backup", "full");
-  if (!gate.ok) return gate;
-  const workspaceId = gate.access.workspaceId;
-
-  const trimmed = folderId.trim() || null;
-  await prisma.backupSetting.upsert({
-    where: { workspaceId },
-    create: { workspaceId, driveFolderId: trimmed },
-    update: { driveFolderId: trimmed },
-  });
-  revalidatePath(`/${slug}/settings/backup`);
-  return { ok: true };
 }
 
 /** Validate an uploaded JSON string and return per-table counts (no changes). */

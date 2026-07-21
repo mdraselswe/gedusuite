@@ -2,46 +2,11 @@ import { google } from "googleapis";
 import type { Snapshot } from "@/lib/backup";
 
 /**
- * Company-level Google integration uses a service account
- * (GOOGLE_SERVICE_ACCOUNT_JSON). Personal per-user backup uses each user's own
- * OAuth token (see google-personal.ts). Both write through the SAME formatter
- * below so the sheets stay visually identical.
+ * Personal per-user backup uses each user's own OAuth token (see
+ * google-personal.ts) and writes through the formatter below.
  */
-export function isGoogleConfigured(): boolean {
-  return !!process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
-}
-
-/** The service account's email — share a Drive folder with this to let it upload there. */
-export function serviceAccountEmail(): string | null {
-  const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
-  if (!raw) return null;
-  try {
-    const { client_email } = JSON.parse(raw);
-    return typeof client_email === "string" ? client_email : null;
-  } catch {
-    return null;
-  }
-}
-
-const SCOPES = [
-  "https://www.googleapis.com/auth/spreadsheets",
-  "https://www.googleapis.com/auth/drive",
-];
-
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type SheetsAuth = any;
-
-function serviceAuth() {
-  const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
-  if (!raw) throw new Error("Google integration is not configured");
-  let credentials: Record<string, unknown>;
-  try {
-    credentials = JSON.parse(raw);
-  } catch {
-    throw new Error("GOOGLE_SERVICE_ACCOUNT_JSON is not valid JSON");
-  }
-  return new google.auth.GoogleAuth({ credentials, scopes: SCOPES });
-}
 
 // ── Tab / column specification ──────────────────────────────────────
 
@@ -325,26 +290,4 @@ export async function syncSnapshotForUser(
   sheetId: string | null,
 ): Promise<{ sheetId: string; url: string }> {
   return writeFormattedWorkbook(auth, sheetId, snapshot, summary);
-}
-
-/** Upload a JSON snapshot file to Drive (company service account). */
-export async function uploadJsonToDrive(
-  filename: string,
-  json: string,
-  folderId: string | null,
-): Promise<{ fileId: string; url: string }> {
-  const drive = google.drive({ version: "v3", auth: serviceAuth() });
-  const res = await drive.files.create({
-    requestBody: {
-      name: filename,
-      mimeType: "application/json",
-      ...(folderId ? { parents: [folderId] } : {}),
-    },
-    media: { mimeType: "application/json", body: json },
-    fields: "id, webViewLink",
-  });
-  return {
-    fileId: res.data.id!,
-    url: res.data.webViewLink ?? `https://drive.google.com/file/d/${res.data.id}`,
-  };
 }
