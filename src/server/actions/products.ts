@@ -219,3 +219,118 @@ export async function deleteVariant(
   revalidatePath(`/${slug}/products`);
   return { ok: true };
 }
+
+// ── Bulk JSON import ─────────────────────────────────────────────────
+
+const ImportVariant = z.object({
+  size: z.string().trim().max(60).optional().or(z.literal("")),
+  color: z.string().trim().max(60).optional().or(z.literal("")),
+  sku: z.string().trim().max(60).optional().or(z.literal("")),
+});
+
+const ImportProduct = z.object({
+  name: z.string().trim().min(1, "Every product needs a name").max(160),
+  category: z.string().trim().max(80).optional().or(z.literal("")),
+  sku: z.string().trim().max(60).optional().or(z.literal("")),
+  barcode: z.string().trim().max(60).optional().or(z.literal("")),
+  expiryTracked: z.boolean().optional().default(false),
+  lowStockThreshold: z.coerce.number().int().min(0).max(100000).optional().default(5),
+  variants: z.array(ImportVariant).max(50).optional().default([]),
+});
+
+const ImportSchema = z.array(ImportProduct).min(1, "The file has no products").max(500, "Max 500 products per import");
+
+export type ImportResult =
+  | { ok: true; created: number; skipped: string[] }
+  | { ok: false; error: string };
+
+/**
+ * Bulk-create products from a JSON array (see the import dialog for the
+ * documented format). Products whose name already exists in the workspace
+ * (case-insensitive) are skipped, so re-running the same file is safe.
+ * Unknown categories are added to the workspace's category list.
+ */
+export async function importProducts(
+  slug: string,
+  jsonString: string,
+): Promise<ImportResult> {
+  const gate = await requireAccess(slug, "products", "add");
+  if (!gate.ok) return gate;
+  const workspaceId = gate.access.workspaceId;
+
+  let data: unknown;
+  try {
+    data = JSON.parse(jsonString);
+  } catch {
+    return { ok: false, error: "File is not valid JSON" };
+  }
+  const parsed = ImportSchema.safeParse(data);
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    const at = issue?.path?.length ? ` (at ${issue.path.join(".")})` : "";
+    return { ok: false, error: `${issue?.message ?? "Invalid format"}${at}` };
+  }
+
+  const existing = await prisma.product.findMany({
+    where: { workspaceId },
+    select: { name: true },
+  });
+  const existingNames = new Set(existing.map((p) => p.name.toLowerCase()));
+
+  const skipped: string[] = [];
+  const toCreate: typeof parsed.data = [];
+  const seenInFile = new Set<string>();
+  for (const p of parsed.data) {
+    const key = p.name.toLowerCase();
+    if (existingNames.has(key) || seenInFile.has(key)) {
+      skipped.push(p.name);
+      continue;
+    }
+    seenInFile.add(key);
+    toCreate.push(p);
+  }
+
+  const categories = [
+    ...new Set(toCreate.map((p) => clean(p.category)).filter((c): c is string => !!c)),
+  ];
+
+  await prisma.$transaction(
+    async (tx) => {
+      // Keep the category dropdown consistent with imported values.
+      if (categories.length) {
+        await tx.productCategory.createMany({
+          data: categories.map((name) => ({ workspaceId, name })),
+          skipDuplicates: true,
+        });
+      }
+      for (const p of toCreate) {
+        const meaningful = (p.variants ?? []).filter((v) => v.size || v.color || v.sku);
+        await tx.product.create({
+          data: {
+            workspaceId,
+            name: p.name,
+            category: clean(p.category),
+            sku: clean(p.sku),
+            barcode: clean(p.barcode),
+            expiryTracked: p.expiryTracked ?? false,
+            lowStockThreshold: p.lowStockThreshold ?? 5,
+            variants: {
+              create:
+                meaningful.length > 0
+                  ? meaningful.map((v) => ({
+                      size: clean(v.size),
+                      color: clean(v.color),
+                      sku: clean(v.sku),
+                    }))
+                  : [{ size: null, color: null, sku: null }],
+            },
+          },
+        });
+      }
+    },
+    { timeout: 60_000 },
+  );
+
+  revalidatePath(`/${slug}/products`);
+  return { ok: true, created: toCreate.length, skipped };
+}

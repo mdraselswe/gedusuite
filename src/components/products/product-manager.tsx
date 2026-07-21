@@ -33,6 +33,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { EmptyState } from "@/components/ui/empty-state";
+import { ProductImportDialog } from "@/components/products/product-import-dialog";
 import { Package } from "lucide-react";
 
 const ADD_NEW_CATEGORY = "__add_new__";
@@ -281,9 +282,12 @@ export function ProductManager({
           className="max-w-xs"
         />
         {perms.canAdd && (
-          <Button size="sm" onClick={openNew}>
-            + Add product
-          </Button>
+          <div className="flex items-center gap-2">
+            <ProductImportDialog slug={slug} />
+            <Button size="sm" onClick={openNew}>
+              + Add product
+            </Button>
+          </div>
         )}
       </div>
 
