@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { can } from "@/lib/rbac";
 import { revokeInvite } from "@/server/actions/team";
 import { InviteForm } from "./invite-form";
+import { MemberList } from "./member-list";
 import { serverT } from "@/lib/session";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -48,16 +49,16 @@ export default async function TeamPage({
         <CardHeader>
           <CardTitle className="text-base">Members ({members.length})</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3">
-          {members.map((m) => (
-            <div key={m.id} className="flex items-center justify-between text-sm">
-              <div>
-                <div className="font-medium">{m.user.name ?? m.user.email}</div>
-                <div className="text-muted-foreground">{m.user.email}</div>
-              </div>
-              <span className="text-xs font-medium text-muted-foreground">{m.role}</span>
-            </div>
-          ))}
+        <CardContent>
+          <MemberList
+            slug={slug}
+            members={members.map((m) => ({
+              id: m.id,
+              role: m.role,
+              name: m.user.name ?? m.user.email,
+              email: m.user.email,
+            }))}
+          />
         </CardContent>
       </Card>
 

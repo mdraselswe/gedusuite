@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
+import { requireAccess } from "@/lib/authz";
 import { can } from "@/lib/rbac";
 import type { Role } from "@prisma/client";
 
@@ -79,6 +80,54 @@ export async function inviteMember(formData: FormData): Promise<InviteResult> {
     // No email service in Phase 0 — hand the link back so the OWNER can share it.
     inviteUrl: `/invite/${token}`,
   };
+}
+
+export type Result = { ok: true } | { ok: false; error: string };
+
+/** OWNER-only: change a member's role. Blocked if it would leave the workspace with no Owner. */
+export async function updateMemberRole(
+  slug: string,
+  membershipId: string,
+  role: Role,
+): Promise<Result> {
+  const gate = await requireAccess(slug, "team", "full");
+  if (!gate.ok) return gate;
+  const workspaceId = gate.access.workspaceId;
+
+  const target = await prisma.membership.findUnique({ where: { id: membershipId } });
+  if (!target || target.workspaceId !== workspaceId) {
+    return { ok: false, error: "Member not found" };
+  }
+
+  if (target.role === "OWNER" && role !== "OWNER") {
+    const ownerCount = await prisma.membership.count({ where: { workspaceId, role: "OWNER" } });
+    if (ownerCount <= 1) return { ok: false, error: "Workspace must have at least one Owner" };
+  }
+
+  await prisma.membership.update({ where: { id: membershipId }, data: { role } });
+  revalidatePath(`/${slug}/settings/team`);
+  return { ok: true };
+}
+
+/** OWNER-only: remove a member. Blocked if the target is the workspace's only Owner. */
+export async function removeMember(slug: string, membershipId: string): Promise<Result> {
+  const gate = await requireAccess(slug, "team", "full");
+  if (!gate.ok) return gate;
+  const workspaceId = gate.access.workspaceId;
+
+  const target = await prisma.membership.findUnique({ where: { id: membershipId } });
+  if (!target || target.workspaceId !== workspaceId) {
+    return { ok: false, error: "Member not found" };
+  }
+
+  if (target.role === "OWNER") {
+    const ownerCount = await prisma.membership.count({ where: { workspaceId, role: "OWNER" } });
+    if (ownerCount <= 1) return { ok: false, error: "Workspace must have at least one Owner" };
+  }
+
+  await prisma.membership.delete({ where: { id: membershipId } });
+  revalidatePath(`/${slug}/settings/team`);
+  return { ok: true };
 }
 
 export async function revokeInvite(formData: FormData): Promise<void> {
