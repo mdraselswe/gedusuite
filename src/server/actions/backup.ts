@@ -18,9 +18,9 @@ export type BackupResult<T = unknown> =
 const KEEP_JSON_PAYLOADS = 10;
 
 /** Notify the workspace (Owner sees it) when a backup/restore fails. */
-async function alertFailure(workspaceId: string, message: string) {
+async function alertFailure(workspaceId: string, slug: string, message: string) {
   await prisma.notification.create({
-    data: { workspaceId, type: "GENERAL", message },
+    data: { workspaceId, type: "GENERAL", message, link: `/${slug}/settings/backup` },
   });
 }
 
@@ -75,7 +75,7 @@ export async function backupNow(
     await prisma.backupLog.create({
       data: { workspaceId, type: "JSON", status: "FAILED", triggeredBy: gate.access.userId, error: msg },
     });
-    await alertFailure(workspaceId, `JSON backup failed: ${msg}`);
+    await alertFailure(workspaceId, slug, `JSON backup failed: ${msg}`);
     return { ok: false, error: msg };
   }
 }
@@ -139,6 +139,7 @@ export async function applyRestore(
         workspaceId,
         type: "GENERAL",
         message: `Restore completed (${mode.toLowerCase()})`,
+        link: `/${slug}/settings/backup`,
       },
     });
     revalidatePath(`/${slug}/settings/backup`);
@@ -148,7 +149,7 @@ export async function applyRestore(
     await prisma.backupLog.create({
       data: { workspaceId, type: "JSON", status: "FAILED", triggeredBy: gate.access.userId, error: `restore: ${msg}` },
     });
-    await alertFailure(workspaceId, `Restore failed: ${msg}`);
+    await alertFailure(workspaceId, slug, `Restore failed: ${msg}`);
     return { ok: false, error: msg };
   }
 }

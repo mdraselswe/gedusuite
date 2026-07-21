@@ -246,6 +246,7 @@ model Notification {
   workspaceId String
   type        NotificationType
   message     String
+  link        String? // in-app path this notification points at (clicking navigates there)
   dedupeKey   String? // stable key so recurring alerts upsert instead of duplicating
   read        Boolean          @default(false)
   createdAt   DateTime         @default(now())

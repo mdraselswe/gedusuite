@@ -326,7 +326,10 @@ export async function paidNotDeposited(workspaceId: string): Promise<PaidNotDepo
 export async function refreshOverdueAlerts(
   workspaceId: string,
 ): Promise<OverdueOrder[]> {
-  const overdue = await overdueOrders(workspaceId);
+  const [overdue, ws] = await Promise.all([
+    overdueOrders(workspaceId),
+    prisma.workspace.findUnique({ where: { id: workspaceId }, select: { slug: true } }),
+  ]);
   const liveKeys = overdue.map((o) => `overdue:${o.orderId}`);
 
   await prisma.$transaction([
@@ -339,10 +342,12 @@ export async function refreshOverdueAlerts(
           workspaceId,
           type: "OVERDUE_PAYMENT",
           message: `Overdue: ${o.customerName} owes ${o.amount.toFixed(2)} (${o.daysOverdue}d)${o.heldByName ? ` — held by ${o.heldByName}` : ""}`,
+          link: ws ? `/${ws.slug}/sales/orders/${o.orderId}/invoice` : null,
           dedupeKey: `overdue:${o.orderId}`,
         },
         update: {
           message: `Overdue: ${o.customerName} owes ${o.amount.toFixed(2)} (${o.daysOverdue}d)${o.heldByName ? ` — held by ${o.heldByName}` : ""}`,
+          link: ws ? `/${ws.slug}/sales/orders/${o.orderId}/invoice` : null,
         },
       }),
     ),

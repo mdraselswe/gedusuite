@@ -169,8 +169,12 @@ export async function computeInventoryAlerts(
 export async function refreshInventoryAlerts(
   workspaceId: string,
 ): Promise<InventoryAlert[]> {
-  const alerts = await computeInventoryAlerts(workspaceId);
+  const [alerts, ws] = await Promise.all([
+    computeInventoryAlerts(workspaceId),
+    prisma.workspace.findUnique({ where: { id: workspaceId }, select: { slug: true } }),
+  ]);
   const liveKeys = new Set(alerts.map((a) => a.dedupeKey));
+  const link = ws ? `/${ws.slug}/products` : null;
 
   await prisma.$transaction([
     ...alerts.map((a) =>
@@ -180,9 +184,10 @@ export async function refreshInventoryAlerts(
           workspaceId,
           type: a.type,
           message: a.message,
+          link,
           dedupeKey: a.dedupeKey,
         },
-        update: { message: a.message, type: a.type },
+        update: { message: a.message, type: a.type, link },
       }),
     ),
     // Clear resolved inventory alerts (stock replenished / lot consumed).

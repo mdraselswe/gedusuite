@@ -30,3 +30,16 @@ export async function markAllNotificationsRead(slug: string): Promise<ActionResu
   revalidatePath(`/${slug}/notifications`);
   return { ok: true };
 }
+
+/** Delete all read notifications — keeps the list from piling up forever. */
+export async function clearReadNotifications(
+  slug: string,
+): Promise<ActionResult & { deleted?: number }> {
+  const access = await workspaceAccess(slug);
+  if (!access) return { ok: false, error: "Access denied" };
+  const res = await prisma.notification.deleteMany({
+    where: { workspaceId: access.workspaceId, read: true },
+  });
+  revalidatePath(`/${slug}/notifications`);
+  return { ok: true, deleted: res.count };
+}

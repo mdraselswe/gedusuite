@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
     try {
       const ws = await prisma.workspace.findUnique({
         where: { id: workspaceId },
-        select: { name: true },
+        select: { name: true, slug: true },
       });
       const [snapshot, summary] = await Promise.all([
         buildSnapshot(workspaceId),
@@ -85,10 +85,13 @@ export async function GET(req: NextRequest) {
           error: `scheduled (personal): ${msg}`,
         },
       });
-      const user = await prisma.user.findUnique({
-        where: { id: conn.userId },
-        select: { name: true, email: true },
-      });
+      const [user, wsFail] = await Promise.all([
+        prisma.user.findUnique({
+          where: { id: conn.userId },
+          select: { name: true, email: true },
+        }),
+        prisma.workspace.findUnique({ where: { id: workspaceId }, select: { slug: true } }),
+      ]);
       await prisma.notification.upsert({
         where: { workspaceId_dedupeKey: { workspaceId, dedupeKey: `personal-backup-failed:${conn.userId}` } },
         create: {
@@ -96,9 +99,11 @@ export async function GET(req: NextRequest) {
           type: "GENERAL",
           dedupeKey: `personal-backup-failed:${conn.userId}`,
           message: `Personal backup sync failed for ${user?.name ?? user?.email ?? "a user"}: ${msg}. They should reconnect from Settings → Backup if this keeps happening.`,
+          link: wsFail ? `/${wsFail.slug}/settings/backup` : null,
         },
         update: {
           message: `Personal backup sync failed for ${user?.name ?? user?.email ?? "a user"}: ${msg}. They should reconnect from Settings → Backup if this keeps happening.`,
+          link: wsFail ? `/${wsFail.slug}/settings/backup` : null,
           read: false,
           createdAt: new Date(),
         },

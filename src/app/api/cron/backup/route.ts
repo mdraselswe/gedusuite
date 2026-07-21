@@ -64,11 +64,20 @@ export async function GET(req: NextRequest) {
       results.push({ workspaceId, status: "SUCCESS" });
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Unknown error";
+      const ws = await prisma.workspace.findUnique({
+        where: { id: workspaceId },
+        select: { slug: true },
+      });
       await prisma.backupLog.create({
         data: { workspaceId, type: "JSON", status: "FAILED", triggeredBy: null, error: `scheduled: ${msg}` },
       });
       await prisma.notification.create({
-        data: { workspaceId, type: "GENERAL", message: `Scheduled backup failed: ${msg}` },
+        data: {
+          workspaceId,
+          type: "GENERAL",
+          message: `Scheduled backup failed: ${msg}`,
+          link: ws ? `/${ws.slug}/settings/backup` : null,
+        },
       });
       results.push({ workspaceId, status: "FAILED" });
     }

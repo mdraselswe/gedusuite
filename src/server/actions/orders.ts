@@ -145,7 +145,10 @@ export async function createOrder(
       select: { id: true, size: true, color: true, product: { select: { name: true } } },
     }),
     d.customerId
-      ? prisma.customer.findFirst({ where: { id: d.customerId, workspaceId }, select: { id: true } })
+      ? prisma.customer.findFirst({
+          where: { id: d.customerId, workspaceId },
+          select: { id: true, name: true },
+        })
       : Promise.resolve(null),
     d.heldByMembershipId
       ? prisma.membership.findFirst({
@@ -224,10 +227,15 @@ export async function createOrder(
     ? round2(giftLines.reduce((s, g) => s + g.unitCost * g.quantity, 0))
     : d.giftCost;
 
-  // Batched in one round trip (array-form $transaction) since the notification
-  // doesn't need the order's generated id.
-  const [order] = await prisma.$transaction([
-    prisma.order.create({
+  // Descriptive notification: who ordered, for how much. Mirrors the
+  // customer-total math in computeOrderTotals for a fresh order (no returns).
+  const itemsNet = d.items.reduce((s, it) => s + it.unitPrice * it.quantity - it.discount, 0);
+  const customerTotal = round2(itemsNet - d.discount + d.deliveryCharge);
+  const itemCount = d.items.reduce((s, it) => s + it.quantity, 0);
+  const notifMessage = `New order — ${customer?.name ?? "Walk-in"} · ৳${customerTotal.toFixed(2)} (${itemCount} item${itemCount > 1 ? "s" : ""})`;
+
+  const order = await prisma.$transaction(async (tx) => {
+    const created = await tx.order.create({
       data: {
         workspaceId,
         customerId,
@@ -255,15 +263,17 @@ export async function createOrder(
         },
         gifts: { create: giftLines },
       },
-    }),
-    prisma.notification.create({
+    });
+    await tx.notification.create({
       data: {
         workspaceId,
         type: "NEW_ORDER",
-        message: `New order recorded (${d.items.length} item${d.items.length > 1 ? "s" : ""})`,
+        message: notifMessage,
+        link: `/${slug}/sales/orders/${created.id}/invoice`,
       },
-    }),
-  ]);
+    });
+    return created;
+  });
 
   revalidatePath(`/${slug}/sales/orders`);
   revalidatePath(`/${slug}/dashboard`);

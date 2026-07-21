@@ -35,8 +35,11 @@ export default async function NotificationsPage({
     id: n.id,
     type: n.type,
     message: n.message,
+    link: n.link,
     read: n.read,
-    createdAt: n.createdAt.toISOString().slice(0, 16).replace("T", " "),
+    // Full ISO (with Z) so the client can compute correct relative times and
+    // render the absolute stamp in the viewer's own timezone.
+    createdAt: n.createdAt.toISOString(),
   }));
 
   return (
