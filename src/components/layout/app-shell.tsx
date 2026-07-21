@@ -87,7 +87,10 @@ export function AppShell({
   const [open, setOpen] = useState(false);
 
   const notifBadge = unread > 0 && (
-    <span className="absolute top-1 right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold text-destructive-foreground">
+    // Plain white text — `--destructive-foreground` isn't defined in this
+    // theme, so text-destructive-foreground silently inherited the muted
+    // header color and the count was unreadable on the red dot.
+    <span className="absolute top-1 right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] leading-none font-semibold text-white tabular-nums">
       {unread > 99 ? "99+" : unread}
     </span>
   );
