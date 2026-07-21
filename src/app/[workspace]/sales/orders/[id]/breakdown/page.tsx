@@ -46,6 +46,7 @@ export default async function OrderBreakdownPage({
           },
         },
       },
+      gifts: true,
     },
   });
   if (!order) notFound();
@@ -118,6 +119,43 @@ export default async function OrderBreakdownPage({
           </Table>
         </CardContent>
       </Card>
+
+      {order.gifts.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Gifts (not on the customer invoice)</CardTitle>
+          </CardHeader>
+          <CardContent className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Gift</TableHead>
+                  <TableHead className="text-right">Qty</TableHead>
+                  <TableHead className="text-right">Unit cost</TableHead>
+                  <TableHead className="text-right">Total cost</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {order.gifts.map((g) => (
+                  <TableRow key={g.id}>
+                    <TableCell>
+                      {g.label}
+                      {!g.productVariantId && (
+                        <span className="ml-2 text-xs text-muted-foreground">(custom)</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right">{g.quantity}</TableCell>
+                    <TableCell className="text-right">{Number(g.unitCost).toFixed(2)}</TableCell>
+                    <TableCell className="text-right">
+                      {(Number(g.unitCost) * g.quantity).toFixed(2)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>

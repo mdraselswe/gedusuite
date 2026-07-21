@@ -106,7 +106,7 @@ export function PurchaseManager({
     setEditing(p);
     // Seed the combobox from the row itself (the variant may not be in any
     // fetched search page). Stock isn't shown in this form, so 0 is fine.
-    setEditVariant({ value: p.productVariantId, label: p.product, stock: 0, expiryTracked: p.expiryTracked });
+    setEditVariant({ value: p.productVariantId, label: p.product, stock: 0, expiryTracked: p.expiryTracked, unitCost: 0 });
     setEditSupplierId(p.supplierId ?? NO_SUPPLIER);
     setEditFundingSource(fundingSourceOf(p));
     setEditPaidByPartnerId(p.paidByPartnerId ?? NO_PARTNER);

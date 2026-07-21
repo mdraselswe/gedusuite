@@ -201,6 +201,7 @@ model ProductVariant {
   product     Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
   purchases   Purchase[]
   orderItems  OrderItem[]
+  orderGifts  OrderGift[]
   adjustments StockAdjustment[]
 
   @@index([productId])
@@ -324,6 +325,7 @@ model Order {
   customer      Customer?      @relation(fields: [customerId], references: [id], onDelete: SetNull)
   heldBy        Membership?    @relation("OrderHeldBy", fields: [heldByMembershipId], references: [id], onDelete: SetNull)
   items         OrderItem[]
+  gifts         OrderGift[]
   treasuryEntry TreasuryEntry?
 
   @@index([workspaceId])
@@ -344,6 +346,26 @@ model OrderItem {
   order          Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
   productVariant ProductVariant @relation(fields: [productVariantId], references: [id], onDelete: Restrict)
   returns        Return[]
+
+  @@index([orderId])
+  @@index([productVariantId])
+}
+
+// A free item given away with an order. Never appears on the customer's
+// invoice — internal only (sales details / profit math). Either linked to a
+// product variant (consumes stock, cost snapshotted server-side) or a custom
+// free-text item (manual cost). Order.giftCost stores the summed total so all
+// existing profit/report math keeps working unchanged.
+model OrderGift {
+  id               String  @id @default(cuid())
+  orderId          String
+  productVariantId String? // null = custom (free-text) gift
+  label            String // display name: product label snapshot or the custom text
+  quantity         Int     @default(1)
+  unitCost         Decimal @default(0) @db.Decimal(12, 2) // per-unit cost snapshot (variant) or manual (custom)
+
+  order          Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productVariant ProductVariant? @relation(fields: [productVariantId], references: [id], onDelete: SetNull)
 
   @@index([orderId])
   @@index([productVariantId])

@@ -22,7 +22,7 @@ export async function variantStockMap(
   variantIds?: string[],
 ): Promise<Map<string, number>> {
   const idFilter = variantIds ? { productVariantId: { in: variantIds } } : {};
-  const [purchased, sold, returns, adjustments] = await Promise.all([
+  const [purchased, sold, gifted, returns, adjustments] = await Promise.all([
     prisma.purchase.groupBy({
       by: ["productVariantId"],
       where: { workspaceId, ...idFilter },
@@ -33,6 +33,15 @@ export async function variantStockMap(
       where: {
         order: { workspaceId, status: { in: [...STOCK_CONSUMING_STATUSES] } },
         ...idFilter,
+      },
+      _sum: { quantity: true },
+    }),
+    // Product-linked gifts leave with the order just like sold items.
+    prisma.orderGift.groupBy({
+      by: ["productVariantId"],
+      where: {
+        order: { workspaceId, status: { in: [...STOCK_CONSUMING_STATUSES] } },
+        productVariantId: variantIds ? { in: variantIds } : { not: null },
       },
       _sum: { quantity: true },
     }),
@@ -59,6 +68,10 @@ export async function variantStockMap(
   const map = new Map<string, number>();
   for (const r of purchased) map.set(r.productVariantId, r._sum.quantity ?? 0);
   for (const r of sold) {
+    map.set(r.productVariantId, (map.get(r.productVariantId) ?? 0) - (r._sum.quantity ?? 0));
+  }
+  for (const r of gifted) {
+    if (!r.productVariantId) continue;
     map.set(r.productVariantId, (map.get(r.productVariantId) ?? 0) - (r._sum.quantity ?? 0));
   }
   for (const r of returns) {

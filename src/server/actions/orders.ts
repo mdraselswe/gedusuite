@@ -18,6 +18,21 @@ const ItemSchema = z.object({
   discount: z.coerce.number().nonnegative().default(0),
 });
 
+// A gift is either product-linked (variant id; cost auto-snapshotted
+// server-side unless the user typed their own — costOverridden) or custom
+// free-text (label + manual cost, no stock effect).
+const GiftSchema = z
+  .object({
+    productVariantId: z.string().optional().or(z.literal("")),
+    label: z.string().trim().max(160).optional().or(z.literal("")),
+    quantity: z.coerce.number().int().positive(),
+    unitCost: z.coerce.number().nonnegative().default(0),
+    costOverridden: z.coerce.boolean().default(false),
+  })
+  .refine((g) => g.productVariantId || g.label, {
+    message: "Each gift needs a product or a name",
+  });
+
 const OrderSchema = z.object({
   customerId: z.string().optional().or(z.literal("")),
   date: z.coerce.date(),
@@ -43,6 +58,7 @@ const OrderSchema = z.object({
   heldByMembershipId: z.string().optional().or(z.literal("")),
   notes: z.string().trim().max(500).optional().or(z.literal("")),
   items: z.array(ItemSchema).min(1, "Add at least one item"),
+  gifts: z.array(GiftSchema).default([]),
 });
 
 /** Latest purchase unit cost per variant (server-side cost snapshot). */
@@ -85,6 +101,12 @@ export async function createOrder(
   } catch {
     itemsRaw = [];
   }
+  let giftsRaw: unknown = [];
+  try {
+    giftsRaw = JSON.parse(String(formData.get("gifts") ?? "[]"));
+  } catch {
+    giftsRaw = [];
+  }
   const parsed = OrderSchema.safeParse({
     customerId: formData.get("customerId") ?? undefined,
     date: formData.get("date"),
@@ -101,12 +123,16 @@ export async function createOrder(
     heldByMembershipId: formData.get("heldByMembershipId") ?? undefined,
     notes: formData.get("notes") ?? undefined,
     items: itemsRaw,
+    gifts: giftsRaw,
   });
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
   const d = parsed.data;
-  const variantIds = d.items.map((i) => i.productVariantId);
+  const giftVariantIds = d.gifts
+    .map((g) => g.productVariantId)
+    .filter((v): v is string => !!v);
+  const variantIds = [...d.items.map((i) => i.productVariantId), ...giftVariantIds];
 
   // These 5 checks are all independent (none needs another's result) but were
   // previously awaited one after another — over a long-haul DB connection that
@@ -115,7 +141,8 @@ export async function createOrder(
   const [validVariants, customer, heldByMember, stock, costs] = await Promise.all([
     prisma.productVariant.findMany({
       where: { id: { in: variantIds }, product: { workspaceId } },
-      select: { id: true },
+      // Label fields are needed to snapshot a display name onto product-linked gifts.
+      select: { id: true, size: true, color: true, product: { select: { name: true } } },
     }),
     d.customerId
       ? prisma.customer.findFirst({ where: { id: d.customerId, workspaceId }, select: { id: true } })
@@ -142,9 +169,15 @@ export async function createOrder(
 
   // Never allow selling more than is currently in stock — server-side guard for
   // every order (not just consuming ones), with a clear, product-named error.
+  // Product-linked gifts leave with the order too, so they count against stock.
   const need = new Map<string, number>();
   for (const it of d.items) {
     need.set(it.productVariantId, (need.get(it.productVariantId) ?? 0) + it.quantity);
+  }
+  for (const g of d.gifts) {
+    if (g.productVariantId) {
+      need.set(g.productVariantId, (need.get(g.productVariantId) ?? 0) + g.quantity);
+    }
   }
   const short = [...need.entries()].filter(([vid, qty]) => (stock.get(vid) ?? 0) < qty);
   if (short.length > 0) {
@@ -169,6 +202,28 @@ export async function createOrder(
     return { ok: false, error: `Not enough stock — ${msg}` };
   }
 
+  // Gift lines: product gifts get a server-side cost snapshot + label; custom
+  // gifts keep their manual cost. Order.giftCost stores the summed total so all
+  // existing profit/report math keeps working. When no gift lines are given,
+  // the raw giftCost input still works (legacy manual amount).
+  const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
+  const variantById = new Map(validVariants.map((v) => [v.id, v]));
+  const giftLines = d.gifts.map((g) => {
+    const v = g.productVariantId ? variantById.get(g.productVariantId) : undefined;
+    const extra = v ? [v.size, v.color].filter(Boolean).join(" / ") : "";
+    return {
+      productVariantId: g.productVariantId || null,
+      label: v ? `${v.product.name}${extra ? ` (${extra})` : ""}` : (g.label ?? "Gift"),
+      quantity: g.quantity,
+      // Product gifts default to the server-side cost snapshot; a user-typed
+      // value (costOverridden) wins. Custom gifts are always manual.
+      unitCost: v && !g.costOverridden ? (costs.get(v.id) ?? 0) : g.unitCost,
+    };
+  });
+  const giftCost = giftLines.length
+    ? round2(giftLines.reduce((s, g) => s + g.unitCost * g.quantity, 0))
+    : d.giftCost;
+
   // Batched in one round trip (array-form $transaction) since the notification
   // doesn't need the order's generated id.
   const [order] = await prisma.$transaction([
@@ -185,7 +240,7 @@ export async function createOrder(
         paymentMethod: d.paymentMethod,
         paymentStatus: d.paymentStatus,
         packagingCost: d.packagingCost,
-        giftCost: d.giftCost,
+        giftCost,
         discount: d.discount,
         heldByMembershipId,
         notes: d.notes?.trim() || null,
@@ -198,6 +253,7 @@ export async function createOrder(
             discount: it.discount,
           })),
         },
+        gifts: { create: giftLines },
       },
     }),
     prisma.notification.create({
@@ -228,7 +284,7 @@ export async function updateOrderStatus(
 
   const order = await prisma.order.findFirst({
     where: { id: orderId, workspaceId },
-    include: { items: true },
+    include: { items: true, gifts: true },
   });
   if (!order) return { ok: false, error: "Order not found" };
 
@@ -240,6 +296,11 @@ export async function updateOrderStatus(
     const need = new Map<string, number>();
     for (const it of order.items) {
       need.set(it.productVariantId, (need.get(it.productVariantId) ?? 0) + it.quantity);
+    }
+    for (const g of order.gifts) {
+      if (g.productVariantId) {
+        need.set(g.productVariantId, (need.get(g.productVariantId) ?? 0) + g.quantity);
+      }
     }
     for (const [vid, qty] of need) {
       if ((stock.get(vid) ?? 0) < qty) {

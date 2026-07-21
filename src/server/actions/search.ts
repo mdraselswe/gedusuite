@@ -11,7 +11,13 @@ import { variantStockMap } from "@/lib/inventory";
 const SEARCH_PAGE_SIZE = 25;
 
 export type ComboOption = { value: string; label: string };
-export type VariantOption = ComboOption & { stock: number; expiryTracked: boolean };
+export type VariantOption = ComboOption & {
+  stock: number;
+  expiryTracked: boolean;
+  // Latest purchase unit cost — used to prefill auto-calculated costs (e.g.
+  // product gifts) in forms; the server still snapshots authoritatively.
+  unitCost: number;
+};
 export type SearchResult<T> =
   | { ok: true; items: T[]; next: number | null }
   | { ok: false; error: string };
@@ -60,15 +66,27 @@ export async function searchVariants(
     },
   });
 
-  const stock = await variantStockMap(
-    workspaceId,
-    rows.map((r) => r.id),
+  const ids = rows.map((r) => r.id);
+  const [stock, latestPurchases] = await Promise.all([
+    variantStockMap(workspaceId, ids),
+    // Latest purchase per variant (distinct keeps the first row per variant
+    // under the date-desc order) — the same cost the server snapshots on save.
+    prisma.purchase.findMany({
+      where: { workspaceId, productVariantId: { in: ids } },
+      orderBy: [{ productVariantId: "asc" }, { date: "desc" }],
+      distinct: ["productVariantId"],
+      select: { productVariantId: true, unitCost: true },
+    }),
+  ]);
+  const costByVariant = new Map(
+    latestPurchases.map((p) => [p.productVariantId, Number(p.unitCost)]),
   );
   const items = rows.map((r) => ({
     value: r.id,
     label: variantLabel(r.product.name, r.size, r.color),
     stock: stock.get(r.id) ?? 0,
     expiryTracked: r.product.expiryTracked,
+    unitCost: costByVariant.get(r.id) ?? 0,
   }));
 
   return {

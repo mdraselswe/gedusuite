@@ -64,6 +64,7 @@ export default async function OrdersPage({
             },
           },
         },
+        gifts: { select: { label: true, quantity: true } },
       },
     }),
   ]);
@@ -86,6 +87,7 @@ export default async function OrdersPage({
       paymentMethod: o.paymentMethod,
       heldByName: o.heldBy ? (o.heldBy.user.name ?? o.heldBy.user.email) : null,
       totals,
+      gifts: o.gifts.map((g) => ({ label: g.label, quantity: g.quantity })),
       items: o.items.map((it) => {
         const returned = it.returns.reduce((s, r) => s + r.quantity, 0);
         return {

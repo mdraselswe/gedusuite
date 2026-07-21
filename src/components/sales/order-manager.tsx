@@ -66,6 +66,7 @@ type OrderRow = {
   paymentMethod: string;
   heldByName: string | null;
   totals: { customerTotal: number; netProfit: number; returnedUnits: number };
+  gifts: { label: string; quantity: number }[];
   items: OrderItem[];
 };
 type Perms = { canAdd: boolean; canEdit: boolean; canViewProfit: boolean };
@@ -74,6 +75,18 @@ type ItemDraft = {
   unitPrice: string;
   quantity: string;
   discount: string;
+};
+// A gift line: either a product from stock (cost auto-filled from the latest
+// purchase cost, editable) or a custom free-text item with a manual cost.
+// Never shown on the invoice. costEdited marks that the user typed their own
+// cost, so the server keeps it instead of re-snapshotting.
+type GiftDraft = {
+  mode: "PRODUCT" | "CUSTOM";
+  variant: SearchVariantOption | null;
+  label: string;
+  quantity: string;
+  unitCost: string;
+  costEdited: boolean;
 };
 
 const STATUSES = ["PENDING", "CONFIRMED", "SHIPPED", "DELIVERED", "CANCELLED"];
@@ -84,6 +97,10 @@ const NONE = "__none__";
 
 function emptyItem(): ItemDraft {
   return { variant: null, unitPrice: "", quantity: "1", discount: "0" };
+}
+
+function emptyGift(): GiftDraft {
+  return { mode: "PRODUCT", variant: null, label: "", quantity: "1", unitCost: "0", costEdited: false };
 }
 
 function todayInputValue() {
@@ -191,6 +208,7 @@ export function OrderManager({
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState<ItemDraft[]>([emptyItem()]);
+  const [gifts, setGifts] = useState<GiftDraft[]>([]);
   const [customer, setCustomer] = useState<ComboOption | null>(null);
   const [heldById, setHeldById] = useState(NONE);
   const [status, setStatus] = useState("PENDING");
@@ -200,7 +218,6 @@ export function OrderManager({
   const [deliveryCharge, setDeliveryCharge] = useState("0");
   const [deliveryCost, setDeliveryCost] = useState("");
   const [packagingCost, setPackagingCost] = useState("0");
-  const [giftCost, setGiftCost] = useState("0");
   const [orderDiscount, setOrderDiscount] = useState("0");
 
   // ── Return dialog state ──
@@ -220,6 +237,7 @@ export function OrderManager({
 
   function resetForm() {
     setItems([emptyItem()]);
+    setGifts([]);
     setCustomer(null);
     setHeldById(NONE);
     setStatus("PENDING");
@@ -229,7 +247,6 @@ export function OrderManager({
     setDeliveryCharge("0");
     setDeliveryCost("");
     setPackagingCost("0");
-    setGiftCost("0");
     setOrderDiscount("0");
   }
 
@@ -242,13 +259,23 @@ export function OrderManager({
     }, 0);
     const customerTotal =
       itemsSubtotal + (parseFloat(deliveryCharge) || 0) - (parseFloat(orderDiscount) || 0);
+    // Product gifts prefill their cost from the latest purchase cost (still
+    // editable), so every gift line's cost is known client-side for preview.
+    const giftCostPreview = gifts.reduce(
+      (s, g) => s + (parseFloat(g.unitCost) || 0) * (parseInt(g.quantity) || 0),
+      0,
+    );
     const costPreview =
       (parseFloat(packagingCost) || 0) +
-      (parseFloat(giftCost) || 0) +
+      giftCostPreview +
       (deliveryType === "COURIER" ? parseFloat(deliveryCost || deliveryCharge) || 0 : 0);
 
     return { itemsSubtotal, customerTotal, costPreview };
-  }, [deliveryCharge, deliveryCost, deliveryType, giftCost, items, orderDiscount, packagingCost]);
+  }, [deliveryCharge, deliveryCost, deliveryType, gifts, items, orderDiscount, packagingCost]);
+
+  function updateGift(i: number, patch: Partial<GiftDraft>) {
+    setGifts((prev) => prev.map((g, j) => (j === i ? { ...g, ...patch } : g)));
+  }
 
   function updateItem(i: number, patch: Partial<ItemDraft>) {
     setItems((prev) => prev.map((it, j) => (j === i ? { ...it, ...patch } : it)));
@@ -268,6 +295,19 @@ export function OrderManager({
       toast.error("Add at least one item with a product and quantity");
       return;
     }
+    const cleanGifts = gifts
+      .filter((g) =>
+        g.mode === "PRODUCT" ? g.variant && parseInt(g.quantity) > 0 : g.label.trim() && parseInt(g.quantity) > 0,
+      )
+      .map((g) => ({
+        productVariantId: g.mode === "PRODUCT" ? g.variant!.value : "",
+        label: g.mode === "CUSTOM" ? g.label.trim() : "",
+        quantity: parseInt(g.quantity) || 1,
+        unitCost: parseFloat(g.unitCost) || 0,
+        // Product gift with an untouched cost → server re-snapshots; a typed
+        // cost (or any custom gift) is kept as-is.
+        costOverridden: g.mode === "CUSTOM" || g.costEdited,
+      }));
     setLoading(true);
     const fd = new FormData(e.currentTarget);
     fd.set("customerId", customer?.value ?? "");
@@ -277,6 +317,7 @@ export function OrderManager({
     fd.set("paymentMethod", paymentMethod);
     fd.set("paymentStatus", paymentStatus);
     fd.set("items", JSON.stringify(cleanItems));
+    fd.set("gifts", JSON.stringify(cleanGifts));
     const res = await createOrder(slug, fd);
     setLoading(false);
     if (!res.ok) return toast.error(res.error);
@@ -364,7 +405,19 @@ export function OrderManager({
               key: "customer",
               header: "Customer",
               cardTitle: true,
-              cell: (o) => o.customerName,
+              cell: (o) => (
+                <span>
+                  {o.customerName}
+                  {o.gifts.length > 0 && (
+                    <span
+                      className="ml-1.5 text-xs"
+                      title={o.gifts.map((g) => `${g.label} ×${g.quantity}`).join(", ")}
+                    >
+                      🎁
+                    </span>
+                  )}
+                </span>
+              ),
             },
             {
               key: "status",
@@ -636,6 +689,159 @@ export function OrderManager({
                   </div>
                 </section>
 
+                <section className="space-y-3 rounded-xl bg-muted/25 p-3 ring-1 ring-border sm:p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <h3 className="text-sm font-semibold">Gifts (free items)</h3>
+                      <p className="text-xs text-muted-foreground">
+                        Not shown on the customer invoice — tracked internally in sales details.
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setGifts([...gifts, emptyGift()])}
+                    >
+                      <Plus />
+                      Add gift
+                    </Button>
+                  </div>
+
+                  {gifts.length > 0 && (
+                    <div className="space-y-3">
+                      {gifts.map((g, i) => {
+                        const qty = parseInt(g.quantity) || 0;
+                        const giftStockWarning =
+                          g.mode === "PRODUCT" && g.variant && qty > g.variant.stock
+                            ? `Only ${g.variant.stock} in stock`
+                            : null;
+                        return (
+                          <div
+                            key={i}
+                            className="rounded-xl bg-background p-3 ring-1 ring-border transition-shadow focus-within:ring-ring/60 sm:p-4"
+                          >
+                            <div className="mb-3 flex items-center justify-between gap-3">
+                              <p className="text-sm font-medium">Gift {i + 1}</p>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon-sm"
+                                aria-label={`Remove gift ${i + 1}`}
+                                onClick={() => setGifts(gifts.filter((_, j) => j !== i))}
+                              >
+                                <Trash2 />
+                              </Button>
+                            </div>
+                            <div className="grid gap-3 lg:grid-cols-[8rem_minmax(14rem,1fr)_6rem_8rem]">
+                              <div className="space-y-2">
+                                <Label>Type</Label>
+                                <Select
+                                  value={g.mode}
+                                  onValueChange={(v) =>
+                                    updateGift(i, { mode: (v as GiftDraft["mode"]) ?? "PRODUCT" })
+                                  }
+                                >
+                                  <SelectTrigger className="w-full">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent align="start">
+                                    <SelectItem value="PRODUCT">Product</SelectItem>
+                                    <SelectItem value="CUSTOM">Custom</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              {g.mode === "PRODUCT" ? (
+                                <div className="space-y-2">
+                                  <Label>Product</Label>
+                                  <AsyncCombobox
+                                    value={g.variant}
+                                    onChange={(opt) =>
+                                      // Selecting a product auto-fills its latest
+                                      // purchase cost; still editable below.
+                                      updateGift(i, {
+                                        variant: opt,
+                                        unitCost: opt ? String(opt.unitCost) : "0",
+                                        costEdited: false,
+                                      })
+                                    }
+                                    fetchPage={async (q, cursor) => {
+                                      const res = await searchVariants(slug, q, cursor);
+                                      return res.ok
+                                        ? { items: res.items, next: res.next }
+                                        : { items: [], next: null };
+                                    }}
+                                    placeholder="Search product…"
+                                    renderItem={(o) => (
+                                      <>
+                                        <span className="truncate">{o.label}</span>
+                                        <span className="shrink-0 text-xs text-muted-foreground">
+                                          {o.stock} in stock
+                                        </span>
+                                      </>
+                                    )}
+                                  />
+                                </div>
+                              ) : (
+                                <div className="space-y-2">
+                                  <Label>Gift name</Label>
+                                  <Input
+                                    placeholder="e.g. Keychain, wrapping…"
+                                    value={g.label}
+                                    onChange={(e) => updateGift(i, { label: e.target.value })}
+                                  />
+                                </div>
+                              )}
+                              <div className="space-y-2">
+                                <Label>Qty</Label>
+                                <Input
+                                  type="number"
+                                  min="1"
+                                  inputMode="numeric"
+                                  value={g.quantity}
+                                  aria-invalid={Boolean(giftStockWarning)}
+                                  onChange={(e) => updateGift(i, { quantity: e.target.value })}
+                                />
+                              </div>
+                              <div className="space-y-2">
+                                <Label>Unit cost</Label>
+                                <Input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  inputMode="decimal"
+                                  value={g.unitCost}
+                                  onChange={(e) =>
+                                    updateGift(i, { unitCost: e.target.value, costEdited: true })
+                                  }
+                                />
+                              </div>
+                            </div>
+                            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs">
+                              <span
+                                className={giftStockWarning ? "text-destructive" : "text-muted-foreground"}
+                              >
+                                {giftStockWarning ??
+                                  (g.mode === "PRODUCT"
+                                    ? g.costEdited
+                                      ? "Deducts stock; using your custom cost."
+                                      : "Deducts stock; cost auto-filled from the latest purchase."
+                                    : "No stock effect; cost reduces profit.")}
+                              </span>
+                              <span className="font-medium tabular-nums">
+                                Gift cost{" "}
+                                {formatMoney(
+                                  (parseFloat(g.unitCost) || 0) * (parseInt(g.quantity) || 0),
+                                )}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </section>
+
                 <section className="space-y-3">
                   <div>
                     <h3 className="text-sm font-semibold">Customer and status</h3>
@@ -820,19 +1026,6 @@ export function OrderManager({
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="o-gift">Gift cost</Label>
-                        <Input
-                          id="o-gift"
-                          name="giftCost"
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          inputMode="decimal"
-                          value={giftCost}
-                          onChange={(e) => setGiftCost(e.target.value)}
-                        />
-                      </div>
-                      <div className="space-y-2 sm:col-span-2">
                         <Label htmlFor="o-disc">Order discount</Label>
                         <Input
                           id="o-disc"
