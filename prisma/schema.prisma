@@ -216,6 +216,7 @@ model Purchase {
   paidFromTreasury Boolean   @default(false) // funded from the shared treasury instead of a partner (mutually exclusive with paidByPartnerId)
   date             DateTime  @default(now())
   unitCost         Decimal   @db.Decimal(12, 2)
+  salePrice        Decimal?  @db.Decimal(12, 2) // intended per-unit selling price, noted at purchase time
   quantity         Int
   expiryDate       DateTime?
   createdAt        DateTime  @default(now())

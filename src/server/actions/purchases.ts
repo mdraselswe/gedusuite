@@ -20,6 +20,11 @@ const PurchaseSchema = z.object({
   paidByPartnerId: z.string().optional().or(z.literal("")),
   date: z.coerce.date(),
   unitCost: z.coerce.number().nonnegative("Unit cost must be ≥ 0"),
+  // Intended per-unit selling price — optional note, no effect on money math.
+  salePrice: z.preprocess(
+    (v) => (v === "" || v == null ? undefined : v),
+    z.coerce.number().nonnegative("Sale price must be ≥ 0").optional(),
+  ),
   quantity: z.coerce.number().int().positive("Quantity must be > 0"),
   expiryDate: z.string().optional().or(z.literal("")),
 });
@@ -39,6 +44,7 @@ export async function createPurchase(
     paidByPartnerId: formData.get("paidByPartnerId") ?? undefined,
     date: formData.get("date"),
     unitCost: formData.get("unitCost"),
+    salePrice: formData.get("salePrice") ?? undefined,
     quantity: formData.get("quantity"),
     expiryDate: formData.get("expiryDate") ?? undefined,
   });
@@ -97,6 +103,7 @@ export async function createPurchase(
         paidFromTreasury,
         date: d.date,
         unitCost: d.unitCost,
+        salePrice: d.salePrice ?? null,
         quantity: d.quantity,
         expiryDate: d.expiryDate ? new Date(d.expiryDate) : null,
       },
@@ -141,6 +148,7 @@ export async function updatePurchase(
     paidByPartnerId: formData.get("paidByPartnerId") ?? undefined,
     date: formData.get("date"),
     unitCost: formData.get("unitCost"),
+    salePrice: formData.get("salePrice") ?? undefined,
     quantity: formData.get("quantity"),
     expiryDate: formData.get("expiryDate") ?? undefined,
   });
@@ -208,6 +216,7 @@ export async function updatePurchase(
         paidFromTreasury,
         date: d.date,
         unitCost: d.unitCost,
+        salePrice: d.salePrice ?? null,
         quantity: d.quantity,
         expiryDate: d.expiryDate ? new Date(d.expiryDate) : null,
       },

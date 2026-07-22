@@ -42,6 +42,7 @@ const TAB_SPECS: TabSpec[] = [
     columns: [
       { key: "date", label: "Date", date: true },
       { key: "unitCost", label: "Unit cost", currency: true },
+      { key: "salePrice", label: "Sale price", currency: true },
       { key: "quantity", label: "Quantity" },
       { key: "expiryDate", label: "Expiry", date: true },
     ],
