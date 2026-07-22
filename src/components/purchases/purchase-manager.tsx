@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
@@ -24,10 +24,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { AsyncCombobox } from "@/components/ui/async-combobox";
 import { searchVariants, type VariantOption } from "@/server/actions/search";
 import { DataTable, type Column } from "@/components/ui/data-table";
-import { PackageOpen } from "lucide-react";
+import { Columns3, MoreVertical, PackageOpen, X } from "lucide-react";
 
 // Local calendar date (not UTC) as a stable "today" default — must NOT depend
 // on props/state that change after mount (e.g. the newest purchase's date),
@@ -51,6 +58,7 @@ type PurchaseRow = {
   paidBy: string | null;
   paidFromTreasury: boolean;
   unitCost: number;
+  salePrice: number | null;
   quantity: number;
   expiryDate: string | null;
 };
@@ -59,6 +67,25 @@ type FundingSource = "NONE" | "PARTNER" | "TREASURY";
 
 const NO_SUPPLIER = "__none__";
 const NO_PARTNER = "__none__";
+
+// Optional (toggleable) columns for the Recent purchases table. Date, product,
+// qty, and total always show; the rest start hidden to keep the table narrow.
+const OPTIONAL_COLUMNS = [
+  { key: "supplier", label: "Supplier" },
+  { key: "funding", label: "Funding" },
+  { key: "unitCost", label: "Unit cost" },
+  { key: "salePrice", label: "Sale price" },
+  { key: "expiry", label: "Expiry" },
+] as const;
+
+const SORT_OPTIONS = [
+  { value: "date_desc", label: "Newest first" },
+  { value: "date_asc", label: "Oldest first" },
+  { value: "cost_desc", label: "Unit cost: high → low" },
+  { value: "cost_asc", label: "Unit cost: low → high" },
+  { value: "qty_desc", label: "Quantity: high → low" },
+  { value: "qty_asc", label: "Quantity: low → high" },
+];
 
 function fundingSourceOf(p: { paidByPartnerId: string | null; paidFromTreasury: boolean }): FundingSource {
   if (p.paidFromTreasury) return "TREASURY";
@@ -74,6 +101,8 @@ export function PurchaseManager({
   purchases,
   treasuryBalance,
   perms,
+  query,
+  sort,
 }: {
   slug: string;
   hasProducts: boolean;
@@ -82,8 +111,43 @@ export function PurchaseManager({
   purchases: PurchaseRow[];
   treasuryBalance: number;
   perms: Perms;
+  query: string;
+  sort: string;
 }) {
   const router = useRouter();
+
+  // ── List toolbar: URL-driven search + sort, local column visibility ──
+  const [search, setSearch] = useState(query);
+  const [visibleCols, setVisibleCols] = useState<Set<string>>(new Set(["salePrice"]));
+  const searchDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function pushListParams(nextQ: string, nextSort: string) {
+    const params = new URLSearchParams();
+    if (nextQ.trim()) params.set("q", nextQ.trim());
+    if (nextSort !== "date_desc") params.set("sort", nextSort);
+    // Search/sort changes restart from page 1 (no page param).
+    router.replace(`/${slug}/purchases${params.size ? `?${params}` : ""}`);
+  }
+
+  function onSearchChange(v: string) {
+    setSearch(v);
+    if (searchDebounce.current) clearTimeout(searchDebounce.current);
+    searchDebounce.current = setTimeout(() => pushListParams(v, sort), 400);
+  }
+  useEffect(() => {
+    return () => {
+      if (searchDebounce.current) clearTimeout(searchDebounce.current);
+    };
+  }, []);
+
+  function toggleColumn(key: string) {
+    setVisibleCols((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
   const [variant, setVariant] = useState<VariantOption | null>(null);
   const [supplierId, setSupplierId] = useState<string>(NO_SUPPLIER);
   const [fundingSource, setFundingSource] = useState<FundingSource>("NONE");
@@ -288,6 +352,17 @@ export function PurchaseManager({
                   <Input id="unitCost" name="unitCost" type="number" step="0.01" min="0" required />
                 </div>
                 <div className="space-y-2">
+                  <Label htmlFor="salePrice">Sale price (per unit)</Label>
+                  <Input
+                    id="salePrice"
+                    name="salePrice"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="Intended selling price — optional"
+                  />
+                </div>
+                <div className="space-y-2">
                   <Label htmlFor="quantity">Quantity</Label>
                   <Input id="quantity" name="quantity" type="number" min="1" required />
                 </div>
@@ -310,26 +385,110 @@ export function PurchaseManager({
 
       <div>
         <h2 className="mb-3 text-lg font-semibold">Recent purchases</h2>
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <div className="relative w-full max-w-xs">
+            <Input
+              placeholder="Search product or supplier…"
+              value={search}
+              onChange={(e) => onSearchChange(e.target.value)}
+              className={search ? "pr-8" : undefined}
+            />
+            {search && (
+              <button
+                type="button"
+                aria-label="Clear search"
+                onClick={() => {
+                  if (searchDebounce.current) clearTimeout(searchDebounce.current);
+                  setSearch("");
+                  pushListParams("", sort);
+                }}
+                className="absolute top-1/2 right-2 -translate-y-1/2 rounded-sm text-muted-foreground hover:text-foreground"
+              >
+                <X className="size-4" />
+              </button>
+            )}
+          </div>
+          <Select value={sort} onValueChange={(v) => v && pushListParams(search, v)} items={SORT_OPTIONS}>
+            <SelectTrigger className="w-52">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {SORT_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={o.value}>
+                  {o.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <DropdownMenu>
+            <DropdownMenuTrigger render={<Button variant="outline" size="sm" />}>
+              <Columns3 data-icon="inline-start" />
+              Columns
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {OPTIONAL_COLUMNS.map((c) => (
+                <DropdownMenuCheckboxItem
+                  key={c.key}
+                  checked={visibleCols.has(c.key)}
+                  onCheckedChange={() => toggleColumn(c.key)}
+                >
+                  {c.label}
+                </DropdownMenuCheckboxItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
         <DataTable
           rows={purchases}
           rowKey={(p) => p.id}
-          empty={{ icon: PackageOpen, title: "No purchases recorded yet" }}
+          stickyHeader
+          empty={{
+            icon: PackageOpen,
+            title: query ? "No purchases match your search" : "No purchases recorded yet",
+          }}
           columns={
             [
               { key: "date", header: "Date", cell: (p) => p.date },
-              { key: "product", header: "Product", cardTitle: true, cell: (p) => p.product },
-              { key: "supplier", header: "Supplier", cell: (p) => p.supplier },
               {
-                key: "funding",
-                header: "Funding",
-                cell: (p) => (p.paidFromTreasury ? "Treasury" : p.paidBy ? `Partner: ${p.paidBy}` : "—"),
+                key: "product",
+                header: "Product",
+                cardTitle: true,
+                wrap: true,
+                cell: (p) => p.product,
               },
-              {
-                key: "unitCost",
-                header: "Unit cost",
-                align: "right",
-                cell: (p) => p.unitCost.toFixed(2),
-              },
+              ...(visibleCols.has("supplier")
+                ? [{ key: "supplier", header: "Supplier", wrap: true, cell: (p: PurchaseRow) => p.supplier }]
+                : []),
+              ...(visibleCols.has("funding")
+                ? [
+                    {
+                      key: "funding",
+                      header: "Funding",
+                      cell: (p: PurchaseRow) =>
+                        p.paidFromTreasury ? "Treasury" : p.paidBy ? `Partner: ${p.paidBy}` : "—",
+                    },
+                  ]
+                : []),
+              ...(visibleCols.has("unitCost")
+                ? [
+                    {
+                      key: "unitCost",
+                      header: "Unit cost",
+                      align: "right" as const,
+                      cell: (p: PurchaseRow) => p.unitCost.toFixed(2),
+                    },
+                  ]
+                : []),
+              ...(visibleCols.has("salePrice")
+                ? [
+                    {
+                      key: "salePrice",
+                      header: "Sale price",
+                      align: "right" as const,
+                      cell: (p: PurchaseRow) => (p.salePrice != null ? p.salePrice.toFixed(2) : "—"),
+                    },
+                  ]
+                : []),
               { key: "quantity", header: "Qty", align: "right", cell: (p) => p.quantity },
               {
                 key: "total",
@@ -337,7 +496,9 @@ export function PurchaseManager({
                 align: "right",
                 cell: (p) => <span className="font-medium">{(p.unitCost * p.quantity).toFixed(2)}</span>,
               },
-              { key: "expiry", header: "Expiry", cell: (p) => p.expiryDate ?? "—" },
+              ...(visibleCols.has("expiry")
+                ? [{ key: "expiry", header: "Expiry", cell: (p: PurchaseRow) => p.expiryDate ?? "—" }]
+                : []),
               ...(perms.canEdit
                 ? [
                     {
@@ -345,14 +506,19 @@ export function PurchaseManager({
                       header: "",
                       cardFullWidth: true,
                       cell: (p: PurchaseRow) => (
-                        <>
-                          <Button variant="ghost" size="sm" onClick={() => openEdit(p)}>
-                            Edit
-                          </Button>
-                          <Button variant="ghost" size="sm" onClick={() => onDelete(p.id)}>
-                            Delete
-                          </Button>
-                        </>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger
+                            render={<Button variant="ghost" size="icon-sm" aria-label="Actions" />}
+                          >
+                            <MoreVertical className="size-4" />
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => openEdit(p)}>Edit</DropdownMenuItem>
+                            <DropdownMenuItem variant="destructive" onClick={() => onDelete(p.id)}>
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       ),
                     },
                   ]
@@ -477,6 +643,18 @@ export function PurchaseManager({
                   min="0"
                   required
                   defaultValue={editing.unitCost}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-salePrice">Sale price (per unit)</Label>
+                <Input
+                  id="edit-salePrice"
+                  name="salePrice"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="Optional"
+                  defaultValue={editing.salePrice ?? ""}
                 />
               </div>
               <div className="space-y-2">

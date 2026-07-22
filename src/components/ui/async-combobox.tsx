@@ -118,7 +118,9 @@ export function AsyncCombobox<T extends ComboOption>({
           <Combobox.Popup
             ref={scrollRef}
             onScroll={onScroll}
-            className="max-h-64 w-(--anchor-width) min-w-48 overflow-y-auto rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10 outline-none"
+            // max-w-md caps the popup on wide anchors — a full-width form field
+            // would otherwise make the dropdown span the whole page.
+            className="max-h-64 w-(--anchor-width) max-w-md min-w-48 overflow-y-auto rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10 outline-none"
           >
             <Combobox.List>
               {(option: T) => (

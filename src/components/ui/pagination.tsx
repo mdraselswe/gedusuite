@@ -2,25 +2,40 @@ import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";
 
-/** Page-number pagination for server-rendered lists. basePath should NOT include query string. */
+/**
+ * Page-number pagination for server-rendered lists. basePath should NOT
+ * include a query string; other params to preserve (search, sort) go in
+ * `query` and are carried onto the Prev/Next links.
+ */
 export function Pagination({
   page,
   totalPages,
   basePath,
+  query,
 }: {
   page: number;
   totalPages: number;
   basePath: string;
+  query?: Record<string, string | undefined>;
 }) {
   if (totalPages <= 1) return null;
 
   const linkClass = cn(buttonVariants({ variant: "outline", size: "sm" }));
   const disabledClass = "pointer-events-none opacity-50";
 
+  const href = (p: number) => {
+    const params = new URLSearchParams();
+    for (const [k, v] of Object.entries(query ?? {})) {
+      if (v) params.set(k, v);
+    }
+    params.set("page", String(p));
+    return `${basePath}?${params.toString()}`;
+  };
+
   return (
     <div className="flex items-center justify-between gap-3 text-sm">
       {page > 1 ? (
-        <Link href={`${basePath}?page=${page - 1}`} className={linkClass}>
+        <Link href={href(page - 1)} className={linkClass}>
           Prev
         </Link>
       ) : (
@@ -30,7 +45,7 @@ export function Pagination({
         Page {page} of {totalPages}
       </span>
       {page < totalPages ? (
-        <Link href={`${basePath}?page=${page + 1}`} className={linkClass}>
+        <Link href={href(page + 1)} className={linkClass}>
           Next
         </Link>
       ) : (

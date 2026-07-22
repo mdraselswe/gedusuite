@@ -15,6 +15,8 @@ export type Column<T> = {
   header: React.ReactNode;
   cell: (row: T) => React.ReactNode;
   align?: "left" | "right";
+  /** Allow the cell text to wrap (table cells are nowrap by default). */
+  wrap?: boolean;
   /** Hide the label in the mobile card (e.g. an actions row). */
   cardFullWidth?: boolean;
   /** Emphasize as the card's title line on mobile. */
@@ -30,11 +32,19 @@ export function DataTable<T>({
   rows,
   rowKey,
   empty,
+  stickyHeader,
 }: {
   columns: Column<T>[];
   rows: T[];
   rowKey: (row: T) => string;
   empty: { icon?: LucideIcon; title: string; description?: string };
+  /**
+   * Pin the header row while rows scroll. The table gets its own bounded
+   * scroll area (max-h + overflow-auto) — position:sticky is only reliable
+   * against the element's own scroll container, not the window, because any
+   * overflow ancestor silently breaks it.
+   */
+  stickyHeader?: boolean;
 }) {
   if (rows.length === 0) {
     return <EmptyState icon={empty.icon} title={empty.title} description={empty.description} />;
@@ -44,11 +54,17 @@ export function DataTable<T>({
     <>
       {/* Desktop / tablet: table */}
       <div className="hidden md:block">
-        <Table>
+        <Table containerClassName={stickyHeader ? "max-h-[75vh] overflow-auto" : undefined}>
           <TableHeader>
             <TableRow>
               {columns.map((c) => (
-                <TableHead key={c.key} className={c.align === "right" ? "text-right" : undefined}>
+                <TableHead
+                  key={c.key}
+                  className={cn(
+                    c.align === "right" && "text-right",
+                    stickyHeader && "sticky top-0 z-10 bg-background",
+                  )}
+                >
                   {c.header}
                 </TableHead>
               ))}
@@ -60,7 +76,10 @@ export function DataTable<T>({
                 {columns.map((c) => (
                   <TableCell
                     key={c.key}
-                    className={c.align === "right" ? "text-right" : undefined}
+                    className={cn(
+                      c.align === "right" && "text-right",
+                      c.wrap && "whitespace-normal wrap-break-word",
+                    )}
                   >
                     {c.cell(row)}
                   </TableCell>

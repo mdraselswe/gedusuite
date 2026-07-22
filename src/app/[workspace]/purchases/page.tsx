@@ -11,15 +11,29 @@ import { ShoppingCart } from "lucide-react";
 
 const PAGE_SIZE = 50;
 
+// URL ?sort= values → Prisma orderBy. Falls back to newest-first.
+const SORTS = {
+  date_desc: { date: "desc" },
+  date_asc: { date: "asc" },
+  cost_desc: { unitCost: "desc" },
+  cost_asc: { unitCost: "asc" },
+  qty_desc: { quantity: "desc" },
+  qty_asc: { quantity: "asc" },
+} as const;
+export type PurchaseSort = keyof typeof SORTS;
+
 export default async function PurchasesPage({
   params,
   searchParams,
 }: {
   params: Promise<{ workspace: string }>;
-  searchParams: Promise<{ page?: string }>;
+  searchParams: Promise<{ page?: string; q?: string; sort?: string }>;
 }) {
   const { workspace: slug } = await params;
-  const page = parsePage((await searchParams).page);
+  const sp = await searchParams;
+  const page = parsePage(sp.page);
+  const q = (sp.q ?? "").trim();
+  const sort: PurchaseSort = sp.sort && sp.sort in SORTS ? (sp.sort as PurchaseSort) : "date_desc";
   const access = await workspaceAccess(slug);
   if (!access) redirect("/");
   if (!can(access.role, "purchases", "view", access.permissions)) {
@@ -29,6 +43,22 @@ export default async function PurchasesPage({
   const perms = {
     canAdd: can(access.role, "purchases", "add", access.permissions),
     canEdit: can(access.role, "purchases", "edit", access.permissions),
+  };
+
+  // Search filters the WHOLE table (all pages), not just the current page —
+  // the query narrows the paginated result set server-side.
+  const where = {
+    workspaceId: access.workspaceId,
+    ...(q
+      ? {
+          OR: [
+            { productVariant: { product: { name: { contains: q, mode: "insensitive" as const } } } },
+            { productVariant: { product: { sku: { contains: q, mode: "insensitive" as const } } } },
+            { productVariant: { sku: { contains: q, mode: "insensitive" as const } } },
+            { supplier: { name: { contains: q, mode: "insensitive" as const } } },
+          ],
+        }
+      : {}),
   };
 
   // Products are searched on demand by the form's async picker, so we only
@@ -41,10 +71,10 @@ export default async function PurchasesPage({
         orderBy: { name: "asc" },
         select: { id: true, name: true },
       }),
-      prisma.purchase.count({ where: { workspaceId: access.workspaceId } }),
+      prisma.purchase.count({ where }),
       prisma.purchase.findMany({
-        where: { workspaceId: access.workspaceId },
-        orderBy: { date: "desc" },
+        where,
+        orderBy: SORTS[sort],
         skip: (page - 1) * PAGE_SIZE,
         take: PAGE_SIZE,
         include: {
@@ -92,6 +122,7 @@ export default async function PurchasesPage({
       : null,
     paidFromTreasury: pu.paidFromTreasury,
     unitCost: Number(pu.unitCost),
+    salePrice: pu.salePrice != null ? Number(pu.salePrice) : null,
     quantity: pu.quantity,
     expiryDate: pu.expiryDate ? pu.expiryDate.toISOString().slice(0, 10) : null,
   }));
@@ -121,11 +152,14 @@ export default async function PurchasesPage({
         purchases={purchaseRows}
         treasuryBalance={treasury}
         perms={perms}
+        query={q}
+        sort={sort}
       />
       <Pagination
         page={page}
         totalPages={Math.ceil(purchaseCount / PAGE_SIZE)}
         basePath={`/${slug}/purchases`}
+        query={{ q: q || undefined, sort: sort !== "date_desc" ? sort : undefined }}
       />
     </div>
   );
