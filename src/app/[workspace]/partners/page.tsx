@@ -38,13 +38,9 @@ export default async function PartnersPage({
     businessCapitalSummary(workspaceId),
   ]);
 
-  // A PARTNER only sees their own record; OWNER/MANAGER see everyone.
-  const visible =
-    access.role === "PARTNER"
-      ? partners.filter((p) => p.userId === access.userId)
-      : partners;
-
-  const rows = visible.map((p) => {
+  // Full transparency model (owner's decision): every partner sees every
+  // partner's record. Managing (add/edit/delete) is still gated by canManage.
+  const rows = partners.map((p) => {
     const b = balances.get(p.id);
     const share = Number(p.profitSharePercent);
     return {

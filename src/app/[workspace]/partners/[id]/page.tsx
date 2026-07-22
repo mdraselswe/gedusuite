@@ -28,10 +28,8 @@ export default async function PartnerDetailPage({
   });
   if (!partner) notFound();
 
-  // A PARTNER may only view their own ledger.
-  if (access.role === "PARTNER" && partner.userId !== access.userId) {
-    redirect(`/${slug}/partners`);
-  }
+  // Full transparency model: any member with partners-view access can open
+  // any partner's ledger (matches the list page). Writes stay role-gated.
 
   const balances = (await partnerBalances(access.workspaceId)).get(partner.id);
   const canAdd =
