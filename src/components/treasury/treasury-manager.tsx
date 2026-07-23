@@ -496,7 +496,7 @@ export function TreasuryManager({
                 empty={{ title: "No distributions yet" }}
                 columns={
                   [
-                    { key: "date", header: "Date", cell: (d) => d.date },
+                    { key: "date", header: "Date", sortValue: (d) => d.date, cell: (d) => d.date },
                     { key: "note", header: "Note", cardTitle: true, cell: (d) => d.note ?? "—" },
                     {
                       key: "amount",
@@ -621,10 +621,12 @@ export function TreasuryManager({
         <DataTable
           rows={filtered}
           rowKey={(e) => e.id}
+          searchText={(e) => `${e.source} ${e.partnerName ?? ""} ${e.note ?? ""}`}
+          searchPlaceholder="Search source, partner, note…"
           empty={{ icon: Wallet, title: "No entries" }}
           columns={
             [
-              { key: "date", header: "Date", cell: (e) => e.date },
+              { key: "date", header: "Date", sortValue: (e) => e.date, cell: (e) => e.date },
               {
                 key: "dir",
                 header: "Dir",
@@ -633,12 +635,13 @@ export function TreasuryManager({
                 ),
               },
               { key: "source", header: "Source", cardTitle: true, cell: (e) => e.source },
-              { key: "partner", header: "Partner", cell: (e) => e.partnerName ?? "—" },
-              { key: "note", header: "Note", cell: (e) => e.note ?? "—" },
+              { key: "partner", header: "Partner", hideable: true, cell: (e) => e.partnerName ?? "—" },
+              { key: "note", header: "Note", hideable: true, wrap: true, cell: (e) => e.note ?? "—" },
               {
                 key: "amount",
                 header: "Amount",
                 align: "right",
+                sortValue: (e) => e.amount,
                 cell: (e) => (
                   <span className={e.type === "IN" ? "text-green-600" : "text-destructive"}>
                     {e.type === "IN" ? "+" : "−"}

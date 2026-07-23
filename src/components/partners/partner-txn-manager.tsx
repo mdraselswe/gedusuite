@@ -132,20 +132,23 @@ export function PartnerTxnManager({
         <DataTable
           rows={txns}
           rowKey={(t) => t.id}
+          searchText={(t) => `${t.type} ${t.purpose ?? ""}`}
+          searchPlaceholder="Search type, purpose…"
           empty={{ icon: ArrowLeftRight, title: "No transactions" }}
           columns={
             [
-              { key: "date", header: "Date", cell: (t) => t.date },
+              { key: "date", header: "Date", sortValue: (t) => t.date, cell: (t) => t.date },
               {
                 key: "type",
                 header: "Type",
                 cardTitle: true,
                 cell: (t) => LABEL[t.type] ?? t.type,
               },
-              { key: "purpose", header: "Purpose", cell: (t) => t.purpose ?? "—" },
+              { key: "purpose", header: "Purpose", hideable: true, wrap: true, cell: (t) => t.purpose ?? "—" },
               {
                 key: "amount",
                 header: "Amount",
+                sortValue: (t) => t.amount,
                 align: "right",
                 cell: (t) => t.amount.toFixed(2),
               },

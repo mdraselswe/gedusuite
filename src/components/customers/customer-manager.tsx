@@ -146,6 +146,8 @@ export function CustomerManager({
               key: "name",
               header: "Name",
               cardTitle: true,
+              wrap: true,
+              sortValue: (c) => c.name.toLowerCase(),
               cell: (c) => (
                 <span>
                   {c.name}
@@ -160,6 +162,7 @@ export function CustomerManager({
             {
               key: "phone",
               header: "Phone",
+              hideable: true,
               cell: (c) => (
                 <span>
                   {c.phone ?? "—"}
@@ -171,11 +174,18 @@ export function CustomerManager({
                 </span>
               ),
             },
-            { key: "orders", header: "Orders", align: "right", cell: (c) => c.orderCount },
+            {
+              key: "orders",
+              header: "Orders",
+              align: "right",
+              sortValue: (c) => c.orderCount,
+              cell: (c) => c.orderCount,
+            },
             {
               key: "outstanding",
               header: "Outstanding",
               align: "right",
+              sortValue: (c) => c.outstanding,
               cell: (c) =>
                 c.outstanding > 0 ? (
                   <span className="font-semibold text-destructive">

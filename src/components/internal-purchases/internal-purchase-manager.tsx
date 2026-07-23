@@ -174,14 +174,18 @@ export function InternalPurchaseManager({
       <DataTable
         rows={filtered}
         rowKey={(i) => i.id}
+        searchText={(i) => `${i.itemName} ${i.description ?? ""} ${i.supplierName ?? ""} ${i.category}`}
+        searchPlaceholder="Search item, supplier…"
         empty={{ icon: Receipt, title: "No entries" }}
         columns={
           [
-            { key: "date", header: "Date", cell: (i) => i.date },
+            { key: "date", header: "Date", cell: (i) => i.date, sortValue: (i) => i.date },
             {
               key: "item",
               header: "Item",
               cardTitle: true,
+              wrap: true,
+              sortValue: (i) => i.itemName.toLowerCase(),
               cell: (i) => (
                 <span>
                   {i.itemName}
@@ -196,20 +200,23 @@ export function InternalPurchaseManager({
             {
               key: "category",
               header: "Category",
+              hideable: true,
               cell: (i) => <Badge variant="secondary">{LABEL[i.category] ?? i.category}</Badge>,
             },
-            { key: "supplier", header: "Supplier", cell: (i) => i.supplierName ?? "—" },
+            { key: "supplier", header: "Supplier", hideable: true, wrap: true, cell: (i) => i.supplierName ?? "—" },
             {
               key: "funding",
               header: "Funding",
+              hideable: true,
               cell: (i) => (i.paidFromTreasury ? "Treasury" : i.paidBy ? `Partner: ${i.paidBy}` : "—"),
             },
-            { key: "cost", header: "Cost", align: "right", cell: (i) => i.cost.toFixed(2) },
-            { key: "qty", header: "Qty", align: "right", cell: (i) => i.quantity },
+            { key: "cost", header: "Cost", align: "right", hideable: true, sortValue: (i) => i.cost, cell: (i) => i.cost.toFixed(2) },
+            { key: "qty", header: "Qty", align: "right", sortValue: (i) => i.quantity, cell: (i) => i.quantity },
             {
               key: "total",
               header: "Total",
               align: "right",
+              sortValue: (i) => i.cost * i.quantity,
               cell: (i) => (i.cost * i.quantity).toFixed(2),
             },
             ...(perms.canEdit

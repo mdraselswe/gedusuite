@@ -56,7 +56,7 @@ export default async function TreasuryPage({
       prisma.profitDistribution.findMany({
         where: { workspaceId },
         orderBy: { date: "desc" },
-        take: 20,
+        take: 200, // client-side pagination in the table handles the rest
       }),
     ]);
 

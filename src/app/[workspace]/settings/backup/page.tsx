@@ -28,7 +28,7 @@ export default async function BackupSettingsPage({
     prisma.backupLog.findMany({
       where: { workspaceId },
       orderBy: { createdAt: "desc" },
-      take: 30,
+      take: 200, // client-side pagination in the table handles the rest
     }),
     getPersonalStatus(),
   ]);

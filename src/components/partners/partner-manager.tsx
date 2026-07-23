@@ -114,6 +114,8 @@ export function PartnerManager({
       <DataTable
         rows={partners}
         rowKey={(p) => p.id}
+        searchText={(p) => p.name}
+        searchPlaceholder="Search partner…"
         empty={{
           icon: Handshake,
           title: "No partners yet",
@@ -121,29 +123,36 @@ export function PartnerManager({
         }}
         columns={
           [
-            { key: "name", header: "Partner", cardTitle: true, cell: (p) => p.name },
+            { key: "name", header: "Partner", cardTitle: true, wrap: true, sortValue: (p) => p.name.toLowerCase(), cell: (p) => p.name },
             {
               key: "share",
               header: "Share %",
               align: "right",
+              sortValue: (p) => p.profitSharePercent,
               cell: (p) => p.profitSharePercent.toFixed(2),
             },
             {
               key: "capital",
               header: "Net capital",
               align: "right",
+              hideable: true,
+              sortValue: (p) => p.netCapital,
               cell: (p) => p.netCapital.toFixed(2),
             },
             {
               key: "expenses",
               header: "Expenses",
               align: "right",
+              hideable: true,
+              sortValue: (p) => p.expenses,
               cell: (p) => p.expenses.toFixed(2),
             },
             {
               key: "remaining",
               header: "Remaining",
               align: "right",
+              hideable: true,
+              sortValue: (p) => p.remaining,
               cell: (p) => (
                 <span className={p.remaining < 0 ? "text-destructive" : undefined}>
                   {p.remaining.toFixed(2)}
@@ -154,12 +163,15 @@ export function PartnerManager({
               key: "toTreasury",
               header: "To treasury",
               align: "right",
+              hideable: true,
+              sortValue: (p) => p.depositedToTreasury,
               cell: (p) => p.depositedToTreasury.toFixed(2),
             },
             {
               key: "profitShare",
               header: "Profit share",
               align: "right",
+              sortValue: (p) => p.profitShareAmount,
               cell: (p) => p.profitShareAmount.toFixed(2),
             },
             {

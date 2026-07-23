@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { computeInventoryAlerts } from "@/lib/inventory";
 import { overdueOrders, totalBusinessProfit, treasuryBalance } from "@/lib/finance";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { DataTable, type Column } from "@/components/ui/data-table";
+import { PartnerShareTable } from "@/components/dashboard/partner-share-table";
 import { PageHeader } from "@/components/ui/page-header";
 import { LayoutDashboard, Users, Wallet, UserCog } from "lucide-react";
 
@@ -128,28 +128,7 @@ export default async function DashboardPage({
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <DataTable
-              rows={partnerShares}
-              rowKey={(p) => p.name}
-              empty={{ icon: Users, title: "No partners" }}
-              columns={
-                [
-                  { key: "name", header: "Partner", cardTitle: true, cell: (p) => p.name },
-                  {
-                    key: "percent",
-                    header: "Share %",
-                    align: "right",
-                    cell: (p) => p.percent.toFixed(2),
-                  },
-                  {
-                    key: "amount",
-                    header: "Share amount",
-                    align: "right",
-                    cell: (p) => p.amount.toFixed(2),
-                  },
-                ] as Column<(typeof partnerShares)[number]>[]
-              }
-            />
+            <PartnerShareTable rows={partnerShares} />
           </CardContent>
         </Card>
       )}

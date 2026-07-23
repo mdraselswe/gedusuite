@@ -170,8 +170,8 @@ export function BackupManager({
           empty={{ icon: DatabaseBackup, title: "No backups yet" }}
           columns={
             [
-              { key: "when", header: "When", cardTitle: true, cell: (l) => l.createdAt },
-              { key: "type", header: "Type", cell: (l) => l.type },
+              { key: "when", header: "When", cardTitle: true, sortValue: (l) => l.createdAt, cell: (l) => l.createdAt },
+              { key: "type", header: "Type", hideable: true, cell: (l) => l.type },
               {
                 key: "status",
                 header: "Status",

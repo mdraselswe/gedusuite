@@ -177,20 +177,31 @@ export function StockAdjustmentManager({
         <DataTable
           rows={adjustments}
           rowKey={(a) => a.id}
+          searchText={(a) => `${a.product} ${a.type} ${a.reason ?? ""}`}
+          searchPlaceholder="Search product, type, reason…"
           empty={{ icon: ClipboardList, title: "No adjustments recorded" }}
           columns={
             [
-              { key: "date", header: "Date", cell: (a) => a.date },
-              { key: "product", header: "Product", cardTitle: true, cell: (a) => a.product },
+              { key: "date", header: "Date", cell: (a) => a.date, sortValue: (a) => a.date },
+              {
+                key: "product",
+                header: "Product",
+                cardTitle: true,
+                wrap: true,
+                cell: (a) => a.product,
+                sortValue: (a) => a.product,
+              },
               {
                 key: "type",
                 header: "Type",
+                hideable: true,
                 cell: (a) => <Badge variant="secondary">{LABEL[a.type] ?? a.type}</Badge>,
               },
               {
                 key: "delta",
                 header: "Change",
                 align: "right",
+                sortValue: (a) => a.delta,
                 cell: (a) => (
                   <span className={a.delta < 0 ? "text-destructive" : "text-green-600"}>
                     {a.delta > 0 ? "+" : ""}
@@ -198,7 +209,7 @@ export function StockAdjustmentManager({
                   </span>
                 ),
               },
-              { key: "reason", header: "Reason", cell: (a) => a.reason ?? "—" },
+              { key: "reason", header: "Reason", hideable: true, wrap: true, cell: (a) => a.reason ?? "—" },
               ...(canEdit
                 ? [
                     {

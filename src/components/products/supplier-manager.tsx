@@ -129,10 +129,11 @@ export function SupplierManager({
         }}
         columns={
           [
-            { key: "name", header: "Name", cardTitle: true, cell: (s) => s.name },
+            { key: "name", header: "Name", cardTitle: true, wrap: true, sortValue: (s) => s.name.toLowerCase(), cell: (s) => s.name },
             {
               key: "phone",
               header: "Phone",
+              hideable: true,
               cell: (s) => (
                 <span>
                   {s.phone ?? "—"}
@@ -144,7 +145,7 @@ export function SupplierManager({
                 </span>
               ),
             },
-            { key: "address", header: "Address", cell: (s) => s.address ?? "—" },
+            { key: "address", header: "Address", hideable: true, wrap: true, cell: (s) => s.address ?? "—" },
             ...(perms.canEdit
               ? [
                   {
