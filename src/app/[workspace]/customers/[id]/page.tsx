@@ -4,10 +4,8 @@ import { workspaceAccess } from "@/lib/authz";
 import { can } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
 import { computeOrderTotals } from "@/lib/orders";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { DataTable, type Column } from "@/components/ui/data-table";
-import { ShoppingBag } from "lucide-react";
+import { CustomerOrdersTable } from "@/components/customers/customer-orders-table";
 
 export default async function CustomerDetailPage({
   params,
@@ -48,6 +46,10 @@ export default async function CustomerDetailPage({
   const outstanding = orders
     .filter((o) => o.status !== "CANCELLED" && o.paymentStatus !== "PAID")
     .reduce((s, o) => s + o.totals.customerTotal, 0);
+  // Lifetime profit from this customer (cost/profit is reports-gated).
+  const totalProfit = orders
+    .filter((o) => o.status !== "CANCELLED")
+    .reduce((s, o) => s + o.totals.netProfit, 0);
 
   return (
     <div className="space-y-6">
@@ -63,13 +65,27 @@ export default async function CustomerDetailPage({
         </p>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className={`grid gap-4 sm:grid-cols-3 ${canViewProfit ? "lg:grid-cols-4" : ""}`}>
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Orders</CardTitle>
           </CardHeader>
           <CardContent className="text-2xl font-bold">{orders.length}</CardContent>
         </Card>
+        {canViewProfit && (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Total profit
+              </CardTitle>
+            </CardHeader>
+            <CardContent
+              className={`text-2xl font-bold ${totalProfit < 0 ? "text-destructive" : "text-emerald-600 dark:text-emerald-400"}`}
+            >
+              {totalProfit.toFixed(2)}
+            </CardContent>
+          </Card>
+        )}
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -94,38 +110,18 @@ export default async function CustomerDetailPage({
 
       <div>
         <h2 className="mb-3 text-lg font-semibold">Order history</h2>
-        <DataTable
-          rows={orders}
-          rowKey={(o) => o.id}
-          empty={{ icon: ShoppingBag, title: "No orders yet" }}
-          columns={
-            [
-              { key: "date", header: "Date", cardTitle: true, cell: (o) => o.date },
-              {
-                key: "status",
-                header: "Status",
-                cell: (o) => <Badge variant="secondary">{o.status}</Badge>,
-              },
-              { key: "payment", header: "Payment", cell: (o) => o.paymentStatus },
-              { key: "items", header: "Items", align: "right", cell: (o) => o.itemCount },
-              {
-                key: "total",
-                header: "Total",
-                align: "right",
-                cell: (o) => o.totals.customerTotal.toFixed(2),
-              },
-              ...(canViewProfit
-                ? [
-                    {
-                      key: "profit",
-                      header: "Profit",
-                      align: "right" as const,
-                      cell: (o: (typeof orders)[number]) => o.totals.netProfit.toFixed(2),
-                    },
-                  ]
-                : []),
-            ] as Column<(typeof orders)[number]>[]
-          }
+        <CustomerOrdersTable
+          slug={slug}
+          canViewProfit={canViewProfit}
+          rows={orders.map((o) => ({
+            id: o.id,
+            date: o.date,
+            status: o.status,
+            paymentStatus: o.paymentStatus,
+            itemCount: o.itemCount,
+            customerTotal: o.totals.customerTotal,
+            netProfit: o.totals.netProfit,
+          }))}
         />
       </div>
     </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/select";
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
@@ -45,7 +46,8 @@ import {
   type VariantOption as SearchVariantOption,
 } from "@/server/actions/search";
 import { DataTable, type Column } from "@/components/ui/data-table";
-import { Plus, ShoppingCart, Trash2, MoreVertical } from "lucide-react";
+import { Columns3, Plus, ShoppingCart, Trash2, MoreVertical, X } from "lucide-react";
+import { formatStock } from "@/lib/units";
 
 type VariantOption = { id: string; label: string; stock: number };
 type OrderItem = {
@@ -76,6 +78,9 @@ type ItemDraft = {
   unitPrice: string;
   quantity: string;
   discount: string;
+  // Pack-based products can be sold by the packet — quantity/price entered
+  // per packet get converted to per-piece on submit (stock stays in pieces).
+  unit: "PIECE" | "PACK";
 };
 // A gift line: either a product from stock (cost auto-filled from the latest
 // purchase cost, editable) or a custom free-text item with a manual cost.
@@ -90,6 +95,14 @@ type GiftDraft = {
   costEdited: boolean;
 };
 
+// Toggleable columns on the orders table (Columns menu). Profit starts on;
+// Held by / Courier ID start hidden to keep the table lean.
+const OPTIONAL_COLUMNS = [
+  { key: "heldBy", label: "Held by" },
+  { key: "courier", label: "Courier ID" },
+  { key: "profit", label: "Profit" },
+] as const;
+
 const STATUSES = ["PENDING", "CONFIRMED", "SHIPPED", "DELIVERED", "CANCELLED"];
 const DELIVERY = ["SELF", "COURIER"];
 const METHODS = ["CASH", "BKASH", "NAGAD", "COURIER_COLLECTION", "OTHER"];
@@ -97,7 +110,25 @@ const PAY_STATUS = ["UNPAID", "PAID", "PARTIAL"];
 const NONE = "__none__";
 
 function emptyItem(): ItemDraft {
-  return { variant: null, unitPrice: "", quantity: "1", discount: "0" };
+  return { variant: null, unitPrice: "", quantity: "1", discount: "0", unit: "PIECE" };
+}
+
+/**
+ * Prefill for the price box from the variant's recorded sale price, in the
+ * selected unit (per-piece × unitsPerPack when selling by packet). Empty when
+ * no sale price was ever recorded — seller types it as before.
+ */
+function prefillPrice(variant: SearchVariantOption | null, unit: "PIECE" | "PACK"): string {
+  if (variant?.salePrice == null) return "";
+  const upp = variant.unitsPerPack && variant.unitsPerPack > 1 ? variant.unitsPerPack : 1;
+  const perUnit = unit === "PACK" ? variant.salePrice * upp : variant.salePrice;
+  return String(Math.round((perUnit + Number.EPSILON) * 100) / 100);
+}
+
+/** Units-per-pack for a draft's selected variant, or null when not pack-based. */
+function uppOf(it: { variant: SearchVariantOption | null }): number | null {
+  const v = it.variant;
+  return v?.unitsPerPack && v.unitsPerPack > 1 ? v.unitsPerPack : null;
 }
 
 function emptyGift(): GiftDraft {
@@ -196,12 +227,20 @@ export function OrderManager({
   members,
   orders,
   perms,
+  query,
+  statusFilter,
+  payFilter,
+  sort,
 }: {
   slug: string;
   hasProducts: boolean;
   members: { id: string; label: string }[];
   orders: OrderRow[];
   perms: Perms;
+  query: string;
+  statusFilter: string;
+  payFilter: string;
+  sort: string;
 }) {
   const router = useRouter();
 
@@ -226,15 +265,43 @@ export function OrderManager({
   const [returnOrder, setReturnOrder] = useState<OrderRow | null>(null);
   const [returnItemId, setReturnItemId] = useState("");
 
-  const [query, setQuery] = useState("");
-  const shownOrders = orders.filter((o) => {
-    const q = query.toLowerCase();
-    return (
-      o.customerName.toLowerCase().includes(q) ||
-      o.status.toLowerCase().includes(q) ||
-      o.paymentStatus.toLowerCase().includes(q)
-    );
-  });
+  // ── List toolbar: URL-driven search/filter/sort (server queries all pages) ──
+  const [search, setSearch] = useState(query);
+  const [visibleCols, setVisibleCols] = useState<Set<string>>(new Set(["profit"]));
+  const searchDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function pushListParams(next: { q?: string; status?: string; pay?: string; sort?: string }) {
+    const params = new URLSearchParams();
+    const qv = (next.q ?? search).trim();
+    const sv = next.status ?? statusFilter;
+    const pv = next.pay ?? payFilter;
+    const so = next.sort ?? sort;
+    if (qv) params.set("q", qv);
+    if (sv) params.set("status", sv);
+    if (pv) params.set("pay", pv);
+    if (so !== "date_desc") params.set("sort", so);
+    router.replace(`/${slug}/sales/orders${params.size ? `?${params}` : ""}`);
+  }
+  function onSearchChange(v: string) {
+    setSearch(v);
+    if (searchDebounce.current) clearTimeout(searchDebounce.current);
+    searchDebounce.current = setTimeout(() => pushListParams({ q: v }), 400);
+  }
+  useEffect(() => {
+    return () => {
+      if (searchDebounce.current) clearTimeout(searchDebounce.current);
+    };
+  }, []);
+
+  function toggleColumn(key: string) {
+    setVisibleCols((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+  const shownOrders = orders;
 
   function resetForm() {
     setItems([emptyItem()]);
@@ -284,14 +351,21 @@ export function OrderManager({
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
     const cleanItems = items
       .filter((it) => it.variant && parseInt(it.quantity) > 0)
-      .map((it) => ({
-        productVariantId: it.variant!.value,
-        unitPrice: parseFloat(it.unitPrice) || 0,
-        quantity: parseInt(it.quantity) || 0,
-        discount: parseFloat(it.discount) || 0,
-      }));
+      .map((it) => {
+        // Packet entries → per-piece storage: qty × upp, price ÷ upp.
+        const upp = it.unit === "PACK" ? uppOf(it) : null;
+        const qty = parseInt(it.quantity) || 0;
+        const price = parseFloat(it.unitPrice) || 0;
+        return {
+          productVariantId: it.variant!.value,
+          unitPrice: upp ? round2(price / upp) : price,
+          quantity: upp ? qty * upp : qty,
+          discount: parseFloat(it.discount) || 0,
+        };
+      });
     if (cleanItems.length === 0) {
       toast.error("Add at least one item with a product and quantity");
       return;
@@ -377,13 +451,92 @@ export function OrderManager({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between gap-3">
-        <Input
-          placeholder="Search by customer or status…"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          className="max-w-xs"
-        />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative w-full max-w-xs">
+            <Input
+              placeholder="Search customer or courier ID…"
+              value={search}
+              onChange={(e) => onSearchChange(e.target.value)}
+              className={search ? "pr-8" : undefined}
+            />
+            {search && (
+              <button
+                type="button"
+                aria-label="Clear search"
+                onClick={() => {
+                  if (searchDebounce.current) clearTimeout(searchDebounce.current);
+                  setSearch("");
+                  pushListParams({ q: "" });
+                }}
+                className="absolute top-1/2 right-2 -translate-y-1/2 rounded-sm text-muted-foreground hover:text-foreground"
+              >
+                <X className="size-4" />
+              </button>
+            )}
+          </div>
+          <Select
+            value={statusFilter || "__all__"}
+            onValueChange={(v) => pushListParams({ status: v === "__all__" ? "" : (v ?? "") })}
+          >
+            <SelectTrigger className="w-44">
+              <span className="shrink-0 text-muted-foreground">Status:</span>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all__">All</SelectItem>
+              {STATUSES.map((s) => (
+                <SelectItem key={s} value={s}>
+                  {formatEnum(s)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select
+            value={payFilter || "__all__"}
+            onValueChange={(v) => pushListParams({ pay: v === "__all__" ? "" : (v ?? "") })}
+          >
+            <SelectTrigger className="w-40">
+              <span className="shrink-0 text-muted-foreground">Payment:</span>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all__">All</SelectItem>
+              {PAY_STATUS.map((s) => (
+                <SelectItem key={s} value={s}>
+                  {formatEnum(s)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={sort} onValueChange={(v) => v && pushListParams({ sort: v })}>
+            <SelectTrigger className="w-44">
+              <span className="shrink-0 text-muted-foreground">Sort:</span>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="date_desc">Newest first</SelectItem>
+              <SelectItem value="date_asc">Oldest first</SelectItem>
+            </SelectContent>
+          </Select>
+          <DropdownMenu>
+            <DropdownMenuTrigger render={<Button variant="outline" size="sm" />}>
+              <Columns3 data-icon="inline-start" />
+              Columns
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              {OPTIONAL_COLUMNS.filter((c) => c.key !== "profit" || perms.canViewProfit).map((c) => (
+                <DropdownMenuCheckboxItem
+                  key={c.key}
+                  checked={visibleCols.has(c.key)}
+                  onCheckedChange={() => toggleColumn(c.key)}
+                >
+                  {c.label}
+                </DropdownMenuCheckboxItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
         {perms.canAdd && (
           <Button
             size="sm"
@@ -402,7 +555,7 @@ export function OrderManager({
         rowKey={(o) => o.id}
         empty={{
           icon: ShoppingCart,
-          title: "No orders found",
+          title: query || statusFilter || payFilter ? "No orders match your filters" : "No orders found",
           description: perms.canAdd ? "Create an order to start selling." : undefined,
         }}
         columns={
@@ -452,7 +605,9 @@ export function OrderManager({
               key: "payment",
               header: "Payment",
               cell: (o) => (
-                <div className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1 md:justify-start">
+                // Wraps in the mobile card (narrow value area) but stays a
+                // single line in the desktop table.
+                <div className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1 md:flex-nowrap md:justify-start">
                   {perms.canEdit ? (
                     <Select
                       value={o.paymentStatus}
@@ -481,29 +636,35 @@ export function OrderManager({
                 </div>
               ),
             },
-            { key: "heldBy", header: "Held by", cell: (o) => o.heldByName ?? "—" },
-            {
-              key: "courier",
-              header: "Courier ID",
-              cell: (o) =>
-                o.deliveryType === "COURIER" ? (
-                  <CourierIdCell
-                    slug={slug}
-                    orderId={o.id}
-                    value={o.courierTrackingId}
-                    canEdit={perms.canEdit}
-                  />
-                ) : (
-                  <span className="text-muted-foreground">—</span>
-                ),
-            },
+            ...(visibleCols.has("heldBy")
+              ? [{ key: "heldBy", header: "Held by", cell: (o: OrderRow) => o.heldByName ?? "—" }]
+              : []),
+            ...(visibleCols.has("courier")
+              ? [
+                  {
+                    key: "courier",
+                    header: "Courier ID",
+                    cell: (o: OrderRow) =>
+                      o.deliveryType === "COURIER" ? (
+                        <CourierIdCell
+                          slug={slug}
+                          orderId={o.id}
+                          value={o.courierTrackingId}
+                          canEdit={perms.canEdit}
+                        />
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      ),
+                  },
+                ]
+              : []),
             {
               key: "total",
               header: "Total",
               align: "right",
               cell: (o) => o.totals.customerTotal.toFixed(2),
             },
-            ...(perms.canViewProfit
+            ...(perms.canViewProfit && visibleCols.has("profit")
               ? [
                   {
                     key: "profit",
@@ -536,7 +697,7 @@ export function OrderManager({
                   {perms.canEdit && (
                     <DropdownMenu>
                       <DropdownMenuTrigger
-                        render={<Button variant="ghost" size="icon-sm" aria-label="More actions" />}
+                        render={<Button variant="ghost" size="icon-sm" aria-label="More actions" title="More actions" />}
                       >
                         <MoreVertical className="size-4" />
                       </DropdownMenuTrigger>
@@ -594,11 +755,15 @@ export function OrderManager({
                     {items.map((it, i) => {
                       const selectedVariant = it.variant;
                       const quantity = parseInt(it.quantity) || 0;
+                      const itemUpp = uppOf(it);
+                      const sellingByPack = !!itemUpp && it.unit === "PACK";
+                      // Stock check compares pieces — convert packet quantities.
+                      const piecesNeeded = sellingByPack ? quantity * itemUpp! : quantity;
                       const itemTotal =
                         (parseFloat(it.unitPrice) || 0) * quantity - (parseFloat(it.discount) || 0);
                       const stockWarning =
-                        selectedVariant && quantity > selectedVariant.stock
-                          ? `Only ${selectedVariant.stock} in stock`
+                        selectedVariant && piecesNeeded > selectedVariant.stock
+                          ? `Only ${selectedVariant.stock} pcs in stock`
                           : null;
 
                       return (
@@ -632,7 +797,13 @@ export function OrderManager({
                               <Label>Product</Label>
                               <AsyncCombobox
                                 value={it.variant}
-                                onChange={(opt) => updateItem(i, { variant: opt })}
+                                onChange={(opt) =>
+                                  updateItem(i, {
+                                    variant: opt,
+                                    unit: "PIECE",
+                                    unitPrice: prefillPrice(opt, "PIECE"),
+                                  })
+                                }
                                 fetchPage={async (q, cursor) => {
                                   const res = await searchVariants(slug, q, cursor);
                                   return res.ok ? { items: res.items, next: res.next } : { items: [], next: null };
@@ -642,14 +813,36 @@ export function OrderManager({
                                   <>
                                     <span className="truncate">{o.label}</span>
                                     <span className="shrink-0 text-xs text-muted-foreground">
-                                      {o.stock} in stock
+                                      {formatStock(o.stock, o.unitsPerPack)} in stock
                                     </span>
                                   </>
                                 )}
                               />
+                              {itemUpp && (
+                                <Select
+                                  value={it.unit}
+                                  onValueChange={(v) => {
+                                    const unit = (v as ItemDraft["unit"]) ?? "PIECE";
+                                    // Re-prefill the price in the new unit (packet
+                                    // price = piece price × pack size).
+                                    updateItem(i, {
+                                      unit,
+                                      unitPrice: prefillPrice(it.variant, unit) || it.unitPrice,
+                                    });
+                                  }}
+                                >
+                                  <SelectTrigger className="h-8 w-full">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="PIECE">Sell by single piece</SelectItem>
+                                    <SelectItem value="PACK">Sell by packet ({itemUpp} pcs)</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              )}
                             </div>
                             <div className="space-y-2">
-                              <Label>Price</Label>
+                              <Label>{sellingByPack ? "Price/pkt" : "Price"}</Label>
                               <Input
                                 type="number"
                                 step="0.01"
@@ -661,7 +854,7 @@ export function OrderManager({
                               />
                             </div>
                             <div className="space-y-2">
-                              <Label>Qty</Label>
+                              <Label>{sellingByPack ? "Qty (pkt)" : "Qty"}</Label>
                               <Input
                                 type="number"
                                 min="1"
@@ -687,7 +880,12 @@ export function OrderManager({
 
                           <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs">
                             <span className={stockWarning ? "text-destructive" : "text-muted-foreground"}>
-                              {stockWarning ?? "Stock will be validated before saving."}
+                              {stockWarning ??
+                                (sellingByPack
+                                  ? `= ${piecesNeeded} pieces @ ${formatMoney(
+                                      (parseFloat(it.unitPrice) || 0) / itemUpp!,
+                                    )}/pc`
+                                  : "Stock will be validated before saving.")}
                             </span>
                             <span className="font-medium tabular-nums">
                               Line total {formatMoney(Math.max(itemTotal, 0))}
@@ -786,7 +984,7 @@ export function OrderManager({
                                       <>
                                         <span className="truncate">{o.label}</span>
                                         <span className="shrink-0 text-xs text-muted-foreground">
-                                          {o.stock} in stock
+                                          {formatStock(o.stock, o.unitsPerPack)} in stock
                                         </span>
                                       </>
                                     )}

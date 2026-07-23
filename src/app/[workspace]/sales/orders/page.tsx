@@ -16,15 +16,23 @@ function variantLabel(name: string, size: string | null, color: string | null) {
   return extra ? `${name} (${extra})` : name;
 }
 
+const ORDER_STATUSES = ["PENDING", "CONFIRMED", "SHIPPED", "DELIVERED", "CANCELLED"] as const;
+const PAY_STATUSES = ["PAID", "UNPAID", "PARTIAL"] as const;
+
 export default async function OrdersPage({
   params,
   searchParams,
 }: {
   params: Promise<{ workspace: string }>;
-  searchParams: Promise<{ page?: string }>;
+  searchParams: Promise<{ page?: string; q?: string; status?: string; pay?: string; sort?: string }>;
 }) {
   const { workspace: slug } = await params;
-  const page = parsePage((await searchParams).page);
+  const sp = await searchParams;
+  const page = parsePage(sp.page);
+  const q = (sp.q ?? "").trim();
+  const statusFilter = ORDER_STATUSES.includes(sp.status as never) ? sp.status : "";
+  const payFilter = PAY_STATUSES.includes(sp.pay as never) ? sp.pay : "";
+  const sort = sp.sort === "date_asc" ? "date_asc" : "date_desc";
   const access = await workspaceAccess(slug);
   if (!access) redirect("/");
   if (!can(access.role, "sales", "view", access.permissions)) {
@@ -41,16 +49,32 @@ export default async function OrdersPage({
   // Products + customers are no longer bulk-loaded here — the order form's
   // product/customer pickers search them on demand (async combobox). We only
   // need a cheap existence check to gate the "add a product first" message.
+  // Search/filter narrow the whole table server-side (all pages, not just the
+  // visible one): customer name or courier tracking id, plus status filters.
+  const where = {
+    workspaceId,
+    ...(statusFilter ? { status: statusFilter as (typeof ORDER_STATUSES)[number] } : {}),
+    ...(payFilter ? { paymentStatus: payFilter as (typeof PAY_STATUSES)[number] } : {}),
+    ...(q
+      ? {
+          OR: [
+            { customer: { name: { contains: q, mode: "insensitive" as const } } },
+            { courierTrackingId: { contains: q, mode: "insensitive" as const } },
+          ],
+        }
+      : {}),
+  };
+
   const [productCount, members, orderCount, orders] = await Promise.all([
     prisma.productVariant.count({ where: { product: { workspaceId } } }),
     prisma.membership.findMany({
       where: { workspaceId, role: { in: ["OWNER", "PARTNER"] } },
       include: { user: { select: { name: true, email: true } } },
     }),
-    prisma.order.count({ where: { workspaceId } }),
+    prisma.order.count({ where }),
     prisma.order.findMany({
-      where: { workspaceId },
-      orderBy: { date: "desc" },
+      where,
+      orderBy: { date: sort === "date_asc" ? "asc" : "desc" },
       skip: (page - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
       include: {
@@ -115,11 +139,21 @@ export default async function OrdersPage({
         members={memberOptions}
         orders={orderRows}
         perms={perms}
+        query={q}
+        statusFilter={statusFilter ?? ""}
+        payFilter={payFilter ?? ""}
+        sort={sort}
       />
       <Pagination
         page={page}
         totalPages={Math.ceil(orderCount / PAGE_SIZE)}
         basePath={`/${slug}/sales/orders`}
+        query={{
+          q: q || undefined,
+          status: statusFilter || undefined,
+          pay: payFilter || undefined,
+          sort: sort !== "date_desc" ? sort : undefined,
+        }}
       />
     </div>
   );
