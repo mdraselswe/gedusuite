@@ -70,6 +70,7 @@ export default async function ProductsPage({
     imageUrl: p.imageUrl,
     expiryTracked: p.expiryTracked,
     lowStockThreshold: p.lowStockThreshold,
+    unitsPerPack: p.unitsPerPack,
     variants: p.variants.map((v) => ({
       id: v.id,
       size: v.size,

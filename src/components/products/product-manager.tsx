@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/select";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ProductImportDialog } from "@/components/products/product-import-dialog";
+import { formatStock } from "@/lib/units";
 import { Package } from "lucide-react";
 
 const ADD_NEW_CATEGORY = "__add_new__";
@@ -54,6 +55,7 @@ type Product = {
   imageUrl: string | null;
   expiryTracked: boolean;
   lowStockThreshold: number;
+  unitsPerPack: number | null;
   variants: Variant[];
 };
 type Perms = { canAdd: boolean; canEdit: boolean };
@@ -139,6 +141,7 @@ export function ProductManager({
   const [sku, setSku] = useState("");
   const [barcode, setBarcode] = useState("");
   const [threshold, setThreshold] = useState("5");
+  const [unitsPerPack, setUnitsPerPack] = useState("");
   const [expiryTracked, setExpiryTracked] = useState(false);
   const [imageUrl, setImageUrl] = useState("");
   const [hasVariants, setHasVariants] = useState(false);
@@ -155,6 +158,7 @@ export function ProductManager({
     setSku("");
     setBarcode("");
     setThreshold("5");
+    setUnitsPerPack("");
     setExpiryTracked(false);
     setImageUrl("");
     setHasVariants(false);
@@ -168,6 +172,7 @@ export function ProductManager({
     setSku(p.sku ?? "");
     setBarcode(p.barcode ?? "");
     setThreshold(String(p.lowStockThreshold));
+    setUnitsPerPack(p.unitsPerPack ? String(p.unitsPerPack) : "");
     setExpiryTracked(p.expiryTracked);
     setImageUrl(p.imageUrl ?? "");
     setDraftVariants([]);
@@ -216,6 +221,7 @@ export function ProductManager({
     fd.set("sku", sku);
     fd.set("barcode", barcode);
     fd.set("lowStockThreshold", threshold);
+    fd.set("unitsPerPack", unitsPerPack);
     fd.set("expiryTracked", expiryTracked ? "true" : "false");
     fd.set("imageUrl", imageUrl);
     // Only send variants when the user opted into them; otherwise the server
@@ -337,7 +343,7 @@ export function ProductManager({
                         >
                           {variantText(v)}
                           <span className={low ? "font-semibold text-destructive" : ""}>
-                            · {v.stock} in stock
+                            · {formatStock(v.stock, p.unitsPerPack)} in stock
                           </span>
                           {perms.canEdit && (
                             <button
@@ -470,6 +476,21 @@ export function ProductManager({
               <div className="space-y-2">
                 <Label htmlFor="p-barcode">Barcode</Label>
                 <Input id="p-barcode" value={barcode} onChange={(e) => setBarcode(e.target.value)} />
+              </div>
+              <div className="space-y-2 sm:col-span-2">
+                <Label htmlFor="p-upp">Units per pack</Label>
+                <Input
+                  id="p-upp"
+                  type="number"
+                  min={2}
+                  placeholder="e.g. 10 — leave blank if not sold in packs"
+                  value={unitsPerPack}
+                  onChange={(e) => setUnitsPerPack(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Stock is always counted in single pieces; this enables buying/selling by the
+                  packet with automatic conversion.
+                </p>
               </div>
             </div>
             <div className="flex items-center gap-2">

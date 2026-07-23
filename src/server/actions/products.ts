@@ -30,6 +30,11 @@ const ProductSchema = z.object({
   imageUrl: imageField,
   expiryTracked: z.boolean(),
   lowStockThreshold: z.coerce.number().int().min(0).max(100000),
+  // >1 enables Packet<->Piece conversion; blank/1 = plain per-piece product.
+  unitsPerPack: z.preprocess(
+    (v) => (v === "" || v == null ? undefined : v),
+    z.coerce.number().int().min(2, "Units per pack must be at least 2").max(10000).optional(),
+  ),
   variants: z.array(VariantInput).max(50),
 });
 
@@ -48,6 +53,7 @@ function parseProduct(formData: FormData) {
     imageUrl: formData.get("imageUrl") ?? undefined,
     expiryTracked: formData.get("expiryTracked") === "on" || formData.get("expiryTracked") === "true",
     lowStockThreshold: formData.get("lowStockThreshold") ?? 5,
+    unitsPerPack: formData.get("unitsPerPack") ?? undefined,
     variants,
   });
 }
@@ -86,6 +92,7 @@ export async function createProduct(
       imageUrl: clean(d.imageUrl),
       expiryTracked: d.expiryTracked,
       lowStockThreshold: d.lowStockThreshold,
+      unitsPerPack: d.unitsPerPack ?? null,
       variants: { create: variantCreate },
     },
   });
@@ -116,6 +123,7 @@ export async function updateProduct(
       imageUrl: clean(d.imageUrl),
       expiryTracked: d.expiryTracked,
       lowStockThreshold: d.lowStockThreshold,
+      unitsPerPack: d.unitsPerPack ?? null,
     },
   });
   if (result.count === 0) return { ok: false, error: "Product not found" };
@@ -235,6 +243,7 @@ const ImportProduct = z.object({
   barcode: z.string().trim().max(60).optional().or(z.literal("")),
   expiryTracked: z.boolean().optional().default(false),
   lowStockThreshold: z.coerce.number().int().min(0).max(100000).optional().default(5),
+  unitsPerPack: z.coerce.number().int().min(2).max(10000).optional(),
   variants: z.array(ImportVariant).max(50).optional().default([]),
 });
 
@@ -326,6 +335,7 @@ export async function importProducts(
             barcode: clean(p.barcode),
             expiryTracked: p.expiryTracked ?? false,
             lowStockThreshold: p.lowStockThreshold ?? 5,
+            unitsPerPack: p.unitsPerPack ?? null,
             variants: {
               create:
                 meaningful.length > 0

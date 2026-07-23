@@ -34,6 +34,7 @@ import {
 import { AsyncCombobox } from "@/components/ui/async-combobox";
 import { searchVariants, type VariantOption } from "@/server/actions/search";
 import { DataTable, type Column } from "@/components/ui/data-table";
+import { formatStock } from "@/lib/units";
 import { Columns3, MoreVertical, PackageOpen, X } from "lucide-react";
 
 // Local calendar date (not UTC) as a stable "today" default — must NOT depend
@@ -52,6 +53,7 @@ type PurchaseRow = {
   productVariantId: string;
   product: string;
   expiryTracked: boolean;
+  unitsPerPack: number | null;
   supplierId: string | null;
   supplier: string;
   paidByPartnerId: string | null;
@@ -152,9 +154,14 @@ export function PurchaseManager({
   const [supplierId, setSupplierId] = useState<string>(NO_SUPPLIER);
   const [fundingSource, setFundingSource] = useState<FundingSource>("NONE");
   const [paidByPartnerId, setPaidByPartnerId] = useState<string>(NO_PARTNER);
+  const [buyUnit, setBuyUnit] = useState<"PIECE" | "PACK">("PIECE");
   const [loading, setLoading] = useState(false);
 
   const showExpiry = variant?.expiryTracked ?? false;
+  // Pack-based product: quantities/costs can be entered per packet — always
+  // converted to per-piece before hitting the server (stock stays in pieces).
+  const upp = variant?.unitsPerPack && variant.unitsPerPack > 1 ? variant.unitsPerPack : null;
+  const buyingByPack = !!upp && buyUnit === "PACK";
 
   // Edit dialog state — separate controlled fields from the always-visible
   // "record a purchase" form above.
@@ -163,18 +170,51 @@ export function PurchaseManager({
   const [editSupplierId, setEditSupplierId] = useState<string>(NO_SUPPLIER);
   const [editFundingSource, setEditFundingSource] = useState<FundingSource>("NONE");
   const [editPaidByPartnerId, setEditPaidByPartnerId] = useState<string>(NO_PARTNER);
+  // Controlled so the Packet/Piece toggle can re-express the same purchase in
+  // either unit (stored values are always per-piece).
+  const [editBuyUnit, setEditBuyUnit] = useState<"PIECE" | "PACK">("PIECE");
+  const [editQty, setEditQty] = useState("");
+  const [editCost, setEditCost] = useState("");
+  const [editSale, setEditSale] = useState("");
   const [editLoading, setEditLoading] = useState(false);
 
   const editShowExpiry = editVariant?.expiryTracked ?? false;
+  const editUpp =
+    editVariant?.unitsPerPack && editVariant.unitsPerPack > 1 ? editVariant.unitsPerPack : null;
+  const editByPack = !!editUpp && editBuyUnit === "PACK";
+
+  const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
 
   function openEdit(p: PurchaseRow) {
     setEditing(p);
     // Seed the combobox from the row itself (the variant may not be in any
     // fetched search page). Stock isn't shown in this form, so 0 is fine.
-    setEditVariant({ value: p.productVariantId, label: p.product, stock: 0, expiryTracked: p.expiryTracked, unitCost: 0 });
+    setEditVariant({ value: p.productVariantId, label: p.product, stock: 0, expiryTracked: p.expiryTracked, unitCost: 0, salePrice: null, unitsPerPack: p.unitsPerPack });
     setEditSupplierId(p.supplierId ?? NO_SUPPLIER);
     setEditFundingSource(fundingSourceOf(p));
     setEditPaidByPartnerId(p.paidByPartnerId ?? NO_PARTNER);
+    setEditBuyUnit("PIECE");
+    setEditQty(String(p.quantity));
+    setEditCost(String(p.unitCost));
+    setEditSale(p.salePrice != null ? String(p.salePrice) : "");
+  }
+
+  /** Re-express the edit fields in the other unit (values stay equivalent). */
+  function switchEditUnit(next: "PIECE" | "PACK") {
+    if (!editUpp || next === editBuyUnit) return setEditBuyUnit(next);
+    const qty = parseFloat(editQty) || 0;
+    const cost = parseFloat(editCost) || 0;
+    const sale = parseFloat(editSale);
+    if (next === "PACK") {
+      setEditQty(String(qty / editUpp));
+      setEditCost(String(round2(cost * editUpp)));
+      if (!Number.isNaN(sale)) setEditSale(String(round2(sale * editUpp)));
+    } else {
+      setEditQty(String(Math.round(qty * editUpp)));
+      setEditCost(String(round2(cost / editUpp)));
+      if (!Number.isNaN(sale)) setEditSale(String(round2(sale / editUpp)));
+    }
+    setEditBuyUnit(next);
   }
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -189,6 +229,16 @@ export function PurchaseManager({
     fd.set("supplierId", supplierId === NO_SUPPLIER ? "" : supplierId);
     fd.set("fundingSource", fundingSource);
     fd.set("paidByPartnerId", fundingSource === "PARTNER" && paidByPartnerId !== NO_PARTNER ? paidByPartnerId : "");
+    if (buyingByPack && upp) {
+      // Entered per packet → stored per piece.
+      const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
+      const qty = parseInt(String(fd.get("quantity") || "0"));
+      const cost = parseFloat(String(fd.get("unitCost") || "0"));
+      const sale = String(fd.get("salePrice") || "");
+      fd.set("quantity", String(qty * upp));
+      fd.set("unitCost", String(round2(cost / upp)));
+      if (sale) fd.set("salePrice", String(round2(parseFloat(sale) / upp)));
+    }
     const payload = Object.fromEntries(fd.entries()) as Record<string, unknown>;
     const res = await submitOrQueue("purchase.create", slug, payload);
     setLoading(false);
@@ -202,6 +252,7 @@ export function PurchaseManager({
     setSupplierId(NO_SUPPLIER);
     setFundingSource("NONE");
     setPaidByPartnerId(NO_PARTNER);
+    setBuyUnit("PIECE");
     router.refresh();
   }
 
@@ -221,6 +272,17 @@ export function PurchaseManager({
       "paidByPartnerId",
       editFundingSource === "PARTNER" && editPaidByPartnerId !== NO_PARTNER ? editPaidByPartnerId : "",
     );
+    // Controlled fields → per-piece values (packet entries get converted).
+    const qty = parseFloat(editQty) || 0;
+    const cost = parseFloat(editCost) || 0;
+    fd.set("quantity", String(editByPack && editUpp ? Math.round(qty * editUpp) : qty));
+    fd.set("unitCost", String(editByPack && editUpp ? round2(cost / editUpp) : cost));
+    if (editSale.trim()) {
+      const sale = parseFloat(editSale) || 0;
+      fd.set("salePrice", String(editByPack && editUpp ? round2(sale / editUpp) : sale));
+    } else {
+      fd.set("salePrice", "");
+    }
     const res = await updatePurchase(slug, editing.id, fd);
     setEditLoading(false);
     if (!res.ok) {
@@ -264,7 +326,13 @@ export function PurchaseManager({
                   <Label>Product / variant</Label>
                   <AsyncCombobox
                     value={variant}
-                    onChange={setVariant}
+                    onChange={(v) => {
+                      setVariant(v);
+                      // Pack-based products are normally bought by the packet —
+                      // default to PACK (standard purchase UoM); toggle stays
+                      // available for loose-piece buys.
+                      setBuyUnit(v?.unitsPerPack && v.unitsPerPack > 1 ? "PACK" : "PIECE");
+                    }}
                     fetchPage={async (q, cursor) => {
                       const res = await searchVariants(slug, q, cursor);
                       return res.ok ? { items: res.items, next: res.next } : { items: [], next: null };
@@ -273,11 +341,31 @@ export function PurchaseManager({
                     renderItem={(o) => (
                       <>
                         <span className="truncate">{o.label}</span>
-                        <span className="shrink-0 text-xs text-muted-foreground">{o.stock} in stock</span>
+                        <span className="shrink-0 text-xs text-muted-foreground">{formatStock(o.stock, o.unitsPerPack)} in stock</span>
                       </>
                     )}
                   />
                 </div>
+                {upp && (
+                  <div className="space-y-2 sm:col-span-2">
+                    <Label>Buying unit</Label>
+                    <Select value={buyUnit} onValueChange={(v) => setBuyUnit((v as "PIECE" | "PACK") ?? "PIECE")}>
+                      <SelectTrigger className="w-full sm:w-64">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="PIECE">Single pieces</SelectItem>
+                        <SelectItem value="PACK">Packets ({upp} pcs each)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {buyingByPack && (
+                      <p className="text-xs text-muted-foreground">
+                        Quantity and prices below are per packet — saved automatically as {upp}{" "}
+                        pieces per packet with per-piece cost.
+                      </p>
+                    )}
+                  </div>
+                )}
                 <div className="space-y-2">
                   <Label>Supplier</Label>
                   <Select
@@ -348,11 +436,13 @@ export function PurchaseManager({
                   <Input id="date" name="date" type="date" required defaultValue={todayInputValue()} />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="unitCost">Unit cost</Label>
+                  <Label htmlFor="unitCost">{buyingByPack ? "Cost per packet" : "Unit cost"}</Label>
                   <Input id="unitCost" name="unitCost" type="number" step="0.01" min="0" required />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="salePrice">Sale price (per unit)</Label>
+                  <Label htmlFor="salePrice">
+                    {buyingByPack ? "Sale price (per packet)" : "Sale price (per unit)"}
+                  </Label>
                   <Input
                     id="salePrice"
                     name="salePrice"
@@ -363,7 +453,7 @@ export function PurchaseManager({
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="quantity">Quantity</Label>
+                  <Label htmlFor="quantity">{buyingByPack ? "Quantity (packets)" : "Quantity"}</Label>
                   <Input id="quantity" name="quantity" type="number" min="1" required />
                 </div>
                 {showExpiry && (
@@ -409,7 +499,8 @@ export function PurchaseManager({
             )}
           </div>
           <Select value={sort} onValueChange={(v) => v && pushListParams(search, v)} items={SORT_OPTIONS}>
-            <SelectTrigger className="w-52">
+            <SelectTrigger className="w-60">
+              <span className="shrink-0 text-muted-foreground">Sort:</span>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -508,7 +599,7 @@ export function PurchaseManager({
                       cell: (p: PurchaseRow) => (
                         <DropdownMenu>
                           <DropdownMenuTrigger
-                            render={<Button variant="ghost" size="icon-sm" aria-label="Actions" />}
+                            render={<Button variant="ghost" size="icon-sm" aria-label="Actions" title="Actions" />}
                           >
                             <MoreVertical className="size-4" />
                           </DropdownMenuTrigger>
@@ -552,11 +643,32 @@ export function PurchaseManager({
                   renderItem={(o) => (
                     <>
                       <span className="truncate">{o.label}</span>
-                      <span className="shrink-0 text-xs text-muted-foreground">{o.stock} in stock</span>
+                      <span className="shrink-0 text-xs text-muted-foreground">{formatStock(o.stock, o.unitsPerPack)} in stock</span>
                     </>
                   )}
                 />
               </div>
+              {editUpp && (
+                <div className="space-y-2 sm:col-span-2">
+                  <Label>Buying unit</Label>
+                  <Select
+                    value={editBuyUnit}
+                    onValueChange={(v) => switchEditUnit((v as "PIECE" | "PACK") ?? "PIECE")}
+                  >
+                    <SelectTrigger className="w-full sm:w-64">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="PIECE">Single pieces</SelectItem>
+                      <SelectItem value="PACK">Packets ({editUpp} pcs each)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Switching re-expresses the same values in the other unit — saved per piece
+                    either way.
+                  </p>
+                </div>
+              )}
               <div className="space-y-2">
                 <Label>Supplier</Label>
                 <Select
@@ -634,38 +746,43 @@ export function PurchaseManager({
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="edit-unitCost">Unit cost</Label>
+                <Label htmlFor="edit-unitCost">{editByPack ? "Cost per packet" : "Unit cost"}</Label>
                 <Input
                   id="edit-unitCost"
-                  name="unitCost"
                   type="number"
                   step="0.01"
                   min="0"
                   required
-                  defaultValue={editing.unitCost}
+                  value={editCost}
+                  onChange={(e) => setEditCost(e.target.value)}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="edit-salePrice">Sale price (per unit)</Label>
+                <Label htmlFor="edit-salePrice">
+                  {editByPack ? "Sale price (per packet)" : "Sale price (per unit)"}
+                </Label>
                 <Input
                   id="edit-salePrice"
-                  name="salePrice"
                   type="number"
                   step="0.01"
                   min="0"
                   placeholder="Optional"
-                  defaultValue={editing.salePrice ?? ""}
+                  value={editSale}
+                  onChange={(e) => setEditSale(e.target.value)}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="edit-quantity">Quantity</Label>
+                <Label htmlFor="edit-quantity">
+                  {editByPack ? "Quantity (packets)" : "Quantity"}
+                </Label>
                 <Input
                   id="edit-quantity"
-                  name="quantity"
                   type="number"
-                  min="1"
+                  step="any"
+                  min="0"
                   required
-                  defaultValue={editing.quantity}
+                  value={editQty}
+                  onChange={(e) => setEditQty(e.target.value)}
                 />
               </div>
               {editShowExpiry && (

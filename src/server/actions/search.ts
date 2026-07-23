@@ -17,6 +17,10 @@ export type VariantOption = ComboOption & {
   // Latest purchase unit cost — used to prefill auto-calculated costs (e.g.
   // product gifts) in forms; the server still snapshots authoritatively.
   unitCost: number;
+  // Latest recorded per-piece sale price — prefills the order form's price box.
+  salePrice: number | null;
+  // >1 when the product is pack-based (enables Packet<->Piece form toggles).
+  unitsPerPack: number | null;
 };
 export type SearchResult<T> =
   | { ok: true; items: T[]; next: number | null }
@@ -62,7 +66,7 @@ export async function searchVariants(
       id: true,
       size: true,
       color: true,
-      product: { select: { name: true, expiryTracked: true } },
+      product: { select: { name: true, expiryTracked: true, unitsPerPack: true } },
     },
   });
 
@@ -75,19 +79,22 @@ export async function searchVariants(
       where: { workspaceId, productVariantId: { in: ids } },
       orderBy: [{ productVariantId: "asc" }, { date: "desc" }],
       distinct: ["productVariantId"],
-      select: { productVariantId: true, unitCost: true },
+      select: { productVariantId: true, unitCost: true, salePrice: true },
     }),
   ]);
-  const costByVariant = new Map(
-    latestPurchases.map((p) => [p.productVariantId, Number(p.unitCost)]),
-  );
-  const items = rows.map((r) => ({
-    value: r.id,
-    label: variantLabel(r.product.name, r.size, r.color),
-    stock: stock.get(r.id) ?? 0,
-    expiryTracked: r.product.expiryTracked,
-    unitCost: costByVariant.get(r.id) ?? 0,
-  }));
+  const latestByVariant = new Map(latestPurchases.map((p) => [p.productVariantId, p]));
+  const items = rows.map((r) => {
+    const latest = latestByVariant.get(r.id);
+    return {
+      value: r.id,
+      label: variantLabel(r.product.name, r.size, r.color),
+      stock: stock.get(r.id) ?? 0,
+      expiryTracked: r.product.expiryTracked,
+      unitCost: latest ? Number(latest.unitCost) : 0,
+      salePrice: latest?.salePrice != null ? Number(latest.salePrice) : null,
+      unitsPerPack: r.product.unitsPerPack,
+    };
+  });
 
   return {
     ok: true,

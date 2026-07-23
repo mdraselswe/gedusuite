@@ -116,6 +116,10 @@ export function ProductImportDialog({ slug }: { slug: string }) {
                   5)
                 </li>
                 <li>
+                  <code className="rounded bg-muted px-1">unitsPerPack</code> — number (e.g. 10) for
+                  pack-based products; omit otherwise
+                </li>
+                <li>
                   <code className="rounded bg-muted px-1">variants</code> — list of{" "}
                   <code className="rounded bg-muted px-1">{`{ size, color, sku }`}</code>; omit for a
                   single default variant

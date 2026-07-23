@@ -84,7 +84,7 @@ export default async function PurchasesPage({
             select: {
               size: true,
               color: true,
-              product: { select: { name: true, expiryTracked: true } },
+              product: { select: { name: true, expiryTracked: true, unitsPerPack: true } },
             },
           },
         },
@@ -114,6 +114,7 @@ export default async function PurchasesPage({
         ? ` (${[pu.productVariant.size, pu.productVariant.color].filter(Boolean).join(" / ")})`
         : ""),
     expiryTracked: pu.productVariant.product.expiryTracked,
+    unitsPerPack: pu.productVariant.product.unitsPerPack,
     supplierId: pu.supplierId,
     supplier: pu.supplier?.name ?? "—",
     paidByPartnerId: pu.paidByPartnerId,

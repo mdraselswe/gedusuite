@@ -168,6 +168,10 @@ model Product {
   imageUrl          String? // stored as a data URI (Phase 1); blob storage later
   expiryTracked     Boolean  @default(false)
   lowStockThreshold Int      @default(5) // applies to each variant
+  // Pack-based products (e.g. hair clips, 10 per packet): stock is ALWAYS
+  // tracked in single pieces; this just enables Packet<->Piece conversion in
+  // the purchase/order forms and "N pkt + M pcs" stock display. null/1 = no packs.
+  unitsPerPack      Int?
   createdAt         DateTime @default(now())
 
   workspace Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
