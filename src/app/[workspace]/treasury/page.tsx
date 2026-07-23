@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import {
   treasuryBalance,
   refreshOverdueAlerts,
+  overdueOrders,
   cashHeldByMember,
   totalDue,
   paidNotDeposited,
@@ -34,7 +35,7 @@ export default async function TreasuryPage({
   const workspaceId = access.workspaceId;
   const canManage = can(access.role, "treasury", "full", access.permissions);
 
-  const [balance, entryCount, entries, partners, overdue, heldCash, due, notDeposited, distributions] =
+  const [balance, entryCount, entries, partners, allDue, heldCash, due, notDeposited, distributions] =
     await Promise.all([
       treasuryBalance(workspaceId),
       prisma.treasuryEntry.count({ where: { workspaceId } }),
@@ -49,7 +50,10 @@ export default async function TreasuryPage({
         where: { workspaceId },
         include: { user: { select: { name: true, email: true } } },
       }),
-      refreshOverdueAlerts(workspaceId),
+      // Every unpaid/partial order (days=0), not just week-old ones — the card
+      // itself flags which rows have crossed the overdue threshold. The alert
+      // reconciliation below still uses the 7-day cutoff for notifications.
+      overdueOrders(workspaceId, 0),
       cashHeldByMember(workspaceId),
       totalDue(workspaceId),
       paidNotDeposited(workspaceId),
@@ -59,6 +63,9 @@ export default async function TreasuryPage({
         take: 200, // client-side pagination in the table handles the rest
       }),
     ]);
+
+  // Keep OVERDUE_PAYMENT notifications reconciled (7-day threshold).
+  await refreshOverdueAlerts(workspaceId);
 
   const entryRows = entries.map((e) => ({
     id: e.id,
@@ -118,7 +125,7 @@ export default async function TreasuryPage({
         partnerOptions={partnerOptions}
         sharePartners={sharePartners}
         distributions={distributionRows}
-        overdue={overdue}
+        overdue={allDue}
         heldCash={heldCash}
         notDeposited={notDeposited}
         canManage={canManage}

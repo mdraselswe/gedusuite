@@ -371,34 +371,50 @@ export function TreasuryManager({
         </Card>
       )}
 
-      {/* Overdue receivables */}
+      {/* Every unpaid/partial order — rows past 7 days are flagged Overdue,
+          so nothing due can hide below the overdue threshold. */}
       {overdue.length > 0 && (
         <Card className="border-amber-300 dark:border-amber-800">
           <CardHeader>
             <CardTitle className="text-base text-amber-800 dark:text-amber-300">
-              Overdue receivables — {totalOverdue.toFixed(2)} across {overdue.length} order(s)
+              Payment due — {totalOverdue.toFixed(2)} across {overdue.length} order(s)
             </CardTitle>
           </CardHeader>
           <CardContent>
             <DataTable
               rows={overdue}
               rowKey={(o) => o.orderId}
-              empty={{ title: "No overdue payments" }}
+              empty={{ title: "No due payments" }}
               columns={
                 [
-                  { key: "date", header: "Date", cell: (o) => o.date },
+                  { key: "date", header: "Date", sortValue: (o) => o.date, cell: (o) => o.date },
                   {
                     key: "customer",
                     header: "Customer",
                     cardTitle: true,
+                    wrap: true,
                     cell: (o) => o.customerName,
                   },
                   { key: "heldBy", header: "Held by", cell: (o) => o.heldByName ?? "—" },
-                  { key: "days", header: "Days", align: "right", cell: (o) => o.daysOverdue },
+                  {
+                    key: "days",
+                    header: "Days",
+                    align: "right",
+                    sortValue: (o) => o.daysOverdue,
+                    cell: (o) =>
+                      o.daysOverdue >= 7 ? (
+                        <span className="font-medium text-amber-700 dark:text-amber-400">
+                          {o.daysOverdue} · overdue
+                        </span>
+                      ) : (
+                        o.daysOverdue
+                      ),
+                  },
                   {
                     key: "amount",
                     header: "Amount",
                     align: "right",
+                    sortValue: (o) => o.amount,
                     cell: (o) => (
                       <span className="font-medium text-destructive">{o.amount.toFixed(2)}</span>
                     ),
