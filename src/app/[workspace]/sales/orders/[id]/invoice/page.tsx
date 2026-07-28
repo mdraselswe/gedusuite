@@ -115,7 +115,9 @@ export default async function InvoicePage({
                 const eq = it.quantity - returned;
                 return (
                   <TableRow key={it.id}>
-                    <TableCell>
+                    {/* Long product names wrap instead of forcing the table
+                        wider than the invoice (which cropped/scrolled). */}
+                    <TableCell className="whitespace-normal wrap-break-word">
                       {vLabel(it.productVariant.product.name, it.productVariant.size, it.productVariant.color)}
                       {returned > 0 && (
                         <span className="text-xs text-muted-foreground"> ({returned} returned)</span>
