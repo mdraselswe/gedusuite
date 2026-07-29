@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { requireAccess } from "@/lib/authz";
 import { variantStockMap } from "@/lib/inventory";
+import { variantFullName } from "@/lib/variants";
 
 // Async-combobox data source. Each call returns one page of matches for a
 // typed query plus an offset cursor. Offset (not keyset) pagination is fine
@@ -26,12 +27,7 @@ export type SearchResult<T> =
   | { ok: true; items: T[]; next: number | null }
   | { ok: false; error: string };
 
-function variantLabel(name: string, size: string | null, color: string | null) {
-  const extra = [size, color].filter(Boolean).join(" / ");
-  return extra ? `${name} (${extra})` : name;
-}
-
-/** Search product variants by product name / sku / size / color. */
+/** Search product variants by product name / sku / variant sku. */
 export async function searchVariants(
   slug: string,
   query: string,
@@ -50,8 +46,6 @@ export async function searchVariants(
             { product: { name: { contains: q, mode: "insensitive" as const } } },
             { product: { sku: { contains: q, mode: "insensitive" as const } } },
             { sku: { contains: q, mode: "insensitive" as const } },
-            { size: { contains: q, mode: "insensitive" as const } },
-            { color: { contains: q, mode: "insensitive" as const } },
           ],
         }
       : {}),
@@ -64,8 +58,9 @@ export async function searchVariants(
     take: SEARCH_PAGE_SIZE,
     select: {
       id: true,
-      size: true,
-      color: true,
+      attributes: true,
+      salePrice: true,
+      unitCost: true,
       product: { select: { name: true, expiryTracked: true, unitsPerPack: true } },
     },
   });
@@ -74,7 +69,8 @@ export async function searchVariants(
   const [stock, latestPurchases] = await Promise.all([
     variantStockMap(workspaceId, ids),
     // Latest purchase per variant (distinct keeps the first row per variant
-    // under the date-desc order) — the same cost the server snapshots on save.
+    // under the date-desc order) — used as a fallback when the variant has no
+    // catalogue price of its own.
     prisma.purchase.findMany({
       where: { workspaceId, productVariantId: { in: ids } },
       orderBy: [{ productVariantId: "asc" }, { date: "desc" }],
@@ -85,13 +81,22 @@ export async function searchVariants(
   const latestByVariant = new Map(latestPurchases.map((p) => [p.productVariantId, p]));
   const items = rows.map((r) => {
     const latest = latestByVariant.get(r.id);
+    // The variant's own catalogue price wins; fall back to the latest purchase.
+    const unitCost =
+      r.unitCost != null ? Number(r.unitCost) : latest ? Number(latest.unitCost) : 0;
+    const salePrice =
+      r.salePrice != null
+        ? Number(r.salePrice)
+        : latest?.salePrice != null
+          ? Number(latest.salePrice)
+          : null;
     return {
       value: r.id,
-      label: variantLabel(r.product.name, r.size, r.color),
+      label: variantFullName(r.product.name, r.attributes),
       stock: stock.get(r.id) ?? 0,
       expiryTracked: r.product.expiryTracked,
-      unitCost: latest ? Number(latest.unitCost) : 0,
-      salePrice: latest?.salePrice != null ? Number(latest.salePrice) : null,
+      unitCost,
+      salePrice,
       unitsPerPack: r.product.unitsPerPack,
     };
   });

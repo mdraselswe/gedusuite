@@ -167,11 +167,14 @@ model Product {
   barcode           String?
   imageUrl          String? // stored as a data URI (Phase 1); blob storage later
   expiryTracked     Boolean  @default(false)
-  lowStockThreshold Int      @default(5) // applies to each variant
+  lowStockThreshold Int      @default(5) // default for each variant; a variant may override it
   // Pack-based products (e.g. hair clips, 10 per packet): stock is ALWAYS
   // tracked in single pieces; this just enables Packet<->Piece conversion in
   // the purchase/order forms and "N pkt + M pcs" stock display. null/1 = no packs.
   unitsPerPack      Int?
+  // Ordered list of attribute names this product varies on, e.g. ["Size","Color"].
+  // Each ProductVariant.attributes carries a value for these. [] = single variant.
+  attributeNames    Json     @default("[]")
   createdAt         DateTime @default(now())
 
   workspace Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -198,9 +201,19 @@ model ProductCategory {
 model ProductVariant {
   id        String  @id @default(cuid())
   productId String
-  size      String?
-  color     String?
-  sku       String?
+  // The variant's attribute combination as [{ name, value }], e.g.
+  // [{ "name": "Size", "value": "M" }, { "name": "Color", "value": "Red" }].
+  // [] = the product's single default variant.
+  attributes Json    @default("[]")
+  sku        String?
+  // Per-variant catalogue pricing; used as the default in purchase/order forms.
+  salePrice  Decimal? @db.Decimal(12, 2) // default selling price per piece
+  unitCost   Decimal? @db.Decimal(12, 2) // default buying cost per piece
+  barcode    String?
+  imageUrl   String? // data URI (Phase 1), like Product.imageUrl
+  // Overrides Product.lowStockThreshold for this variant when set.
+  lowStockThreshold Int?
+  description       String? // short note shown with the variant
 
   product     Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
   purchases   Purchase[]

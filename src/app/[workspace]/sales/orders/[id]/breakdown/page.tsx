@@ -13,11 +13,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-
-function vLabel(name: string, size: string | null, color: string | null) {
-  const extra = [size, color].filter(Boolean).join(" / ");
-  return extra ? `${name} (${extra})` : name;
-}
+import { variantFullName } from "@/lib/variants";
 
 export default async function OrderBreakdownPage({
   params,
@@ -42,7 +38,7 @@ export default async function OrderBreakdownPage({
         include: {
           returns: true,
           productVariant: {
-            select: { size: true, color: true, product: { select: { name: true } } },
+            select: { attributes: true, product: { select: { name: true } } },
           },
         },
       },
@@ -103,7 +99,7 @@ export default async function OrderBreakdownPage({
                 return (
                   <TableRow key={it.id}>
                     <TableCell>
-                      {vLabel(it.productVariant.product.name, it.productVariant.size, it.productVariant.color)}
+                      {variantFullName(it.productVariant.product.name, it.productVariant.attributes)}
                     </TableCell>
                     <TableCell className="text-right">{it.quantity}</TableCell>
                     <TableCell className="text-right">{returned || "—"}</TableCell>

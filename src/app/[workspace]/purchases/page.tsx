@@ -5,6 +5,7 @@ import { can } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
 import { PurchaseManager } from "@/components/purchases/purchase-manager";
 import { treasuryBalance } from "@/lib/finance";
+import { variantFullName } from "@/lib/variants";
 import { Pagination, parsePage } from "@/components/ui/pagination";
 import { PageHeader } from "@/components/ui/page-header";
 import { ShoppingCart } from "lucide-react";
@@ -82,8 +83,7 @@ export default async function PurchasesPage({
           paidByPartner: { select: { user: { select: { name: true, email: true } } } },
           productVariant: {
             select: {
-              size: true,
-              color: true,
+              attributes: true,
               product: { select: { name: true, expiryTracked: true, unitsPerPack: true } },
             },
           },
@@ -108,11 +108,7 @@ export default async function PurchasesPage({
     id: pu.id,
     date: pu.date.toISOString().slice(0, 10),
     productVariantId: pu.productVariantId,
-    product:
-      pu.productVariant.product.name +
-      ([pu.productVariant.size, pu.productVariant.color].filter(Boolean).length
-        ? ` (${[pu.productVariant.size, pu.productVariant.color].filter(Boolean).join(" / ")})`
-        : ""),
+    product: variantFullName(pu.productVariant.product.name, pu.productVariant.attributes),
     expiryTracked: pu.productVariant.product.expiryTracked,
     unitsPerPack: pu.productVariant.product.unitsPerPack,
     supplierId: pu.supplierId,

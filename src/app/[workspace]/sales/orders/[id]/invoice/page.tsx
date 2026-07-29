@@ -5,6 +5,7 @@ import { can } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
 import { computeOrderTotals } from "@/lib/orders";
 import { DownloadInvoicePdfButton } from "@/components/invoice-actions";
+import { variantFullName } from "@/lib/variants";
 import {
   Table,
   TableBody,
@@ -13,11 +14,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-
-function vLabel(name: string, size: string | null, color: string | null) {
-  const extra = [size, color].filter(Boolean).join(" / ");
-  return extra ? `${name} (${extra})` : name;
-}
 
 export default async function InvoicePage({
   params,
@@ -40,7 +36,7 @@ export default async function InvoicePage({
           include: {
             returns: true,
             productVariant: {
-              select: { size: true, color: true, product: { select: { name: true } } },
+              select: { attributes: true, product: { select: { name: true } } },
             },
           },
         },
@@ -118,7 +114,7 @@ export default async function InvoicePage({
                     {/* Long product names wrap instead of forcing the table
                         wider than the invoice (which cropped/scrolled). */}
                     <TableCell className="whitespace-normal wrap-break-word">
-                      {vLabel(it.productVariant.product.name, it.productVariant.size, it.productVariant.color)}
+                      {variantFullName(it.productVariant.product.name, it.productVariant.attributes)}
                       {returned > 0 && (
                         <span className="text-xs text-muted-foreground"> ({returned} returned)</span>
                       )}

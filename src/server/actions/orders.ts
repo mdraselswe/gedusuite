@@ -5,6 +5,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAccess } from "@/lib/authz";
 import { variantStockMap, STOCK_CONSUMING_STATUSES } from "@/lib/inventory";
+import { variantFullName } from "@/lib/variants";
 import type { OrderStatus, PaymentStatus } from "@prisma/client";
 
 export type ActionResult = { ok: true; id?: string } | { ok: false; error: string };
@@ -142,7 +143,7 @@ export async function createOrder(
     prisma.productVariant.findMany({
       where: { id: { in: variantIds }, product: { workspaceId } },
       // Label fields are needed to snapshot a display name onto product-linked gifts.
-      select: { id: true, size: true, color: true, product: { select: { name: true } } },
+      select: { id: true, attributes: true, product: { select: { name: true } } },
     }),
     d.customerId
       ? prisma.customer.findFirst({
@@ -188,8 +189,7 @@ export async function createOrder(
       where: { id: { in: short.map(([vid]) => vid) } },
       select: {
         id: true,
-        size: true,
-        color: true,
+        attributes: true,
         product: { select: { name: true } },
       },
     });
@@ -197,8 +197,7 @@ export async function createOrder(
     const msg = short
       .map(([vid, qty]) => {
         const v = byId.get(vid);
-        const extra = v ? [v.size, v.color].filter(Boolean).join(" / ") : "";
-        const name = v ? `${v.product.name}${extra ? ` (${extra})` : ""}` : "item";
+        const name = v ? variantFullName(v.product.name, v.attributes) : "item";
         return `${name}: need ${qty}, ${stock.get(vid) ?? 0} in stock`;
       })
       .join("; ");
@@ -213,10 +212,9 @@ export async function createOrder(
   const variantById = new Map(validVariants.map((v) => [v.id, v]));
   const giftLines = d.gifts.map((g) => {
     const v = g.productVariantId ? variantById.get(g.productVariantId) : undefined;
-    const extra = v ? [v.size, v.color].filter(Boolean).join(" / ") : "";
     return {
       productVariantId: g.productVariantId || null,
-      label: v ? `${v.product.name}${extra ? ` (${extra})` : ""}` : (g.label ?? "Gift"),
+      label: v ? variantFullName(v.product.name, v.attributes) : (g.label ?? "Gift"),
       quantity: g.quantity,
       // Product gifts default to the server-side cost snapshot; a user-typed
       // value (costOverridden) wins. Custom gifts are always manual.

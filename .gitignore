@@ -33,3 +33,4 @@ public/swe-worker-*.js
 .idea/
 tsconfig.tsbuildinfo
 .vercel
+.env.local.bak

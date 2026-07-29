@@ -23,9 +23,17 @@ const EXAMPLE = `[
     "barcode": "8901234567890",
     "expiryTracked": false,
     "lowStockThreshold": 5,
+    "attributeNames": ["Size", "Color"],
     "variants": [
-      { "size": "0-3M", "color": "Pink" },
-      { "size": "3-6M", "color": "Blue", "sku": "ROM-001-36B" }
+      {
+        "attributes": [
+          { "name": "Size", "value": "0-3M" },
+          { "name": "Color", "value": "Pink" }
+        ],
+        "salePrice": 450,
+        "unitCost": 300
+      },
+      { "size": "3-6M", "color": "Blue", "sku": "ROM-001-36B", "salePrice": 480 }
     ]
   },
   {
@@ -120,9 +128,16 @@ export function ProductImportDialog({ slug }: { slug: string }) {
                   pack-based products; omit otherwise
                 </li>
                 <li>
+                  <code className="rounded bg-muted px-1">attributeNames</code> — the variant
+                  dimensions, e.g. <code className="rounded bg-muted px-1">{`["Size","Color"]`}</code>
+                </li>
+                <li>
                   <code className="rounded bg-muted px-1">variants</code> — list of{" "}
-                  <code className="rounded bg-muted px-1">{`{ size, color, sku }`}</code>; omit for a
-                  single default variant
+                  <code className="rounded bg-muted px-1">
+                    {`{ attributes: [{name,value}], salePrice, unitCost, sku, barcode }`}
+                  </code>
+                  ; legacy <code className="rounded bg-muted px-1">{`{ size, color }`}</code> still
+                  works. Omit for a single default variant
                 </li>
                 <li>New categories are added to the category list automatically. Max 500 per file.</li>
               </ul>

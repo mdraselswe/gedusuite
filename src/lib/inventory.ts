@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { variantSuffix } from "@/lib/variants";
 
 export const EXPIRY_WINDOW_DAYS = 30;
 
@@ -85,11 +86,6 @@ export async function variantStockMap(
   return map;
 }
 
-function variantLabel(v: { size: string | null; color: string | null }): string {
-  const parts = [v.size, v.color].filter(Boolean);
-  return parts.length ? ` (${parts.join(" / ")})` : "";
-}
-
 export type InventoryAlert = {
   type: "LOW_STOCK" | "EXPIRY";
   message: string;
@@ -113,18 +109,20 @@ export async function computeInventoryAlerts(
     select: {
       name: true,
       lowStockThreshold: true,
-      variants: { select: { id: true, size: true, color: true } },
+      variants: { select: { id: true, attributes: true, lowStockThreshold: true } },
     },
   });
 
   for (const p of products) {
     for (const v of p.variants) {
       const qty = stock.get(v.id);
+      // A variant may override the product-level threshold.
+      const threshold = v.lowStockThreshold ?? p.lowStockThreshold;
       // Only flag variants that have ever been stocked and are now at/under threshold.
-      if (qty !== undefined && qty <= p.lowStockThreshold) {
+      if (qty !== undefined && qty <= threshold) {
         alerts.push({
           type: "LOW_STOCK",
-          message: `Low stock: ${p.name}${variantLabel(v)} — ${qty} left`,
+          message: `Low stock: ${p.name}${variantSuffix(v.attributes)} — ${qty} left`,
           dedupeKey: `lowstock:${v.id}`,
         });
       }
@@ -140,8 +138,7 @@ export async function computeInventoryAlerts(
       expiryDate: true,
       productVariant: {
         select: {
-          size: true,
-          color: true,
+          attributes: true,
           product: { select: { name: true } },
         },
       },
@@ -149,7 +146,7 @@ export async function computeInventoryAlerts(
   });
 
   for (const pu of expiring) {
-    const label = pu.productVariant.product.name + variantLabel(pu.productVariant);
+    const label = pu.productVariant.product.name + variantSuffix(pu.productVariant.attributes);
     const d = pu.expiryDate!.toISOString().slice(0, 10);
     alerts.push({
       type: "EXPIRY",

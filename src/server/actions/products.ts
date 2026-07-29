@@ -16,11 +16,37 @@ const imageField = z
   .refine((v) => v === "" || v.startsWith("data:image/"), "Invalid image")
   .optional();
 
-const VariantInput = z.object({
-  size: z.string().trim().max(60).optional().or(z.literal("")),
-  color: z.string().trim().max(60).optional().or(z.literal("")),
-  sku: z.string().trim().max(60).optional().or(z.literal("")),
+// Optional money field: "" / null -> undefined, else a non-negative number.
+const priceField = z.preprocess(
+  (v) => (v === "" || v == null ? undefined : v),
+  z.coerce.number().nonnegative("Price must be ≥ 0").max(1_000_000_000).optional(),
+);
+// Optional per-variant low-stock override: "" / null -> undefined.
+const variantThresholdField = z.preprocess(
+  (v) => (v === "" || v == null ? undefined : v),
+  z.coerce.number().int().min(0).max(100000).optional(),
+);
+
+const AttributeInput = z.object({
+  name: z.string().trim().max(40),
+  value: z.string().trim().max(80),
 });
+
+const VariantInput = z.object({
+  // Present for variants that already exist (used to update in place); absent
+  // for brand-new rows.
+  id: z.string().optional(),
+  attributes: z.array(AttributeInput).max(20).optional().default([]),
+  sku: z.string().trim().max(60).optional().or(z.literal("")),
+  barcode: z.string().trim().max(60).optional().or(z.literal("")),
+  description: z.string().trim().max(300).optional().or(z.literal("")),
+  salePrice: priceField,
+  unitCost: priceField,
+  lowStockThreshold: variantThresholdField,
+  imageUrl: imageField,
+});
+
+type VariantInputData = z.infer<typeof VariantInput>;
 
 const ProductSchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(300),
@@ -35,16 +61,20 @@ const ProductSchema = z.object({
     (v) => (v === "" || v == null ? undefined : v),
     z.coerce.number().int().min(2, "Units per pack must be at least 2").max(10000).optional(),
   ),
-  variants: z.array(VariantInput).max(50),
+  // Ordered attribute names this product varies on, e.g. ["Size","Color"].
+  attributeNames: z.array(z.string().trim().max(40)).max(20).optional().default([]),
+  variants: z.array(VariantInput).max(200),
 });
 
-function parseProduct(formData: FormData) {
-  let variants: unknown = [];
+function parseJson(formData: FormData, key: string): unknown {
   try {
-    variants = JSON.parse(String(formData.get("variants") ?? "[]"));
+    return JSON.parse(String(formData.get(key) ?? "[]"));
   } catch {
-    variants = [];
+    return [];
   }
+}
+
+function parseProduct(formData: FormData) {
   return ProductSchema.safeParse({
     name: formData.get("name"),
     category: formData.get("category") ?? undefined,
@@ -54,11 +84,36 @@ function parseProduct(formData: FormData) {
     expiryTracked: formData.get("expiryTracked") === "on" || formData.get("expiryTracked") === "true",
     lowStockThreshold: formData.get("lowStockThreshold") ?? 5,
     unitsPerPack: formData.get("unitsPerPack") ?? undefined,
-    variants,
+    attributeNames: parseJson(formData, "attributeNames"),
+    variants: parseJson(formData, "variants"),
   });
 }
 
 const clean = (s?: string) => (s && s.trim() ? s.trim() : null);
+
+// Keep only attributes with a non-empty value; trim names/values.
+function cleanAttributes(attrs: { name: string; value: string }[] = []) {
+  return attrs
+    .map((a) => ({ name: a.name.trim(), value: a.value.trim() }))
+    .filter((a) => a.value !== "");
+}
+
+const cleanNames = (names: string[] = []) =>
+  names.map((n) => n.trim()).filter((n) => n !== "");
+
+// Shape a validated variant into ProductVariant column data.
+function variantData(v: VariantInputData) {
+  return {
+    attributes: cleanAttributes(v.attributes),
+    sku: clean(v.sku),
+    barcode: clean(v.barcode),
+    description: clean(v.description),
+    salePrice: v.salePrice ?? null,
+    unitCost: v.unitCost ?? null,
+    lowStockThreshold: v.lowStockThreshold ?? null,
+    imageUrl: clean(v.imageUrl),
+  };
+}
 
 export async function createProduct(
   slug: string,
@@ -74,13 +129,12 @@ export async function createProduct(
   const d = parsed.data;
 
   // Variants are optional. If the user didn't add any, create a single default
-  // (empty) variant so stock/purchases/orders keep working uniformly against
-  // ProductVariant without ever forcing variant fields in the UI.
-  const meaningful = d.variants.filter((v) => v.size || v.color || v.sku);
+  // (attribute-less) variant so stock/purchases/orders keep working uniformly
+  // against ProductVariant. A single default variant can still carry pricing.
   const variantCreate =
-    meaningful.length > 0
-      ? meaningful.map((v) => ({ size: clean(v.size), color: clean(v.color), sku: clean(v.sku) }))
-      : [{ size: null, color: null, sku: null }];
+    d.variants.length > 0
+      ? d.variants.map(variantData)
+      : [variantData({ attributes: [] } as VariantInputData)];
 
   await prisma.product.create({
     data: {
@@ -93,6 +147,7 @@ export async function createProduct(
       expiryTracked: d.expiryTracked,
       lowStockThreshold: d.lowStockThreshold,
       unitsPerPack: d.unitsPerPack ?? null,
+      attributeNames: cleanNames(d.attributeNames),
       variants: { create: variantCreate },
     },
   });
@@ -113,20 +168,44 @@ export async function updateProduct(
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
   const d = parsed.data;
-  const result = await prisma.product.updateMany({
+
+  // Scope check up front so we can safely reconcile this product's variants.
+  const product = await prisma.product.findFirst({
     where: { id, workspaceId: gate.access.workspaceId },
-    data: {
-      name: d.name,
-      category: clean(d.category),
-      sku: clean(d.sku),
-      barcode: clean(d.barcode),
-      imageUrl: clean(d.imageUrl),
-      expiryTracked: d.expiryTracked,
-      lowStockThreshold: d.lowStockThreshold,
-      unitsPerPack: d.unitsPerPack ?? null,
-    },
+    select: { id: true, variants: { select: { id: true } } },
   });
-  if (result.count === 0) return { ok: false, error: "Product not found" };
+  if (!product) return { ok: false, error: "Product not found" };
+  const existingIds = new Set(product.variants.map((v) => v.id));
+
+  await prisma.$transaction(async (tx) => {
+    await tx.product.update({
+      where: { id },
+      data: {
+        name: d.name,
+        category: clean(d.category),
+        sku: clean(d.sku),
+        barcode: clean(d.barcode),
+        imageUrl: clean(d.imageUrl),
+        expiryTracked: d.expiryTracked,
+        lowStockThreshold: d.lowStockThreshold,
+        unitsPerPack: d.unitsPerPack ?? null,
+        attributeNames: cleanNames(d.attributeNames),
+      },
+    });
+
+    // Reconcile variants: update existing rows in place, create brand-new ones.
+    // Deletion is intentionally NOT done here — it goes through deleteVariant,
+    // which guards variants that have already been sold.
+    for (const v of d.variants) {
+      const data = variantData(v);
+      if (v.id && existingIds.has(v.id)) {
+        await tx.productVariant.update({ where: { id: v.id }, data });
+      } else {
+        await tx.productVariant.create({ data: { productId: id, ...data } });
+      }
+    }
+  });
+
   revalidatePath(`/${slug}/products`);
   return { ok: true };
 }
@@ -160,8 +239,8 @@ export async function deleteProduct(slug: string, id: string): Promise<ActionRes
 }
 
 const AddVariantSchema = VariantInput.refine(
-  (v) => v.size || v.color || v.sku,
-  "Enter a size, color, or SKU",
+  (v) => cleanAttributes(v.attributes).length > 0 || v.sku,
+  "Enter at least one attribute value or a SKU",
 );
 
 export async function addVariant(
@@ -172,11 +251,7 @@ export async function addVariant(
   const gate = await requireAccess(slug, "products", "edit");
   if (!gate.ok) return gate;
 
-  const parsed = AddVariantSchema.safeParse({
-    size: formData.get("size") ?? undefined,
-    color: formData.get("color") ?? undefined,
-    sku: formData.get("sku") ?? undefined,
-  });
+  const parsed = AddVariantSchema.safeParse(parseJson(formData, "variant"));
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
@@ -188,12 +263,7 @@ export async function addVariant(
   if (!product) return { ok: false, error: "Product not found" };
 
   await prisma.productVariant.create({
-    data: {
-      productId,
-      size: clean(parsed.data.size),
-      color: clean(parsed.data.color),
-      sku: clean(parsed.data.sku),
-    },
+    data: { productId, ...variantData(parsed.data) },
   });
   revalidatePath(`/${slug}/products`);
   return { ok: true };
@@ -231,10 +301,28 @@ export async function deleteVariant(
 // ── Bulk JSON import ─────────────────────────────────────────────────
 
 const ImportVariant = z.object({
-  size: z.string().trim().max(60).optional().or(z.literal("")),
-  color: z.string().trim().max(60).optional().or(z.literal("")),
+  // Legacy shorthand — still accepted and converted to attributes on import.
+  size: z.string().trim().max(80).optional().or(z.literal("")),
+  color: z.string().trim().max(80).optional().or(z.literal("")),
+  // New flexible form.
+  attributes: z.array(AttributeInput).max(20).optional().default([]),
   sku: z.string().trim().max(60).optional().or(z.literal("")),
+  barcode: z.string().trim().max(60).optional().or(z.literal("")),
+  description: z.string().trim().max(300).optional().or(z.literal("")),
+  salePrice: priceField,
+  unitCost: priceField,
+  lowStockThreshold: variantThresholdField,
 });
+
+// Legacy size/color -> attributes; explicit attributes win when both present.
+function importVariantAttributes(v: z.infer<typeof ImportVariant>) {
+  const attrs = cleanAttributes(v.attributes);
+  if (attrs.length) return attrs;
+  const legacy: { name: string; value: string }[] = [];
+  if (v.size?.trim()) legacy.push({ name: "Size", value: v.size.trim() });
+  if (v.color?.trim()) legacy.push({ name: "Color", value: v.color.trim() });
+  return legacy;
+}
 
 const ImportProduct = z.object({
   name: z.string().trim().min(1, "Every product needs a name").max(300, "Name is too long (max 300 characters)"),
@@ -244,7 +332,8 @@ const ImportProduct = z.object({
   expiryTracked: z.boolean().optional().default(false),
   lowStockThreshold: z.coerce.number().int().min(0).max(100000).optional().default(5),
   unitsPerPack: z.coerce.number().int().min(2).max(10000).optional(),
-  variants: z.array(ImportVariant).max(50).optional().default([]),
+  attributeNames: z.array(z.string().trim().max(40)).max(20).optional(),
+  variants: z.array(ImportVariant).max(200).optional().default([]),
 });
 
 const ImportSchema = z.array(ImportProduct).min(1, "The file has no products").max(500, "Max 500 products per import");
@@ -325,7 +414,20 @@ export async function importProducts(
         });
       }
       for (const p of toCreate) {
-        const meaningful = (p.variants ?? []).filter((v) => v.size || v.color || v.sku);
+        const variantRows = (p.variants ?? []).map((v) => ({
+          attributes: importVariantAttributes(v),
+          sku: clean(v.sku),
+          barcode: clean(v.barcode),
+          description: clean(v.description),
+          salePrice: v.salePrice ?? null,
+          unitCost: v.unitCost ?? null,
+          lowStockThreshold: v.lowStockThreshold ?? null,
+        }));
+        // Explicit attributeNames win; otherwise derive from the variants' attrs.
+        const names = cleanNames(p.attributeNames ?? []);
+        const attributeNames = names.length
+          ? names
+          : [...new Set(variantRows.flatMap((r) => r.attributes.map((a) => a.name)))];
         await tx.product.create({
           data: {
             workspaceId,
@@ -336,15 +438,9 @@ export async function importProducts(
             expiryTracked: p.expiryTracked ?? false,
             lowStockThreshold: p.lowStockThreshold ?? 5,
             unitsPerPack: p.unitsPerPack ?? null,
+            attributeNames,
             variants: {
-              create:
-                meaningful.length > 0
-                  ? meaningful.map((v) => ({
-                      size: clean(v.size),
-                      color: clean(v.color),
-                      sku: clean(v.sku),
-                    }))
-                  : [{ size: null, color: null, sku: null }],
+              create: variantRows.length > 0 ? variantRows : [{ attributes: [] }],
             },
           },
         });

@@ -4,6 +4,7 @@ import { serverT } from "@/lib/session";
 import { can } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
 import { variantStockMap } from "@/lib/inventory";
+import { variantFullName, variantAttributes } from "@/lib/variants";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ProductManager } from "@/components/products/product-manager";
 import { SupplierManager } from "@/components/products/supplier-manager";
@@ -54,7 +55,7 @@ export default async function ProductsPage({
       take: PAGE_SIZE,
       include: {
         productVariant: {
-          select: { size: true, color: true, product: { select: { name: true } } },
+          select: { attributes: true, product: { select: { name: true } } },
         },
       },
     }),
@@ -71,11 +72,19 @@ export default async function ProductsPage({
     expiryTracked: p.expiryTracked,
     lowStockThreshold: p.lowStockThreshold,
     unitsPerPack: p.unitsPerPack,
+    attributeNames: Array.isArray(p.attributeNames)
+      ? (p.attributeNames.filter((n): n is string => typeof n === "string"))
+      : [],
     variants: p.variants.map((v) => ({
       id: v.id,
-      size: v.size,
-      color: v.color,
+      attributes: variantAttributes(v.attributes),
       sku: v.sku,
+      barcode: v.barcode,
+      description: v.description,
+      imageUrl: v.imageUrl,
+      salePrice: v.salePrice != null ? Number(v.salePrice) : null,
+      unitCost: v.unitCost != null ? Number(v.unitCost) : null,
+      lowStockThreshold: v.lowStockThreshold,
       stock: stock.get(v.id) ?? 0,
     })),
   }));
@@ -85,11 +94,7 @@ export default async function ProductsPage({
   const adjustmentRows = adjustments.map((a) => ({
     id: a.id,
     date: a.date.toISOString().slice(0, 10),
-    product:
-      a.productVariant.product.name +
-      ([a.productVariant.size, a.productVariant.color].filter(Boolean).length
-        ? ` (${[a.productVariant.size, a.productVariant.color].filter(Boolean).join(" / ")})`
-        : ""),
+    product: variantFullName(a.productVariant.product.name, a.productVariant.attributes),
     type: a.type,
     delta: a.delta,
     reason: a.reason,

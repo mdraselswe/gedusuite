@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAccess } from "@/lib/authz";
 import { refreshInventoryAlerts } from "@/lib/inventory";
 import { treasuryBalance } from "@/lib/finance";
+import { variantFullName } from "@/lib/variants";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -63,7 +64,7 @@ export async function createPurchase(
   const [variant, supplier, partner] = await Promise.all([
     prisma.productVariant.findFirst({
       where: { id: d.productVariantId, product: { workspaceId } },
-      select: { id: true, size: true, color: true, product: { select: { name: true } } },
+      select: { id: true, attributes: true, product: { select: { name: true } } },
     }),
     d.supplierId
       ? prisma.supplier.findFirst({ where: { id: d.supplierId, workspaceId }, select: { id: true } })
@@ -90,8 +91,7 @@ export async function createPurchase(
     }
   }
 
-  const extra = [variant.size, variant.color].filter(Boolean).join(" / ");
-  const label = variant.product.name + (extra ? ` (${extra})` : "");
+  const label = variantFullName(variant.product.name, variant.attributes);
 
   await prisma.$transaction(async (tx) => {
     const purchase = await tx.purchase.create({
@@ -168,7 +168,7 @@ export async function updatePurchase(
     }),
     prisma.productVariant.findFirst({
       where: { id: d.productVariantId, product: { workspaceId } },
-      select: { id: true, size: true, color: true, product: { select: { name: true } } },
+      select: { id: true, attributes: true, product: { select: { name: true } } },
     }),
     d.supplierId
       ? prisma.supplier.findFirst({ where: { id: d.supplierId, workspaceId }, select: { id: true } })
@@ -203,8 +203,7 @@ export async function updatePurchase(
     }
   }
 
-  const extra = [variant.size, variant.color].filter(Boolean).join(" / ");
-  const label = variant.product.name + (extra ? ` (${extra})` : "");
+  const label = variantFullName(variant.product.name, variant.attributes);
 
   await prisma.$transaction(async (tx) => {
     await tx.purchase.update({

@@ -5,16 +5,12 @@ import { can } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
 import { computeOrderTotals } from "@/lib/orders";
 import { OrderManager } from "@/components/sales/order-manager";
+import { variantFullName } from "@/lib/variants";
 import { Pagination, parsePage } from "@/components/ui/pagination";
 import { PageHeader } from "@/components/ui/page-header";
 import { Receipt } from "lucide-react";
 
 const PAGE_SIZE = 50;
-
-function variantLabel(name: string, size: string | null, color: string | null) {
-  const extra = [size, color].filter(Boolean).join(" / ");
-  return extra ? `${name} (${extra})` : name;
-}
 
 const ORDER_STATUSES = ["PENDING", "CONFIRMED", "SHIPPED", "DELIVERED", "CANCELLED"] as const;
 const PAY_STATUSES = ["PAID", "UNPAID", "PARTIAL"] as const;
@@ -84,7 +80,7 @@ export default async function OrdersPage({
           include: {
             returns: true,
             productVariant: {
-              select: { size: true, color: true, product: { select: { name: true } } },
+              select: { attributes: true, product: { select: { name: true } } },
             },
           },
         },
@@ -116,11 +112,7 @@ export default async function OrdersPage({
         const returned = it.returns.reduce((s, r) => s + r.quantity, 0);
         return {
           id: it.id,
-          label: variantLabel(
-            it.productVariant.product.name,
-            it.productVariant.size,
-            it.productVariant.color,
-          ),
+          label: variantFullName(it.productVariant.product.name, it.productVariant.attributes),
           quantity: it.quantity,
           returnedQty: returned,
           remaining: it.quantity - returned,

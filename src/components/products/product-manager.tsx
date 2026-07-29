@@ -13,6 +13,7 @@ import {
   deleteVariant,
 } from "@/server/actions/products";
 import { createProductCategory } from "@/server/actions/product-categories";
+import { variantChip } from "@/lib/variants";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -39,11 +40,17 @@ import { Package } from "lucide-react";
 
 const ADD_NEW_CATEGORY = "__add_new__";
 
+type VariantAttribute = { name: string; value: string };
 type Variant = {
   id: string;
-  size: string | null;
-  color: string | null;
+  attributes: VariantAttribute[];
   sku: string | null;
+  barcode: string | null;
+  description: string | null;
+  imageUrl: string | null;
+  salePrice: number | null;
+  unitCost: number | null;
+  lowStockThreshold: number | null;
   stock: number;
 };
 type Product = {
@@ -56,10 +63,26 @@ type Product = {
   expiryTracked: boolean;
   lowStockThreshold: number;
   unitsPerPack: number | null;
+  attributeNames: string[];
   variants: Variant[];
 };
 type Perms = { canAdd: boolean; canEdit: boolean };
-type VariantDraft = { size: string; color: string; sku: string };
+
+// Editable form row for one variant. `values` is positionally aligned with the
+// product's attribute-name list, so renaming/reordering an attribute never
+// desynchronises a variant's values. Prices/threshold are kept as strings while
+// editing and coerced on the server.
+type VariantDraft = {
+  id?: string;
+  values: string[];
+  sku: string;
+  barcode: string;
+  description: string;
+  imageUrl: string;
+  salePrice: string;
+  unitCost: string;
+  lowStockThreshold: string;
+};
 
 const MAX_IMAGE_BYTES = 1_400_000;
 const IMAGE_MAX_DIMENSION = 480; // px, longest side — plenty for a list thumbnail
@@ -67,11 +90,8 @@ const IMAGE_QUALITY = 0.72;
 
 /**
  * Downscale + recompress an image client-side before it ever becomes a
- * stored data URI. Product images were being stored at full upload size
- * (up to ~1.4MB each) and fetched in full on every Products/Purchases/Sales
- * page load — with 20+ products that's tens of MB transferred per page view.
- * Shrinking to a 480px JPEG typically lands at 15-60KB regardless of the
- * original file size.
+ * stored data URI. Shrinking to a 480px JPEG typically lands at 15-60KB
+ * regardless of the original file size.
  */
 function downscaleImage(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -98,9 +118,63 @@ function downscaleImage(file: File): Promise<string> {
   });
 }
 
-function variantText(v: { size: string | null; color: string | null }) {
-  return [v.size, v.color].filter(Boolean).join(" / ") || "default";
+async function fileToDataUri(file: File): Promise<string | null> {
+  if (file.size > MAX_IMAGE_BYTES) {
+    toast.error("Image too large (max ~1.4MB)");
+    return null;
+  }
+  try {
+    return await downscaleImage(file);
+  } catch {
+    toast.error("Couldn't process that image");
+    return null;
+  }
 }
+
+const emptyDraft = (attrCount: number): VariantDraft => ({
+  values: Array(attrCount).fill(""),
+  sku: "",
+  barcode: "",
+  description: "",
+  imageUrl: "",
+  salePrice: "",
+  unitCost: "",
+  lowStockThreshold: "",
+});
+
+function draftFromVariant(v: Variant, names: string[]): VariantDraft {
+  const byName = new Map(v.attributes.map((a) => [a.name, a.value]));
+  return {
+    id: v.id,
+    values: names.map((n) => byName.get(n) ?? ""),
+    sku: v.sku ?? "",
+    barcode: v.barcode ?? "",
+    description: v.description ?? "",
+    imageUrl: v.imageUrl ?? "",
+    salePrice: v.salePrice != null ? String(v.salePrice) : "",
+    unitCost: v.unitCost != null ? String(v.unitCost) : "",
+    lowStockThreshold: v.lowStockThreshold != null ? String(v.lowStockThreshold) : "",
+  };
+}
+
+// Build the server payload for one variant draft against the given attr names.
+function draftPayload(d: VariantDraft, names: string[]) {
+  return {
+    id: d.id,
+    attributes: names
+      .map((name, i) => ({ name: name.trim(), value: (d.values[i] ?? "").trim() }))
+      .filter((a) => a.name && a.value),
+    sku: d.sku,
+    barcode: d.barcode,
+    description: d.description,
+    imageUrl: d.imageUrl,
+    salePrice: d.salePrice,
+    unitCost: d.unitCost,
+    lowStockThreshold: d.lowStockThreshold,
+  };
+}
+
+const money = (n: number) => `৳${n % 1 === 0 ? n : n.toFixed(2)}`;
 
 export function ProductManager({
   slug,
@@ -145,6 +219,7 @@ export function ProductManager({
   const [expiryTracked, setExpiryTracked] = useState(false);
   const [imageUrl, setImageUrl] = useState("");
   const [hasVariants, setHasVariants] = useState(false);
+  const [attrNames, setAttrNames] = useState<string[]>([]);
   const [draftVariants, setDraftVariants] = useState<VariantDraft[]>([]);
 
   // Add-variant dialog.
@@ -162,7 +237,8 @@ export function ProductManager({
     setExpiryTracked(false);
     setImageUrl("");
     setHasVariants(false);
-    setDraftVariants([{ size: "", color: "", sku: "" }]);
+    setAttrNames([]);
+    setDraftVariants([emptyDraft(0)]);
     setOpen(true);
   }
   function openEdit(p: Product) {
@@ -175,23 +251,61 @@ export function ProductManager({
     setUnitsPerPack(p.unitsPerPack ? String(p.unitsPerPack) : "");
     setExpiryTracked(p.expiryTracked);
     setImageUrl(p.imageUrl ?? "");
-    setDraftVariants([]);
+    const names = p.attributeNames ?? [];
+    setAttrNames(names);
+    setHasVariants(names.length > 0);
+    setDraftVariants(
+      p.variants.length
+        ? p.variants.map((v) => draftFromVariant(v, names))
+        : [emptyDraft(names.length)],
+    );
     setOpen(true);
   }
 
   async function onPickImage(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > MAX_IMAGE_BYTES) {
-      toast.error("Image too large (max ~1.4MB)");
+    const uri = await fileToDataUri(file);
+    if (uri == null) {
       e.target.value = "";
       return;
     }
-    try {
-      setImageUrl(await downscaleImage(file));
-    } catch {
-      toast.error("Couldn't process that image");
+    setImageUrl(uri);
+  }
+
+  // ── Attribute-name column management ──────────────────────────────
+  function addAttrName() {
+    setAttrNames((n) => [...n, ""]);
+    setDraftVariants((rows) => rows.map((r) => ({ ...r, values: [...r.values, ""] })));
+  }
+  function renameAttr(i: number, value: string) {
+    setAttrNames((n) => n.map((x, j) => (j === i ? value : x)));
+  }
+  function removeAttr(i: number) {
+    setAttrNames((n) => n.filter((_, j) => j !== i));
+    setDraftVariants((rows) => rows.map((r) => ({ ...r, values: r.values.filter((_, j) => j !== i) })));
+  }
+
+  // ── Variant-row management ────────────────────────────────────────
+  function updateDraft(i: number, patch: Partial<VariantDraft>) {
+    setDraftVariants((rows) => rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  }
+  function updateDraftValue(i: number, attrIndex: number, value: string) {
+    setDraftVariants((rows) =>
+      rows.map((r, j) =>
+        j === i ? { ...r, values: r.values.map((v, k) => (k === attrIndex ? value : v)) } : r,
+      ),
+    );
+  }
+  async function onPickDraftImage(i: number, e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const uri = await fileToDataUri(file);
+    if (uri == null) {
+      e.target.value = "";
+      return;
     }
+    updateDraft(i, { imageUrl: uri });
   }
 
   async function onCreateCategory(e: React.FormEvent) {
@@ -214,6 +328,22 @@ export function ProductManager({
 
   async function onSubmitProduct(e: React.FormEvent) {
     e.preventDefault();
+
+    const names = hasVariants ? attrNames.map((n) => n.trim()).filter(Boolean) : [];
+    if (hasVariants && names.length === 0) {
+      toast.error("Add at least one attribute (e.g. Size) or turn off variants");
+      return;
+    }
+    // Keep only rows that carry a value for at least one attribute; a simple
+    // product always keeps its single default row.
+    const rows = hasVariants
+      ? draftVariants.filter((d) => d.values.some((v) => v.trim()))
+      : draftVariants.slice(0, 1);
+    if (hasVariants && rows.length === 0) {
+      toast.error("Add at least one variant, or turn off variants");
+      return;
+    }
+
     setLoading(true);
     const fd = new FormData();
     fd.set("name", name);
@@ -224,9 +354,9 @@ export function ProductManager({
     fd.set("unitsPerPack", unitsPerPack);
     fd.set("expiryTracked", expiryTracked ? "true" : "false");
     fd.set("imageUrl", imageUrl);
-    // Only send variants when the user opted into them; otherwise the server
-    // creates a single default variant automatically.
-    fd.set("variants", JSON.stringify(editing || !hasVariants ? [] : draftVariants));
+    fd.set("attributeNames", JSON.stringify(names));
+    fd.set("variants", JSON.stringify(rows.map((d) => draftPayload(d, names))));
+
     const res = editing
       ? await updateProduct(slug, editing.id, fd)
       : await createProduct(slug, fd);
@@ -257,7 +387,7 @@ export function ProductManager({
   async function onDeleteVariant(v: Variant) {
     const ok = await confirmDialog({
       title: "Delete variant?",
-      description: "This size/color option will be removed from the product.",
+      description: "This variant option will be removed from the product.",
       confirmText: "Delete",
       destructive: true,
     });
@@ -268,10 +398,20 @@ export function ProductManager({
     router.refresh();
   }
 
-  async function onAddVariant(e: React.FormEvent<HTMLFormElement>) {
+  // Quick "+ Variant" dialog state (adds one variant to an existing product).
+  const [quickDraft, setQuickDraft] = useState<VariantDraft>(emptyDraft(0));
+  function openAddVariant(p: Product) {
+    setVariantFor(p);
+    setQuickDraft(emptyDraft(p.attributeNames.length));
+    setVariantOpen(true);
+  }
+  async function onAddVariant(e: React.FormEvent) {
     e.preventDefault();
     if (!variantFor) return;
-    const res = await addVariant(slug, variantFor.id, new FormData(e.currentTarget));
+    const names = variantFor.attributeNames;
+    const fd = new FormData();
+    fd.set("variant", JSON.stringify(draftPayload(quickDraft, names)));
+    const res = await addVariant(slug, variantFor.id, fd);
     if (!res.ok) return toast.error(res.error);
     toast.success("Variant added");
     setVariantOpen(false);
@@ -335,13 +475,17 @@ export function ProductManager({
                   </div>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {p.variants.map((v) => {
-                      const low = v.stock <= p.lowStockThreshold;
+                      const threshold = v.lowStockThreshold ?? p.lowStockThreshold;
+                      const low = v.stock <= threshold;
                       return (
                         <span
                           key={v.id}
                           className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs"
                         >
-                          {variantText(v)}
+                          <span className="font-medium">{variantChip(v.attributes)}</span>
+                          {v.salePrice != null && (
+                            <span className="text-muted-foreground">· {money(v.salePrice)}</span>
+                          )}
                           <span className={low ? "font-semibold text-destructive" : ""}>
                             · {formatStock(v.stock, p.unitsPerPack)} in stock
                           </span>
@@ -369,16 +513,11 @@ export function ProductManager({
                     <Button variant="ghost" size="sm" onClick={() => openEdit(p)}>
                       Edit
                     </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setVariantFor(p);
-                        setVariantOpen(true);
-                      }}
-                    >
-                      + Variant
-                    </Button>
+                    {p.attributeNames.length > 0 && (
+                      <Button variant="ghost" size="sm" onClick={() => openAddVariant(p)}>
+                        + Variant
+                      </Button>
+                    )}
                     <Button variant="ghost" size="sm" onClick={() => onDeleteProduct(p)}>
                       Delete
                     </Button>
@@ -391,17 +530,16 @@ export function ProductManager({
                   <Button variant="ghost" size="sm" className="flex-1" onClick={() => openEdit(p)}>
                     Edit
                   </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="flex-1"
-                    onClick={() => {
-                      setVariantFor(p);
-                      setVariantOpen(true);
-                    }}
-                  >
-                    + Variant
-                  </Button>
+                  {p.attributeNames.length > 0 && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="flex-1"
+                      onClick={() => openAddVariant(p)}
+                    >
+                      + Variant
+                    </Button>
+                  )}
                   <Button
                     variant="ghost"
                     size="sm"
@@ -419,7 +557,7 @@ export function ProductManager({
 
       {/* Product create/edit dialog */}
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>{editing ? "Edit product" : "Add product"}</DialogTitle>
           </DialogHeader>
@@ -510,78 +648,211 @@ export function ProductManager({
               )}
             </div>
 
-            {!editing && (
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  id="p-hasvariants"
-                  checked={hasVariants}
-                  onCheckedChange={(v) => {
-                    const on = v === true;
-                    setHasVariants(on);
-                    if (on && draftVariants.length === 0) {
-                      setDraftVariants([{ size: "", color: "", sku: "" }]);
-                    }
-                  }}
-                />
-                <Label htmlFor="p-hasvariants">
-                  This product has variants (size / color)
-                </Label>
-              </div>
-            )}
+            <div className="flex items-center gap-2 border-t pt-4">
+              <Checkbox
+                id="p-hasvariants"
+                checked={hasVariants}
+                onCheckedChange={(v) => {
+                  const on = v === true;
+                  setHasVariants(on);
+                  if (on) {
+                    // Seed sensible defaults when switching a product to variable.
+                    setAttrNames((n) => (n.length ? n : ["Size", "Color"]));
+                    setDraftVariants((rows) => {
+                      const count = attrNames.length || 2;
+                      return rows.length ? rows.map((r) => ({
+                        ...r,
+                        values: Array.from({ length: count }, (_, i) => r.values[i] ?? ""),
+                      })) : [emptyDraft(count)];
+                    });
+                  }
+                }}
+              />
+              <Label htmlFor="p-hasvariants">
+                This product has multiple variants (size / color / etc.)
+              </Label>
+            </div>
 
-            {!editing && hasVariants && (
-              <div className="space-y-2">
-                <Label>Variants (size / color / SKU)</Label>
-                {draftVariants.map((v, i) => (
-                  <div key={i} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2">
-                    <Input
-                      placeholder="Size"
-                      value={v.size}
-                      onChange={(e) => {
-                        const next = [...draftVariants];
-                        next[i] = { ...v, size: e.target.value };
-                        setDraftVariants(next);
-                      }}
-                    />
-                    <Input
-                      placeholder="Color"
-                      value={v.color}
-                      onChange={(e) => {
-                        const next = [...draftVariants];
-                        next[i] = { ...v, color: e.target.value };
-                        setDraftVariants(next);
-                      }}
-                    />
-                    <Input
-                      placeholder="SKU"
-                      value={v.sku}
-                      onChange={(e) => {
-                        const next = [...draftVariants];
-                        next[i] = { ...v, sku: e.target.value };
-                        setDraftVariants(next);
-                      }}
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setDraftVariants(draftVariants.filter((_, j) => j !== i))}
-                    >
-                      ×
+            {!hasVariants ? (
+              // Simple product: pricing for its single (default) variant.
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label htmlFor="p-sale">Selling price</Label>
+                  <Input
+                    id="p-sale"
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    placeholder="৳"
+                    value={draftVariants[0]?.salePrice ?? ""}
+                    onChange={(e) => updateDraft(0, { salePrice: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="p-cost">Cost</Label>
+                  <Input
+                    id="p-cost"
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    placeholder="৳"
+                    value={draftVariants[0]?.unitCost ?? ""}
+                    onChange={(e) => updateDraft(0, { unitCost: e.target.value })}
+                  />
+                </div>
+                <p className="col-span-2 text-xs text-muted-foreground">
+                  Used as the default price when buying or selling this product. Leave blank to fill
+                  it in at purchase/sale time.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {/* Attribute-name columns */}
+                <div className="space-y-2">
+                  <Label>Attributes</Label>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {attrNames.map((n, i) => (
+                      <div key={i} className="flex items-center gap-1">
+                        <Input
+                          className="h-8 w-28"
+                          placeholder={`Attribute ${i + 1}`}
+                          value={n}
+                          onChange={(e) => renameAttr(i, e.target.value)}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeAttr(i)}
+                          className="text-muted-foreground hover:text-destructive"
+                          aria-label="Remove attribute"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                    <Button type="button" variant="outline" size="sm" onClick={addAttrName}>
+                      + Attribute
                     </Button>
+                  </div>
+                </div>
+
+                {/* Per-variant rows */}
+                <Label>Variants</Label>
+                {draftVariants.map((d, i) => (
+                  <div key={i} className="space-y-2 rounded-md border p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="grid flex-1 grid-cols-2 gap-2 sm:grid-cols-3">
+                        {attrNames.map((n, ai) => (
+                          <div key={ai} className="space-y-1">
+                            <Label className="text-xs text-muted-foreground">{n || `Attr ${ai + 1}`}</Label>
+                            <Input
+                              className="h-8"
+                              value={d.values[ai] ?? ""}
+                              onChange={(e) => updateDraftValue(i, ai, e.target.value)}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                      {draftVariants.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => setDraftVariants((rows) => rows.filter((_, j) => j !== i))}
+                          className="mt-6 text-muted-foreground hover:text-destructive"
+                          aria-label="Remove variant"
+                        >
+                          ×
+                        </button>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      <div className="space-y-1">
+                        <Label className="text-xs text-muted-foreground">Selling price</Label>
+                        <Input
+                          className="h-8"
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          value={d.salePrice}
+                          onChange={(e) => updateDraft(i, { salePrice: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs text-muted-foreground">Cost</Label>
+                        <Input
+                          className="h-8"
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          value={d.unitCost}
+                          onChange={(e) => updateDraft(i, { unitCost: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs text-muted-foreground">SKU</Label>
+                        <Input
+                          className="h-8"
+                          value={d.sku}
+                          onChange={(e) => updateDraft(i, { sku: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs text-muted-foreground">Barcode</Label>
+                        <Input
+                          className="h-8"
+                          value={d.barcode}
+                          onChange={(e) => updateDraft(i, { barcode: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs text-muted-foreground">Low-stock ≤</Label>
+                        <Input
+                          className="h-8"
+                          type="number"
+                          min={0}
+                          placeholder={String(threshold)}
+                          value={d.lowStockThreshold}
+                          onChange={(e) => updateDraft(i, { lowStockThreshold: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-1 sm:col-span-3">
+                        <Label className="text-xs text-muted-foreground">Short description</Label>
+                        <Input
+                          className="h-8"
+                          value={d.description}
+                          onChange={(e) => updateDraft(i, { description: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div className="flex-1 space-y-1">
+                        <Label className="text-xs text-muted-foreground">Image</Label>
+                        <Input
+                          className="h-8"
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => onPickDraftImage(i, e)}
+                        />
+                      </div>
+                      {d.imageUrl && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={d.imageUrl}
+                          alt="variant"
+                          className="h-12 w-12 shrink-0 rounded-md object-cover"
+                        />
+                      )}
+                    </div>
                   </div>
                 ))}
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => setDraftVariants([...draftVariants, { size: "", color: "", sku: "" }])}
+                  onClick={() =>
+                    setDraftVariants((rows) => [...rows, emptyDraft(attrNames.length)])
+                  }
                 >
-                  + Add variant row
+                  + Add variant
                 </Button>
-                <p className="text-xs text-muted-foreground">
-                  Add more variants later from the list. Uncheck to sell as a single product.
-                </p>
               </div>
             )}
 
@@ -594,25 +865,63 @@ export function ProductManager({
         </DialogContent>
       </Dialog>
 
-      {/* Add-variant dialog */}
+      {/* Quick add-variant dialog (existing product) */}
       <Dialog open={variantOpen} onOpenChange={setVariantOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Add variant to {variantFor?.name}</DialogTitle>
           </DialogHeader>
           <form onSubmit={onAddVariant} className="space-y-4">
-            <div className="grid grid-cols-3 gap-2">
-              <div className="space-y-2">
-                <Label htmlFor="v-size">Size</Label>
-                <Input id="v-size" name="size" />
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {(variantFor?.attributeNames ?? []).map((n, ai) => (
+                <div key={ai} className="space-y-1">
+                  <Label className="text-xs">{n}</Label>
+                  <Input
+                    value={quickDraft.values[ai] ?? ""}
+                    onChange={(e) =>
+                      setQuickDraft((q) => ({
+                        ...q,
+                        values: q.values.map((v, k) => (k === ai ? e.target.value : v)),
+                      }))
+                    }
+                  />
+                </div>
+              ))}
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <Label className="text-xs">Selling price</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={quickDraft.salePrice}
+                  onChange={(e) => setQuickDraft((q) => ({ ...q, salePrice: e.target.value }))}
+                />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="v-color">Color</Label>
-                <Input id="v-color" name="color" />
+              <div className="space-y-1">
+                <Label className="text-xs">Cost</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={quickDraft.unitCost}
+                  onChange={(e) => setQuickDraft((q) => ({ ...q, unitCost: e.target.value }))}
+                />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="v-sku">SKU</Label>
-                <Input id="v-sku" name="sku" />
+              <div className="space-y-1">
+                <Label className="text-xs">SKU</Label>
+                <Input
+                  value={quickDraft.sku}
+                  onChange={(e) => setQuickDraft((q) => ({ ...q, sku: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Barcode</Label>
+                <Input
+                  value={quickDraft.barcode}
+                  onChange={(e) => setQuickDraft((q) => ({ ...q, barcode: e.target.value }))}
+                />
               </div>
             </div>
             <DialogFooter>
