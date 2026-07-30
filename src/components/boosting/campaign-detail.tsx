@@ -263,7 +263,7 @@ function AdSetCard({
         {canAdd && (
           <form
             onSubmit={onAddSpend}
-            className="grid gap-3 rounded-md border bg-muted/40 p-3 sm:grid-cols-[10rem_minmax(0,8rem)_minmax(0,11rem)_minmax(0,1fr)_auto] sm:items-end"
+            className="grid gap-3 rounded-md border bg-muted/40 p-3 sm:grid-cols-[10rem_minmax(0,8rem)_minmax(0,11rem)_minmax(0,1fr)_auto] sm:items-start"
           >
             <div className="space-y-2">
               <Label htmlFor={`sp-date-${adSet.id}`}>Date</Label>
@@ -315,9 +315,16 @@ function AdSetCard({
               <Label htmlFor={`sp-note-${adSet.id}`}>Note (optional)</Label>
               <Input id={`sp-note-${adSet.id}`} name="note" />
             </div>
-            <Button type="submit" disabled={adding}>
-              {adding ? "Saving…" : "Add spend"}
-            </Button>
+            {/* Same label+control stack as the fields so the button row-aligns
+                with the inputs instead of floating against the label line. */}
+            <div className="space-y-2">
+              <Label aria-hidden className="invisible select-none">
+                Add
+              </Label>
+              <Button type="submit" disabled={adding}>
+                {adding ? "Saving…" : "Add spend"}
+              </Button>
+            </div>
           </form>
         )}
         <DataTable
