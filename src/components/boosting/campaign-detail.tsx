@@ -288,7 +288,15 @@ function AdSetCard({
             </div>
             <div className="space-y-2">
               <Label>Paid from</Label>
-              <Select value={paidFrom} onValueChange={(v) => setPaidFrom(v ?? NONE)}>
+              <Select
+                value={paidFrom}
+                onValueChange={(v) => setPaidFrom(v ?? NONE)}
+                items={[
+                  { value: NONE, label: "— not tracked" },
+                  { value: TREASURY, label: "Treasury" },
+                  ...partnerOptions.map((p) => ({ value: p.id, label: p.label })),
+                ]}
+              >
                 <SelectTrigger className="w-full">
                   <SelectValue />
                 </SelectTrigger>
