@@ -192,13 +192,18 @@ export function BackupManager({
               {
                 key: "details",
                 header: "Details",
+                wrap: true,
                 cell: (l) =>
                   l.fileUrl ? (
                     <a href={l.fileUrl} target="_blank" rel="noreferrer" className="underline">
                       open
                     </a>
                   ) : (
-                    <span className="text-muted-foreground">{l.note ?? "—"}</span>
+                    // Error notes can be long single tokens (URLs, stack refs) —
+                    // clamp them so one bad note can't stretch the layout.
+                    <span className="line-clamp-3 text-muted-foreground" title={l.note ?? undefined}>
+                      {l.note ?? "—"}
+                    </span>
                   ),
               },
             ] as Column<Log>[]

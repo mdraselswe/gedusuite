@@ -286,7 +286,14 @@ export function DataTable<T>({
                       className="flex items-center justify-between gap-3 py-0.5 text-sm"
                     >
                       <span className="shrink-0 text-muted-foreground">{c.header}</span>
-                      <span className={cn("min-w-0", c.align === "right" && "text-right")}>
+                      {/* wrap-break-word: a long unbroken value (URL, error text)
+                          must fold inside the card, not widen the page. */}
+                      <span
+                        className={cn(
+                          "min-w-0 wrap-break-word",
+                          c.align === "right" && "text-right",
+                        )}
+                      >
                         {value}
                       </span>
                     </div>
