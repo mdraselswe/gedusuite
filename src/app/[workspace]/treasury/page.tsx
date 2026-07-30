@@ -79,6 +79,7 @@ export default async function TreasuryPage({
     fromOrder: !!e.orderId,
     fromPurchase: !!e.purchaseId || !!e.internalPurchaseId,
     fromDistribution: !!e.distributionId,
+    fromBoost: !!e.boostSpendId,
   }));
 
   const partnerOptions = partners.map((p) => ({

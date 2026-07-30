@@ -44,6 +44,7 @@ type Entry = {
   fromOrder: boolean;
   fromPurchase: boolean;
   fromDistribution: boolean;
+  fromBoost: boolean;
 };
 type SharePartner = { id: string; label: string; percent: number };
 type Distribution = {
@@ -680,6 +681,8 @@ export function TreasuryManager({
                           <span className="text-xs text-muted-foreground">from purchase</span>
                         ) : e.fromDistribution ? (
                           <span className="text-xs text-muted-foreground">from distribution</span>
+                        ) : e.fromBoost ? (
+                          <span className="text-xs text-muted-foreground">from boosting</span>
                         ) : (
                           <Button variant="ghost" size="sm" onClick={() => onDelete(e.id)}>
                             Delete

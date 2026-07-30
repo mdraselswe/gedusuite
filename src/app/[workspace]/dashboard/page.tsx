@@ -7,7 +7,7 @@ import { overdueOrders, totalBusinessProfit, treasuryBalance } from "@/lib/finan
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PartnerShareTable } from "@/components/dashboard/partner-share-table";
 import { PageHeader } from "@/components/ui/page-header";
-import { LayoutDashboard, Users, Wallet, UserCog } from "lucide-react";
+import { LayoutDashboard, Users, Wallet, UserCog, Megaphone } from "lucide-react";
 
 export default async function DashboardPage({
   params,
@@ -24,16 +24,25 @@ export default async function DashboardPage({
     !!access && can(access.role, "partners", "view", access.permissions);
   const canViewTreasury =
     !!access && can(access.role, "treasury", "view", access.permissions);
+  const canViewBoosting =
+    !!access && can(access.role, "boosting", "view", access.permissions);
 
   // Read-only computes — the dashboard must not write to the DB on every view.
   // Notification reconciliation happens on mutations + the scheduled cron.
-  const [memberCount, alerts, overdue, profit, treasury] = await Promise.all([
+  const now = new Date();
+  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  const [memberCount, alerts, overdue, profit, treasury, adSpendAgg] = await Promise.all([
     prisma.membership.count({ where: { workspaceId } }),
     computeInventoryAlerts(workspaceId),
     overdueOrders(workspaceId),
     totalBusinessProfit(workspaceId),
     treasuryBalance(workspaceId),
+    prisma.boostDailySpend.aggregate({
+      _sum: { amount: true },
+      where: { workspaceId, date: { gte: monthStart } },
+    }),
   ]);
+  const monthAdSpend = Number(adSpendAgg._sum.amount ?? 0);
 
   const lowStock = alerts.filter((a) => a.type === "LOW_STOCK");
   const expiring = alerts.filter((a) => a.type === "EXPIRY");
@@ -116,6 +125,19 @@ export default async function DashboardPage({
               </CardTitle>
             </CardHeader>
             <CardContent className="text-2xl font-bold">{treasury.toFixed(2)}</CardContent>
+          </Card>
+        )}
+        {canViewBoosting && (
+          <Card className="animate-in fade-in-0 slide-in-from-bottom-2 duration-300 delay-200">
+            <CardHeader className="flex flex-row items-center gap-3 space-y-0 pb-2">
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-sky-500/10 text-sky-600 dark:text-sky-400">
+                <Megaphone className="size-4" />
+              </span>
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Ad spend this month
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="text-2xl font-bold">{monthAdSpend.toFixed(2)}</CardContent>
           </Card>
         )}
       </div>

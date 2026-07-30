@@ -11,6 +11,7 @@ export type Module =
   | "customers"
   | "partners" // partner finance
   | "treasury"
+  | "boosting" // ad campaign spend tracking
   | "internal-purchases"
   | "reports"
   | "team" // settings/team
@@ -36,6 +37,7 @@ const MATRIX: Record<Role, Partial<Record<Module, Access>>> = {
     customers: "full",
     partners: "full",
     treasury: "full",
+    boosting: "full",
     "internal-purchases": "full",
     reports: "full",
     team: "full",
@@ -49,6 +51,7 @@ const MATRIX: Record<Role, Partial<Record<Module, Access>>> = {
     customers: "edit",
     partners: "add", // view own + add own (row-level ownership enforced in the module)
     treasury: "view",
+    boosting: "edit",
     "internal-purchases": "edit",
     reports: "view",
     team: "none",
@@ -62,6 +65,7 @@ const MATRIX: Record<Role, Partial<Record<Module, Access>>> = {
     customers: "edit",
     partners: "view",
     treasury: "view",
+    boosting: "add",
     "internal-purchases": "edit",
     reports: "view",
     team: "none",
@@ -75,6 +79,7 @@ const MATRIX: Record<Role, Partial<Record<Module, Access>>> = {
     customers: "add",
     partners: "none",
     treasury: "none",
+    boosting: "none",
     "internal-purchases": "add",
     reports: "none",
     team: "none",
@@ -133,6 +138,7 @@ export function moduleForSegment(segment: string, subSegment?: string): Module |
     customers: "customers",
     partners: "partners",
     treasury: "treasury",
+    boosting: "boosting",
     "internal-purchases": "internal-purchases",
     reports: "reports",
   };

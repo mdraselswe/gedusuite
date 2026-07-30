@@ -169,13 +169,19 @@ export async function deletePartnerTxn(
 
   const txn = await prisma.partnerTxn.findFirst({
     where: { id, workspaceId: gate.access.workspaceId },
-    select: { distributionId: true },
+    select: { distributionId: true, boostSpendId: true },
   });
   if (!txn) return { ok: false, error: "Transaction not found" };
   if (txn.distributionId) {
     return {
       ok: false,
       error: "This came from a profit distribution — delete the whole distribution instead",
+    };
+  }
+  if (txn.boostSpendId) {
+    return {
+      ok: false,
+      error: "This came from a partner-funded boost spend — delete that spend entry instead",
     };
   }
 

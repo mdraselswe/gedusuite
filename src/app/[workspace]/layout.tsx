@@ -7,6 +7,7 @@ import {
   Users,
   Handshake,
   Wallet,
+  Megaphone,
   ClipboardList,
   BarChart3,
   UserCog,
@@ -99,6 +100,13 @@ export default async function WorkspaceLayout({
       icon: <Wallet className="size-4" />,
       color: "amber",
       show: can(role, "treasury", "view"),
+    }),
+    navItem({
+      href: `/${slug}/boosting`,
+      label: t("boosting"),
+      icon: <Megaphone className="size-4" />,
+      color: "sky",
+      show: can(role, "boosting", "view"),
     }),
     navItem({
       href: `/${slug}/internal-purchases`,

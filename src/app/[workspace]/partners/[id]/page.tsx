@@ -44,12 +44,14 @@ export default async function PartnerDetailPage({
     amount: Number(t.amount),
     purpose: t.purpose,
     fromDistribution: !!t.distributionId,
+    fromBoost: !!t.boostSpendId,
   }));
 
   const cards: [string, number][] = [
     ["Invested", balances?.invested ?? 0],
     ["Customer products", balances?.customerProductSpend ?? 0],
     ["Internal purchases", balances?.internalPurchaseSpend ?? 0],
+    ["Boosting (ads)", balances?.boostSpend ?? 0],
     ["Other (rent, food, etc.)", balances?.miscExpense ?? 0],
     ["Total spent", balances?.expenses ?? 0],
     ["Remaining (unspent)", balances?.remaining ?? 0],

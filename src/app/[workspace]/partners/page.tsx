@@ -51,6 +51,7 @@ export default async function PartnersPage({
       withdrawn: b?.withdrawn ?? 0,
       customerProductSpend: b?.customerProductSpend ?? 0,
       internalPurchaseSpend: b?.internalPurchaseSpend ?? 0,
+      boostSpend: b?.boostSpend ?? 0,
       miscExpense: b?.miscExpense ?? 0,
       expenses: b?.expenses ?? 0,
       depositedToTreasury: b?.depositedToTreasury ?? 0,
@@ -79,7 +80,7 @@ export default async function PartnersPage({
         }
       />
 
-      <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-5">
+      <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-6">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -108,6 +109,16 @@ export default async function PartnersPage({
           </CardHeader>
           <CardContent className="text-xl font-bold">
             {capital.internalPurchaseSpend.toFixed(2)}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Boosting (ads)
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="text-xl font-bold">
+            {capital.boostSpend.toFixed(2)}
           </CardContent>
         </Card>
         <Card>

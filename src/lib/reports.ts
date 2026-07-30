@@ -32,7 +32,14 @@ export type ProductPerf = {
 };
 
 export type Report = {
-  kpis: { revenue: number; profit: number; orders: number; avgOrder: number };
+  kpis: {
+    revenue: number;
+    profit: number;
+    orders: number;
+    avgOrder: number;
+    adSpend: number;
+    profitAfterAds: number;
+  };
   series: { date: string; sales: number; profit: number }[];
   products: ProductPerf[]; // all products, sorted by qty desc
   partnerShares: { name: string; percent: number; amount: number }[];
@@ -109,6 +116,14 @@ export async function buildReport(
     .map((p) => ({ ...p, revenue: round2(p.revenue), profit: round2(p.profit) }))
     .sort((a, b) => b.qty - a.qty);
 
+  // Boosting (ad) spend inside the range — shown alongside order profit so the
+  // report reflects what marketing actually cost.
+  const adSpendAgg = await prisma.boostDailySpend.aggregate({
+    _sum: { amount: true },
+    where: { workspaceId, date: { gte: range.from, lte: range.to } },
+  });
+  const adSpend = round2(Number(adSpendAgg._sum.amount ?? 0));
+
   const partners = await prisma.partner.findMany({
     where: { workspaceId },
     include: { user: { select: { name: true, email: true } } },
@@ -128,6 +143,8 @@ export async function buildReport(
       profit: round2(profit),
       orders: orders.length,
       avgOrder: orders.length ? round2(revenue / orders.length) : 0,
+      adSpend,
+      profitAfterAds: round2(profit - adSpend),
     },
     series,
     products,

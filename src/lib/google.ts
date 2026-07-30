@@ -121,6 +121,38 @@ const TAB_SPECS: TabSpec[] = [
       { key: "quantity", label: "Quantity" },
     ],
   },
+  {
+    tab: "Boost Campaigns",
+    table: "boostCampaigns",
+    columns: [
+      { key: "name", label: "Campaign" },
+      { key: "objective", label: "Objective" },
+      { key: "status", label: "Status" },
+      { key: "notes", label: "Notes" },
+    ],
+  },
+  {
+    tab: "Boost Ad Sets",
+    table: "boostAdSets",
+    columns: [
+      { key: "name", label: "Ad set" },
+      { key: "startDate", label: "Start", date: true },
+      { key: "endDate", label: "End", date: true },
+      { key: "dailyBudget", label: "Daily budget", currency: true },
+      { key: "status", label: "Status" },
+      { key: "notes", label: "Notes" },
+    ],
+  },
+  {
+    tab: "Boost Spends",
+    table: "boostDailySpends",
+    columns: [
+      { key: "date", label: "Date", date: true },
+      { key: "amount", label: "Amount", currency: true },
+      { key: "paidFromTreasury", label: "Treasury funded" },
+      { key: "note", label: "Note" },
+    ],
+  },
 ];
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];

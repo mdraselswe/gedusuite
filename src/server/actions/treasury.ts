@@ -80,6 +80,7 @@ export async function deleteTreasuryEntry(
       purchaseId: true,
       internalPurchaseId: true,
       distributionId: true,
+      boostSpendId: true,
     },
   });
   if (!entry) return { ok: false, error: "Entry not found" };
@@ -111,6 +112,12 @@ export async function deleteTreasuryEntry(
     return {
       ok: false,
       error: "This entry came from a treasury-funded internal purchase — change its funding source or delete the entry instead",
+    };
+  }
+  if (entry.boostSpendId) {
+    return {
+      ok: false,
+      error: "This entry came from a treasury-funded boost spend — delete that spend entry instead",
     };
   }
 

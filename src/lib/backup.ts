@@ -56,6 +56,9 @@ export async function buildSnapshot(workspaceId: string): Promise<Snapshot> {
     orderGifts,
     returns,
     internalPurchases,
+    boostCampaigns,
+    boostAdSets,
+    boostDailySpends,
   ] = await Promise.all([
     prisma.supplier.findMany({ where: { workspaceId } }),
     prisma.product.findMany({ where: { workspaceId } }),
@@ -71,6 +74,9 @@ export async function buildSnapshot(workspaceId: string): Promise<Snapshot> {
     prisma.orderGift.findMany({ where: { order: { workspaceId } } }),
     prisma.return.findMany({ where: { workspaceId } }),
     prisma.internalPurchase.findMany({ where: { workspaceId } }),
+    prisma.boostCampaign.findMany({ where: { workspaceId } }),
+    prisma.boostAdSet.findMany({ where: { workspaceId } }),
+    prisma.boostDailySpend.findMany({ where: { workspaceId } }),
   ]);
   const stockAdjustments = await prisma.stockAdjustment.findMany({ where: { workspaceId } });
 
@@ -92,6 +98,9 @@ export async function buildSnapshot(workspaceId: string): Promise<Snapshot> {
     returns,
     internalPurchases,
     stockAdjustments,
+    boostCampaigns,
+    boostAdSets,
+    boostDailySpends,
   } as unknown as Snapshot["tables"];
 
   return {
@@ -168,6 +177,31 @@ export async function restoreSnapshot(
   // Null dangling distribution links (e.g. backups from before distributions
   // were included in the snapshot).
   const validDistributionIds = new Set(profitDistributions.map((d) => d.id as string));
+  // Boost tables come before partner txns and treasury entries: both can
+  // reference a boost spend (boostSpendId), so the spends must exist first
+  // on insert.
+  const boostCampaigns = force(rows("boostCampaigns"));
+  const validCampaignIds = new Set(boostCampaigns.map((c) => c.id as string));
+  const boostAdSets = force(rows("boostAdSets"))
+    .filter((a) => validCampaignIds.has(a.campaignId as string))
+    .map((a) => {
+      // Snapshots from before the daily-budget rename carry `budget`.
+      const { budget, ...rest } = a as Row & { budget?: unknown };
+      return (rest.dailyBudget !== undefined ? rest : { ...rest, dailyBudget: budget ?? null }) as Row;
+    });
+  const validAdSetIds = new Set(boostAdSets.map((a) => a.id as string));
+  const boostDailySpends = force(rows("boostDailySpends"))
+    .filter((s) => validAdSetIds.has(s.adSetId as string))
+    .map(
+      (s) =>
+        ({
+          ...s,
+          paidByPartnerId: validPartnerIds.has(s.paidByPartnerId as string)
+            ? s.paidByPartnerId
+            : null,
+        }) as Row,
+    );
+  const validBoostSpendIds = new Set(boostDailySpends.map((s) => s.id as string));
   const partnerTxns = force(rows("partnerTxns"))
     .filter((x) => validPartnerIds.has(x.partnerId as string))
     .map(
@@ -177,6 +211,7 @@ export async function restoreSnapshot(
           distributionId: validDistributionIds.has(x.distributionId as string)
             ? x.distributionId
             : null,
+          boostSpendId: validBoostSpendIds.has(x.boostSpendId as string) ? x.boostSpendId : null,
         }) as Row,
     );
   const validTxnIds = new Set(partnerTxns.map((x) => x.id as string));
@@ -189,6 +224,7 @@ export async function restoreSnapshot(
         distributionId: validDistributionIds.has(e.distributionId as string)
           ? e.distributionId
           : null,
+        boostSpendId: validBoostSpendIds.has(e.boostSpendId as string) ? e.boostSpendId : null,
       }) as Row,
   );
   const orders = force(rows("orders")).map(
@@ -227,6 +263,9 @@ export async function restoreSnapshot(
         await tx.customer.deleteMany({ where: { workspaceId } });
         await tx.supplier.deleteMany({ where: { workspaceId } });
         await tx.internalPurchase.deleteMany({ where: { workspaceId } });
+        await tx.boostDailySpend.deleteMany({ where: { workspaceId } });
+        await tx.boostAdSet.deleteMany({ where: { workspaceId } });
+        await tx.boostCampaign.deleteMany({ where: { workspaceId } });
       }
 
       const skip = mode === "MERGE";
@@ -252,6 +291,9 @@ export async function restoreSnapshot(
       await insert("purchases", tx.purchase, purchases);
       await insert("partners", tx.partner, partners);
       await insert("profitDistributions", tx.profitDistribution, profitDistributions);
+      await insert("boostCampaigns", tx.boostCampaign, boostCampaigns);
+      await insert("boostAdSets", tx.boostAdSet, boostAdSets);
+      await insert("boostDailySpends", tx.boostDailySpend, boostDailySpends);
       await insert("partnerTxns", tx.partnerTxn, partnerTxns);
       await insert("treasuryEntries", tx.treasuryEntry, treasuryEntries);
       await insert("orders", tx.order, orders);

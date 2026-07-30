@@ -11,8 +11,9 @@ export type PartnerBalance = {
   withdrawn: number; // sum of WITHDRAWAL
   customerProductSpend: number; // Purchase (inventory to resell) rows tagged to this partner
   internalPurchaseSpend: number; // InternalPurchase rows tagged to this partner
+  boostSpend: number; // BoostDailySpend rows tagged to this partner (ad money from their own pocket)
   miscExpense: number; // manual PartnerTxn EXPENSE entries — rent, food, anything with no dedicated record
-  expenses: number; // customerProductSpend + internalPurchaseSpend + miscExpense
+  expenses: number; // customerProductSpend + internalPurchaseSpend + boostSpend + miscExpense
   depositedToTreasury: number; // sum of DEPOSIT_TO_TREASURY
   netCapital: number; // invested − withdrawn
   remaining: number; // invested − expenses: what's left of their capital still to spend
@@ -28,7 +29,7 @@ export type PartnerBalance = {
 export async function partnerBalances(
   workspaceId: string,
 ): Promise<Map<string, PartnerBalance>> {
-  const [txnRows, purchaseRows, internalRows] = await Promise.all([
+  const [txnRows, purchaseRows, internalRows, boostRows] = await Promise.all([
     prisma.partnerTxn.groupBy({
       by: ["partnerId", "type"],
       where: { workspaceId },
@@ -42,6 +43,11 @@ export async function partnerBalances(
       where: { workspaceId, paidByPartnerId: { not: null } },
       select: { paidByPartnerId: true, cost: true, quantity: true },
     }),
+    prisma.boostDailySpend.groupBy({
+      by: ["paidByPartnerId"],
+      where: { workspaceId, paidByPartnerId: { not: null } },
+      _sum: { amount: true },
+    }),
   ]);
 
   const map = new Map<string, PartnerBalance>();
@@ -54,6 +60,7 @@ export async function partnerBalances(
         withdrawn: 0,
         customerProductSpend: 0,
         internalPurchaseSpend: 0,
+        boostSpend: 0,
         miscExpense: 0,
         expenses: 0,
         depositedToTreasury: 0,
@@ -78,14 +85,21 @@ export async function partnerBalances(
     const b = ensure(ip.paidByPartnerId!);
     b.internalPurchaseSpend += Number(ip.cost) * ip.quantity;
   }
+  for (const bs of boostRows) {
+    const b = ensure(bs.paidByPartnerId!);
+    b.boostSpend += Number(bs._sum.amount ?? 0);
+  }
 
   for (const b of map.values()) {
     b.invested = round2(b.invested);
     b.withdrawn = round2(b.withdrawn);
     b.customerProductSpend = round2(b.customerProductSpend);
     b.internalPurchaseSpend = round2(b.internalPurchaseSpend);
+    b.boostSpend = round2(b.boostSpend);
     b.miscExpense = round2(b.miscExpense);
-    b.expenses = round2(b.customerProductSpend + b.internalPurchaseSpend + b.miscExpense);
+    b.expenses = round2(
+      b.customerProductSpend + b.internalPurchaseSpend + b.boostSpend + b.miscExpense,
+    );
     b.depositedToTreasury = round2(b.depositedToTreasury);
     b.netCapital = round2(b.invested - b.withdrawn);
     b.remaining = round2(b.invested - b.expenses);
@@ -97,6 +111,7 @@ export type BusinessCapitalSummary = {
   totalInvested: number;
   customerProductSpend: number; // ALL purchases in the workspace, tagged or not
   internalPurchaseSpend: number; // ALL internal purchases in the workspace, tagged or not
+  boostSpend: number; // ALL boost daily spends, whatever funded them
   miscExpense: number; // ALL partner EXPENSE entries
   totalExpenses: number;
   totalRemaining: number; // totalInvested − totalExpenses
@@ -113,7 +128,7 @@ export type BusinessCapitalSummary = {
 export async function businessCapitalSummary(
   workspaceId: string,
 ): Promise<BusinessCapitalSummary> {
-  const [balances, purchases, internalPurchases, miscRows] = await Promise.all([
+  const [balances, purchases, internalPurchases, miscRows, boostRows] = await Promise.all([
     partnerBalances(workspaceId),
     prisma.purchase.findMany({
       where: { workspaceId },
@@ -125,6 +140,10 @@ export async function businessCapitalSummary(
     }),
     prisma.partnerTxn.aggregate({
       where: { workspaceId, type: "EXPENSE" },
+      _sum: { amount: true },
+    }),
+    prisma.boostDailySpend.aggregate({
+      where: { workspaceId },
       _sum: { amount: true },
     }),
   ]);
@@ -141,12 +160,14 @@ export async function businessCapitalSummary(
     0,
   );
   const miscExpense = Number(miscRows._sum.amount ?? 0);
-  const totalExpenses = customerProductSpend + internalPurchaseSpend + miscExpense;
+  const boostSpend = Number(boostRows._sum.amount ?? 0);
+  const totalExpenses = customerProductSpend + internalPurchaseSpend + boostSpend + miscExpense;
 
   return {
     totalInvested: round2(totalInvested),
     customerProductSpend: round2(customerProductSpend),
     internalPurchaseSpend: round2(internalPurchaseSpend),
+    boostSpend: round2(boostSpend),
     miscExpense: round2(miscExpense),
     totalExpenses: round2(totalExpenses),
     totalRemaining: round2(totalInvested - totalExpenses),

@@ -10,6 +10,7 @@ export const sectionColorClasses = {
   pink: "bg-pink-500/10 text-pink-600 dark:text-pink-400",
   cyan: "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400",
   amber: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
+  sky: "bg-sky-500/10 text-sky-600 dark:text-sky-400",
   indigo: "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400",
   teal: "bg-teal-500/10 text-teal-600 dark:text-teal-400",
   rose: "bg-rose-500/10 text-rose-600 dark:text-rose-400",

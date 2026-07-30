@@ -57,6 +57,8 @@ export function ReportView({
       [],
       ["Revenue", report.kpis.revenue],
       ["Net profit", report.kpis.profit],
+      ["Ad spend", report.kpis.adSpend],
+      ["Profit after ads", report.kpis.profitAfterAds],
       ["Orders", report.kpis.orders],
       ["Avg order value", report.kpis.avgOrder],
     ]);
@@ -123,6 +125,8 @@ export function ReportView({
       body: [
         ["Revenue", report.kpis.revenue.toFixed(2)],
         ["Net profit", report.kpis.profit.toFixed(2)],
+        ["Ad spend", report.kpis.adSpend.toFixed(2)],
+        ["Profit after ads", report.kpis.profitAfterAds.toFixed(2)],
         ["Orders", String(report.kpis.orders)],
         ["Avg order value", report.kpis.avgOrder.toFixed(2)],
       ],
@@ -152,6 +156,8 @@ export function ReportView({
   const kpis: [string, string | number][] = [
     ["Revenue", report.kpis.revenue.toFixed(2)],
     ["Net profit", report.kpis.profit.toFixed(2)],
+    ["Ad spend", report.kpis.adSpend.toFixed(2)],
+    ["Profit after ads", report.kpis.profitAfterAds.toFixed(2)],
     ["Orders", report.kpis.orders],
     ["Avg order", report.kpis.avgOrder.toFixed(2)],
   ];

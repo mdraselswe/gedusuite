@@ -1,0 +1,417 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { z } from "zod";
+import { prisma } from "@/lib/prisma";
+import { requireAccess } from "@/lib/authz";
+import { treasuryBalance } from "@/lib/finance";
+
+export type ActionResult =
+  | { ok: true; id?: string }
+  | { ok: false; error: string };
+
+const BOOST_STATUSES = ["ACTIVE", "PAUSED", "COMPLETED", "CANCELLED"] as const;
+
+const CampaignSchema = z.object({
+  name: z.string().trim().min(1, "Campaign name is required").max(120),
+  objective: z.string().trim().max(120).optional().or(z.literal("")),
+  status: z.enum(BOOST_STATUSES),
+  notes: z.string().trim().max(300).optional().or(z.literal("")),
+});
+
+const AdSetSchema = z.object({
+  name: z.string().trim().min(1, "Ad set name is required").max(120),
+  startDate: z.coerce.date(),
+  endDate: z.preprocess(
+    (v) => (v === "" || v == null ? undefined : v),
+    z.coerce.date().optional(),
+  ),
+  dailyBudget: z.preprocess(
+    (v) => (v === "" || v == null ? undefined : v),
+    z.coerce.number().nonnegative().optional(),
+  ),
+  status: z.enum(BOOST_STATUSES),
+  notes: z.string().trim().max(300).optional().or(z.literal("")),
+});
+
+const SpendSchema = z.object({
+  date: z.coerce.date(),
+  amount: z.coerce.number().positive("Amount must be > 0"),
+  note: z.string().trim().max(300).optional().or(z.literal("")),
+  // Funding source is one of three mutually exclusive states — same model as
+  // Purchase: nobody tracked / a partner's own money / the shared treasury.
+  fundingSource: z.enum(["NONE", "PARTNER", "TREASURY"]).default("NONE"),
+  paidByPartnerId: z.string().optional().or(z.literal("")),
+});
+
+function revalidateBoosting(slug: string, campaignId?: string) {
+  revalidatePath(`/${slug}/boosting`);
+  if (campaignId) revalidatePath(`/${slug}/boosting/${campaignId}`);
+}
+
+// Funded spends also move money in treasury/partner ledgers.
+function revalidateFunding(slug: string) {
+  revalidatePath(`/${slug}/treasury`);
+  revalidatePath(`/${slug}/partners`);
+  revalidatePath(`/${slug}/dashboard`);
+}
+
+// ── Campaigns ───────────────────────────────────────────────────────
+
+export async function createCampaign(
+  slug: string,
+  formData: FormData,
+): Promise<ActionResult> {
+  const gate = await requireAccess(slug, "boosting", "add");
+  if (!gate.ok) return gate;
+
+  const parsed = CampaignSchema.safeParse({
+    name: formData.get("name"),
+    objective: formData.get("objective") ?? undefined,
+    status: formData.get("status") ?? "ACTIVE",
+    notes: formData.get("notes") ?? undefined,
+  });
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  }
+  const d = parsed.data;
+
+  const campaign = await prisma.boostCampaign.create({
+    data: {
+      workspaceId: gate.access.workspaceId,
+      name: d.name,
+      objective: d.objective?.trim() || null,
+      status: d.status,
+      notes: d.notes?.trim() || null,
+    },
+  });
+
+  revalidateBoosting(slug);
+  return { ok: true, id: campaign.id };
+}
+
+export async function updateCampaign(
+  slug: string,
+  id: string,
+  formData: FormData,
+): Promise<ActionResult> {
+  const gate = await requireAccess(slug, "boosting", "edit");
+  if (!gate.ok) return gate;
+
+  const campaign = await prisma.boostCampaign.findFirst({
+    where: { id, workspaceId: gate.access.workspaceId },
+    select: { id: true },
+  });
+  if (!campaign) return { ok: false, error: "Campaign not found" };
+
+  const parsed = CampaignSchema.safeParse({
+    name: formData.get("name"),
+    objective: formData.get("objective") ?? undefined,
+    status: formData.get("status") ?? "ACTIVE",
+    notes: formData.get("notes") ?? undefined,
+  });
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  }
+  const d = parsed.data;
+
+  await prisma.boostCampaign.update({
+    where: { id },
+    data: {
+      name: d.name,
+      objective: d.objective?.trim() || null,
+      status: d.status,
+      notes: d.notes?.trim() || null,
+    },
+  });
+
+  revalidateBoosting(slug, id);
+  return { ok: true };
+}
+
+export async function deleteCampaign(slug: string, id: string): Promise<ActionResult> {
+  const gate = await requireAccess(slug, "boosting", "full");
+  if (!gate.ok) return gate;
+  const workspaceId = gate.access.workspaceId;
+
+  const campaign = await prisma.boostCampaign.findFirst({
+    where: { id, workspaceId },
+    select: { id: true },
+  });
+  if (!campaign) return { ok: false, error: "Campaign not found" };
+
+  await prisma.$transaction(async (tx) => {
+    // Treasury deductions for the campaign's spends must go explicitly — that
+    // FK is ON DELETE SET NULL, so the cascade below would orphan them and the
+    // money would stay deducted for spends that no longer exist. (The auto
+    // INVESTMENT partner txns cascade on their own.)
+    await tx.treasuryEntry.deleteMany({
+      where: { workspaceId, boostSpend: { adSet: { campaignId: id } } },
+    });
+    // Cascades to ad sets and daily spends.
+    await tx.boostCampaign.deleteMany({ where: { id, workspaceId } });
+  });
+
+  revalidateBoosting(slug);
+  revalidateFunding(slug);
+  return { ok: true };
+}
+
+// ── Ad sets ─────────────────────────────────────────────────────────
+
+export async function createAdSet(
+  slug: string,
+  campaignId: string,
+  formData: FormData,
+): Promise<ActionResult> {
+  const gate = await requireAccess(slug, "boosting", "add");
+  if (!gate.ok) return gate;
+  const workspaceId = gate.access.workspaceId;
+
+  const campaign = await prisma.boostCampaign.findFirst({
+    where: { id: campaignId, workspaceId },
+    select: { id: true },
+  });
+  if (!campaign) return { ok: false, error: "Campaign not found" };
+
+  const parsed = AdSetSchema.safeParse({
+    name: formData.get("name"),
+    startDate: formData.get("startDate"),
+    endDate: formData.get("endDate") ?? undefined,
+    dailyBudget: formData.get("dailyBudget") ?? undefined,
+    status: formData.get("status") ?? "ACTIVE",
+    notes: formData.get("notes") ?? undefined,
+  });
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  }
+  const d = parsed.data;
+  if (d.endDate && d.endDate < d.startDate) {
+    return { ok: false, error: "End date can't be before start date" };
+  }
+
+  const adSet = await prisma.boostAdSet.create({
+    data: {
+      workspaceId,
+      campaignId,
+      name: d.name,
+      startDate: d.startDate,
+      endDate: d.endDate ?? null,
+      dailyBudget: d.dailyBudget ?? null,
+      status: d.status,
+      notes: d.notes?.trim() || null,
+    },
+  });
+
+  revalidateBoosting(slug, campaignId);
+  return { ok: true, id: adSet.id };
+}
+
+export async function updateAdSet(
+  slug: string,
+  id: string,
+  formData: FormData,
+): Promise<ActionResult> {
+  const gate = await requireAccess(slug, "boosting", "edit");
+  if (!gate.ok) return gate;
+
+  const adSet = await prisma.boostAdSet.findFirst({
+    where: { id, workspaceId: gate.access.workspaceId },
+    select: { id: true, campaignId: true },
+  });
+  if (!adSet) return { ok: false, error: "Ad set not found" };
+
+  const parsed = AdSetSchema.safeParse({
+    name: formData.get("name"),
+    startDate: formData.get("startDate"),
+    endDate: formData.get("endDate") ?? undefined,
+    dailyBudget: formData.get("dailyBudget") ?? undefined,
+    status: formData.get("status") ?? "ACTIVE",
+    notes: formData.get("notes") ?? undefined,
+  });
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  }
+  const d = parsed.data;
+  if (d.endDate && d.endDate < d.startDate) {
+    return { ok: false, error: "End date can't be before start date" };
+  }
+
+  await prisma.boostAdSet.update({
+    where: { id },
+    data: {
+      name: d.name,
+      startDate: d.startDate,
+      endDate: d.endDate ?? null,
+      dailyBudget: d.dailyBudget ?? null,
+      status: d.status,
+      notes: d.notes?.trim() || null,
+    },
+  });
+
+  revalidateBoosting(slug, adSet.campaignId);
+  return { ok: true };
+}
+
+export async function deleteAdSet(slug: string, id: string): Promise<ActionResult> {
+  const gate = await requireAccess(slug, "boosting", "full");
+  if (!gate.ok) return gate;
+  const workspaceId = gate.access.workspaceId;
+
+  const adSet = await prisma.boostAdSet.findFirst({
+    where: { id, workspaceId },
+    select: { id: true, campaignId: true },
+  });
+  if (!adSet) return { ok: false, error: "Ad set not found" };
+
+  await prisma.$transaction(async (tx) => {
+    // Same as deleteCampaign: clear the SET NULL treasury links before the
+    // spend rows cascade away, or the deductions linger orphaned.
+    await tx.treasuryEntry.deleteMany({
+      where: { workspaceId, boostSpend: { adSetId: id } },
+    });
+    await tx.boostAdSet.deleteMany({ where: { id, workspaceId } });
+  });
+
+  revalidateBoosting(slug, adSet.campaignId);
+  revalidateFunding(slug);
+  return { ok: true };
+}
+
+// ── Daily spends ────────────────────────────────────────────────────
+
+export async function addDailySpend(
+  slug: string,
+  adSetId: string,
+  formData: FormData,
+): Promise<ActionResult> {
+  const gate = await requireAccess(slug, "boosting", "add");
+  if (!gate.ok) return gate;
+  const workspaceId = gate.access.workspaceId;
+
+  const adSet = await prisma.boostAdSet.findFirst({
+    where: { id: adSetId, workspaceId },
+    select: { id: true, campaignId: true, name: true, campaign: { select: { name: true } } },
+  });
+  if (!adSet) return { ok: false, error: "Ad set not found" };
+
+  const parsed = SpendSchema.safeParse({
+    date: formData.get("date"),
+    amount: formData.get("amount"),
+    note: formData.get("note") ?? undefined,
+    fundingSource: formData.get("fundingSource") ?? "NONE",
+    paidByPartnerId: formData.get("paidByPartnerId") ?? undefined,
+  });
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  }
+  const d = parsed.data;
+
+  if (d.fundingSource === "PARTNER" && !d.paidByPartnerId) {
+    return { ok: false, error: "Select a partner" };
+  }
+  let paidByPartnerId: string | null = null;
+  if (d.fundingSource === "PARTNER" && d.paidByPartnerId) {
+    const partner = await prisma.partner.findFirst({
+      where: { id: d.paidByPartnerId, workspaceId },
+      select: { id: true },
+    });
+    if (!partner) return { ok: false, error: "Partner not found" };
+    paidByPartnerId = partner.id;
+  }
+  const paidFromTreasury = d.fundingSource === "TREASURY";
+  if (paidFromTreasury) {
+    const balance = await treasuryBalance(workspaceId);
+    if (balance < d.amount) {
+      return {
+        ok: false,
+        error: `Treasury balance is insufficient — available ${balance.toFixed(2)}, need ${d.amount.toFixed(2)}`,
+      };
+    }
+  }
+
+  // Normalize to date-only so the (adSetId, date) uniqueness works regardless
+  // of what time-of-day the input parsed to.
+  const day = new Date(d.date.toISOString().slice(0, 10));
+
+  const existing = await prisma.boostDailySpend.findUnique({
+    where: { adSetId_date: { adSetId, date: day } },
+    select: { id: true },
+  });
+  if (existing) {
+    return { ok: false, error: "This day already has a spend entry — delete it first to re-enter" };
+  }
+
+  await prisma.$transaction(async (tx) => {
+    const spend = await tx.boostDailySpend.create({
+      data: {
+        workspaceId,
+        adSetId,
+        date: day,
+        amount: d.amount,
+        note: d.note?.trim() || null,
+        paidByPartnerId,
+        paidFromTreasury,
+      },
+    });
+    if (paidFromTreasury) {
+      await tx.treasuryEntry.create({
+        data: {
+          workspaceId,
+          type: "OUT",
+          amount: d.amount,
+          source: `Boosting: ${adSet.campaign.name} / ${adSet.name}`,
+          boostSpendId: spend.id,
+          date: day,
+        },
+      });
+    }
+    if (paidByPartnerId) {
+      // Out-of-pocket spend is both sides of the ledger: the money entered the
+      // business (INVESTMENT credit) and was spent on ads (the tagged spend).
+      // Without the credit the partner's "remaining" would go negative.
+      await tx.partnerTxn.create({
+        data: {
+          workspaceId,
+          partnerId: paidByPartnerId,
+          type: "INVESTMENT",
+          amount: d.amount,
+          purpose: `Boosting: ${adSet.campaign.name} / ${adSet.name}`,
+          boostSpendId: spend.id,
+          date: day,
+        },
+      });
+    }
+  });
+
+  revalidateBoosting(slug, adSet.campaignId);
+  revalidateFunding(slug);
+  return { ok: true };
+}
+
+export async function deleteDailySpend(slug: string, id: string): Promise<ActionResult> {
+  const gate = await requireAccess(slug, "boosting", "edit");
+  if (!gate.ok) return gate;
+
+  const workspaceId = gate.access.workspaceId;
+  const spend = await prisma.boostDailySpend.findFirst({
+    where: { id, workspaceId },
+    select: { id: true, adSet: { select: { campaignId: true } } },
+  });
+  if (!spend) return { ok: false, error: "Spend entry not found" };
+
+  await prisma.$transaction(async (tx) => {
+    // Delete the linked treasury deduction first, if any — the FK is
+    // ON DELETE SET NULL, which would otherwise leave a stray entry behind
+    // still counting against the treasury balance.
+    await tx.treasuryEntry.deleteMany({ where: { workspaceId, boostSpendId: id } });
+    // The auto INVESTMENT credit cascades on delete, but remove it explicitly
+    // so the intent is visible here rather than buried in the schema.
+    await tx.partnerTxn.deleteMany({ where: { workspaceId, boostSpendId: id } });
+    await tx.boostDailySpend.deleteMany({ where: { id, workspaceId } });
+  });
+
+  revalidateBoosting(slug, spend.adSet.campaignId);
+  revalidateFunding(slug);
+  return { ok: true };
+}

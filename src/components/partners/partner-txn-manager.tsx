@@ -26,6 +26,7 @@ type Txn = {
   amount: number;
   purpose: string | null;
   fromDistribution: boolean;
+  fromBoost: boolean;
 };
 
 const TYPES = ["INVESTMENT", "EXPENSE", "WITHDRAWAL", "DEPOSIT_TO_TREASURY"];
@@ -161,6 +162,8 @@ export function PartnerTxnManager({
                       cell: (t: Txn) =>
                         t.fromDistribution ? (
                           <span className="text-xs text-muted-foreground">from distribution</span>
+                        ) : t.fromBoost ? (
+                          <span className="text-xs text-muted-foreground">from boosting</span>
                         ) : (
                           <Button variant="ghost" size="sm" onClick={() => onDelete(t.id)}>
                             Delete

@@ -7,6 +7,7 @@ import { createInternalPurchase } from "@/server/actions/internal-purchases";
 import { createPartnerTxn } from "@/server/actions/partners";
 import { createTreasuryEntry } from "@/server/actions/treasury";
 import { createStockAdjustment } from "@/server/actions/stock-adjustments";
+import { addDailySpend } from "@/server/actions/boosting";
 
 // Dispatcher for the offline write queue. Each handler is an existing server
 // action; RBAC + validation run inside them (the request carries the session).
@@ -20,6 +21,8 @@ const HANDLERS: Record<string, Handler> = {
   "partnerTxn.create": createPartnerTxn,
   "treasury.create": createTreasuryEntry,
   "stockAdjustment.create": createStockAdjustment,
+  // Daily boost spend targets an ad set; the id rides along in the payload.
+  "boostSpend.create": (slug, fd) => addDailySpend(slug, String(fd.get("adSetId") ?? ""), fd),
 };
 
 export async function POST(req: NextRequest) {
