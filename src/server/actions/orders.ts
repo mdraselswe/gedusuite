@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAccess } from "@/lib/authz";
 import { variantStockMap, STOCK_CONSUMING_STATUSES } from "@/lib/inventory";
 import { variantFullName } from "@/lib/variants";
+import { computeOrderTotals } from "@/lib/orders";
 import type { OrderStatus, PaymentStatus } from "@prisma/client";
 
 export type ActionResult = { ok: true; id?: string } | { ok: false; error: string };
@@ -276,6 +277,107 @@ export async function createOrder(
   revalidatePath(`/${slug}/sales/orders`);
   revalidatePath(`/${slug}/dashboard`);
   return { ok: true, id: order.id };
+}
+
+// Header-only edit: the money/meta fields that commonly need correction after
+// the fact. Items, gifts, status, payment status and courier id all have their
+// own flows (stock and returns hang off items, so those stay out of here).
+const HeaderSchema = z.object({
+  customerId: z.string().optional().or(z.literal("")),
+  date: z.coerce.date(),
+  deliveryType: z.enum(["SELF", "COURIER"]),
+  deliveryCharge: z.coerce.number().nonnegative().default(0),
+  deliveryCost: z.preprocess(
+    (v) => (v === "" || v == null ? undefined : v),
+    z.coerce.number().nonnegative().optional(),
+  ),
+  paymentMethod: z.enum(["CASH", "BKASH", "NAGAD", "COURIER_COLLECTION", "OTHER"]),
+  packagingCost: z.coerce.number().nonnegative().default(0),
+  giftCost: z.coerce.number().nonnegative().default(0),
+  discount: z.coerce.number().nonnegative().default(0),
+  notes: z.string().trim().max(500).optional().or(z.literal("")),
+});
+
+export async function updateOrderHeader(
+  slug: string,
+  orderId: string,
+  formData: FormData,
+): Promise<ActionResult> {
+  const gate = await requireAccess(slug, "sales", "edit");
+  if (!gate.ok) return gate;
+  const workspaceId = gate.access.workspaceId;
+
+  const order = await prisma.order.findFirst({
+    where: { id: orderId, workspaceId },
+    select: { id: true, cashInTreasury: true },
+  });
+  if (!order) return { ok: false, error: "Order not found" };
+
+  const parsed = HeaderSchema.safeParse({
+    customerId: formData.get("customerId") ?? undefined,
+    date: formData.get("date"),
+    deliveryType: formData.get("deliveryType"),
+    deliveryCharge: formData.get("deliveryCharge"),
+    deliveryCost: formData.get("deliveryCost") ?? undefined,
+    paymentMethod: formData.get("paymentMethod"),
+    packagingCost: formData.get("packagingCost"),
+    giftCost: formData.get("giftCost"),
+    discount: formData.get("discount"),
+    notes: formData.get("notes") ?? undefined,
+  });
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  }
+  const d = parsed.data;
+
+  let customerId: string | null = null;
+  if (d.customerId) {
+    const customer = await prisma.customer.findFirst({
+      where: { id: d.customerId, workspaceId },
+      select: { id: true },
+    });
+    if (!customer) return { ok: false, error: "Customer not found" };
+    customerId = customer.id;
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.order.update({
+      where: { id: orderId },
+      data: {
+        customerId,
+        date: d.date,
+        deliveryType: d.deliveryType,
+        deliveryCharge: d.deliveryCharge,
+        deliveryCost: d.deliveryCost ?? null,
+        paymentMethod: d.paymentMethod,
+        packagingCost: d.packagingCost,
+        giftCost: d.giftCost,
+        discount: d.discount,
+        notes: d.notes?.trim() || null,
+      },
+    });
+    // If the cash was already confirmed into the treasury, that entry snapshot
+    // equals the customer total — a charge/discount change must resync it or
+    // the treasury balance silently drifts from reality.
+    if (order.cashInTreasury) {
+      const fresh = await tx.order.findUnique({
+        where: { id: orderId },
+        include: { items: { include: { returns: true } } },
+      });
+      if (fresh) {
+        const amount = computeOrderTotals(fresh).customerTotal;
+        await tx.treasuryEntry.updateMany({
+          where: { workspaceId, orderId },
+          data: { amount },
+        });
+      }
+    }
+  });
+
+  revalidatePath(`/${slug}/sales/orders`);
+  revalidatePath(`/${slug}/treasury`);
+  revalidatePath(`/${slug}/dashboard`);
+  return { ok: true };
 }
 
 export async function updateOrderStatus(
