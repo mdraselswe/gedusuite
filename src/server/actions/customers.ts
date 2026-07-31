@@ -30,7 +30,7 @@ const clean = (s?: string) => (s && s.trim() ? s.trim() : null);
 export async function createCustomer(
   slug: string,
   formData: FormData,
-): Promise<ActionResult> {
+): Promise<ActionResult & { id?: string; name?: string; phone?: string | null }> {
   const gate = await requireAccess(slug, "customers", "add");
   if (!gate.ok) return gate;
   const parsed = parse(formData);
@@ -38,7 +38,7 @@ export async function createCustomer(
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
   const d = parsed.data;
-  await prisma.customer.create({
+  const customer = await prisma.customer.create({
     data: {
       workspaceId: gate.access.workspaceId,
       name: d.name,
@@ -49,7 +49,9 @@ export async function createCustomer(
     },
   });
   revalidatePath(`/${slug}/customers`);
-  return { ok: true };
+  // id/name/phone let callers (the order form's inline "+ New customer")
+  // select the fresh customer immediately without a refetch.
+  return { ok: true, id: customer.id, name: customer.name, phone: customer.phone };
 }
 
 export async function updateCustomer(

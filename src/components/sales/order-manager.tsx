@@ -13,6 +13,7 @@ import {
   createReturn,
   deleteOrder,
 } from "@/server/actions/orders";
+import { createCustomer } from "@/server/actions/customers";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -264,6 +265,25 @@ export function OrderManager({
   const [returnOpen, setReturnOpen] = useState(false);
   const [returnOrder, setReturnOrder] = useState<OrderRow | null>(null);
   const [returnItemId, setReturnItemId] = useState("");
+
+  // ── Inline "new customer" dialog (shortcut from the order form) ──
+  const [newCustomerOpen, setNewCustomerOpen] = useState(false);
+  const [newCustomerSaving, setNewCustomerSaving] = useState(false);
+
+  async function onCreateCustomer(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setNewCustomerSaving(true);
+    const res = await createCustomer(slug, new FormData(e.currentTarget));
+    setNewCustomerSaving(false);
+    if (!res.ok) return toast.error(res.error ?? "Failed");
+    // Select the fresh customer on the order right away (label matches the
+    // search results' "Name · phone" format).
+    if (res.id && res.name) {
+      setCustomer({ value: res.id, label: res.phone ? `${res.name} · ${res.phone}` : res.name });
+    }
+    toast.success("Customer added & selected");
+    setNewCustomerOpen(false);
+  }
 
   // ── List toolbar: URL-driven search/filter/sort (server queries all pages) ──
   const [search, setSearch] = useState(query);
@@ -1059,7 +1079,16 @@ export function OrderManager({
                   </div>
                   <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                     <div className="space-y-2">
-                      <Label>Customer</Label>
+                      <div className="flex items-center justify-between">
+                        <Label>Customer</Label>
+                        <button
+                          type="button"
+                          onClick={() => setNewCustomerOpen(true)}
+                          className="text-xs text-primary underline underline-offset-2 hover:opacity-80"
+                        >
+                          + New customer
+                        </button>
+                      </div>
                       <AsyncCombobox
                         value={customer}
                         onChange={setCustomer}
@@ -1288,6 +1317,40 @@ export function OrderManager({
               </div>
             </form>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Inline new-customer dialog — quick create + auto-select on the order */}
+      <Dialog open={newCustomerOpen} onOpenChange={setNewCustomerOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>New customer</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={onCreateCustomer} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="nc-name">Name</Label>
+              <Input id="nc-name" name="name" required autoFocus />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="nc-phone">Phone</Label>
+                <Input id="nc-phone" name="phone" />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="nc-alt-phone">Alt phone</Label>
+                <Input id="nc-alt-phone" name="altPhone" />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="nc-address">Address</Label>
+              <Input id="nc-address" name="address" />
+            </div>
+            <DialogFooter>
+              <Button type="submit" disabled={newCustomerSaving}>
+                {newCustomerSaving ? "Saving…" : "Add & select"}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 
