@@ -68,6 +68,7 @@ type Perms = { canAdd: boolean; canEdit: boolean };
 type FundingSource = "NONE" | "PARTNER" | "TREASURY";
 
 const NO_SUPPLIER = "__none__";
+const ALL_SUPPLIERS = "__all__";
 const NO_PARTNER = "__none__";
 
 // Optional (toggleable) columns for the Recent purchases table. Date, product,
@@ -105,6 +106,7 @@ export function PurchaseManager({
   perms,
   query,
   sort,
+  supplierFilter,
 }: {
   slug: string;
   hasProducts: boolean;
@@ -122,6 +124,7 @@ export function PurchaseManager({
   perms: Perms;
   query: string;
   sort: string;
+  supplierFilter: string;
 }) {
   const router = useRouter();
 
@@ -130,11 +133,12 @@ export function PurchaseManager({
   const [visibleCols, setVisibleCols] = useState<Set<string>>(new Set(["salePrice"]));
   const searchDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  function pushListParams(nextQ: string, nextSort: string) {
+  function pushListParams(nextQ: string, nextSort: string, nextSupplier = supplierFilter) {
     const params = new URLSearchParams();
     if (nextQ.trim()) params.set("q", nextQ.trim());
     if (nextSort !== "date_desc") params.set("sort", nextSort);
-    // Search/sort changes restart from page 1 (no page param).
+    if (nextSupplier) params.set("supplier", nextSupplier);
+    // Search/sort/filter changes restart from page 1 (no page param).
     router.replace(`/${slug}/purchases${params.size ? `?${params}` : ""}`);
   }
 
@@ -508,6 +512,28 @@ export function PurchaseManager({
               </button>
             )}
           </div>
+          <Select
+            value={supplierFilter || ALL_SUPPLIERS}
+            onValueChange={(v) =>
+              pushListParams(search, sort, !v || v === ALL_SUPPLIERS ? "" : v)
+            }
+            items={[
+              { value: ALL_SUPPLIERS, label: "All suppliers" },
+              ...suppliers.map((s) => ({ value: s.id, label: s.name })),
+            ]}
+          >
+            <SelectTrigger className="w-48">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL_SUPPLIERS}>All suppliers</SelectItem>
+              {suppliers.map((s) => (
+                <SelectItem key={s.id} value={s.id}>
+                  {s.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Select value={sort} onValueChange={(v) => v && pushListParams(search, v)} items={SORT_OPTIONS}>
             <SelectTrigger className="w-60">
               <span className="shrink-0 text-muted-foreground">Sort:</span>

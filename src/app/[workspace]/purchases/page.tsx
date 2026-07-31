@@ -28,12 +28,13 @@ export default async function PurchasesPage({
   searchParams,
 }: {
   params: Promise<{ workspace: string }>;
-  searchParams: Promise<{ page?: string; q?: string; sort?: string }>;
+  searchParams: Promise<{ page?: string; q?: string; sort?: string; supplier?: string }>;
 }) {
   const { workspace: slug } = await params;
   const sp = await searchParams;
   const page = parsePage(sp.page);
   const q = (sp.q ?? "").trim();
+  const supplierFilter = (sp.supplier ?? "").trim();
   const sort: PurchaseSort = sp.sort && sp.sort in SORTS ? (sp.sort as PurchaseSort) : "date_desc";
   const access = await workspaceAccess(slug);
   if (!access) redirect("/");
@@ -50,6 +51,7 @@ export default async function PurchasesPage({
   // the query narrows the paginated result set server-side.
   const where = {
     workspaceId: access.workspaceId,
+    ...(supplierFilter ? { supplierId: supplierFilter } : {}),
     ...(q
       ? {
           OR: [
@@ -153,12 +155,17 @@ export default async function PurchasesPage({
         perms={perms}
         query={q}
         sort={sort}
+        supplierFilter={supplierFilter}
       />
       <Pagination
         page={page}
         totalPages={Math.ceil(purchaseCount / PAGE_SIZE)}
         basePath={`/${slug}/purchases`}
-        query={{ q: q || undefined, sort: sort !== "date_desc" ? sort : undefined }}
+        query={{
+          q: q || undefined,
+          sort: sort !== "date_desc" ? sort : undefined,
+          supplier: supplierFilter || undefined,
+        }}
       />
     </div>
   );
