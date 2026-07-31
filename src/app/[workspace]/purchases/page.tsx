@@ -70,7 +70,8 @@ export default async function PurchasesPage({
       prisma.supplier.findMany({
         where: { workspaceId: access.workspaceId },
         orderBy: { name: "asc" },
-        select: { id: true, name: true },
+        // full contact details so the table can show a supplier info modal
+        select: { id: true, name: true, address: true, phone: true, altPhone: true, notes: true },
       }),
       prisma.purchase.count({ where }),
       prisma.purchase.findMany({

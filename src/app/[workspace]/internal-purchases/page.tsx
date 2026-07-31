@@ -46,7 +46,8 @@ export default async function InternalPurchasesPage({
     prisma.supplier.findMany({
       where: { workspaceId: access.workspaceId },
       orderBy: { name: "asc" },
-      select: { id: true, name: true },
+      // full contact details so the table can show a supplier info modal
+      select: { id: true, name: true, address: true, phone: true, altPhone: true, notes: true },
     }),
     prisma.partner.findMany({
       where: { workspaceId: access.workspaceId },
