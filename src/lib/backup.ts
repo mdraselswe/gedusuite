@@ -44,6 +44,7 @@ export async function buildSnapshot(workspaceId: string): Promise<Snapshot> {
   const [
     suppliers,
     products,
+    productCategories,
     productVariants,
     customers,
     purchases,
@@ -62,6 +63,7 @@ export async function buildSnapshot(workspaceId: string): Promise<Snapshot> {
   ] = await Promise.all([
     prisma.supplier.findMany({ where: { workspaceId } }),
     prisma.product.findMany({ where: { workspaceId } }),
+    prisma.productCategory.findMany({ where: { workspaceId } }),
     prisma.productVariant.findMany({ where: { product: { workspaceId } } }),
     prisma.customer.findMany({ where: { workspaceId } }),
     prisma.purchase.findMany({ where: { workspaceId } }),
@@ -85,6 +87,7 @@ export async function buildSnapshot(workspaceId: string): Promise<Snapshot> {
   const tables = {
     suppliers,
     products,
+    productCategories,
     productVariants,
     customers,
     purchases,
@@ -167,6 +170,7 @@ export async function restoreSnapshot(
 
   const suppliers = force(rows("suppliers"));
   const products = force(rows("products"));
+  const productCategories = force(rows("productCategories"));
   const productVariants = rows("productVariants");
   const customers = force(rows("customers"));
   const purchases = force(rows("purchases"));
@@ -260,6 +264,7 @@ export async function restoreSnapshot(
         await tx.purchase.deleteMany({ where: { workspaceId } });
         await tx.productVariant.deleteMany({ where: { product: { workspaceId } } });
         await tx.product.deleteMany({ where: { workspaceId } });
+        await tx.productCategory.deleteMany({ where: { workspaceId } });
         await tx.customer.deleteMany({ where: { workspaceId } });
         await tx.supplier.deleteMany({ where: { workspaceId } });
         await tx.internalPurchase.deleteMany({ where: { workspaceId } });
@@ -286,6 +291,7 @@ export async function restoreSnapshot(
       // Parents → children.
       await insert("suppliers", tx.supplier, suppliers);
       await insert("products", tx.product, products);
+      await insert("productCategories", tx.productCategory, productCategories);
       await insert("productVariants", tx.productVariant, productVariants);
       await insert("customers", tx.customer, customers);
       await insert("purchases", tx.purchase, purchases);

@@ -108,7 +108,14 @@ export function PurchaseManager({
 }: {
   slug: string;
   hasProducts: boolean;
-  suppliers: { id: string; name: string }[];
+  suppliers: {
+    id: string;
+    name: string;
+    address?: string | null;
+    phone?: string | null;
+    altPhone?: string | null;
+    notes?: string | null;
+  }[];
   partnerOptions: { id: string; label: string }[];
   purchases: PurchaseRow[];
   treasuryBalance: number;
@@ -162,6 +169,9 @@ export function PurchaseManager({
   // converted to per-piece before hitting the server (stock stays in pieces).
   const upp = variant?.unitsPerPack && variant.unitsPerPack > 1 ? variant.unitsPerPack : null;
   const buyingByPack = !!upp && buyUnit === "PACK";
+
+  // Supplier details modal — opened by clicking a supplier name in the table.
+  const [viewSupplier, setViewSupplier] = useState<(typeof suppliers)[number] | null>(null);
 
   // Edit dialog state — separate controlled fields from the always-visible
   // "record a purchase" form above.
@@ -548,7 +558,27 @@ export function PurchaseManager({
                 cell: (p) => p.product,
               },
               ...(visibleCols.has("supplier")
-                ? [{ key: "supplier", header: "Supplier", wrap: true, cell: (p: PurchaseRow) => p.supplier }]
+                ? [
+                    {
+                      key: "supplier",
+                      header: "Supplier",
+                      wrap: true,
+                      cell: (p: PurchaseRow) => {
+                        const s = p.supplierId ? suppliers.find((x) => x.id === p.supplierId) : undefined;
+                        if (!s) return p.supplier;
+                        return (
+                          <button
+                            type="button"
+                            onClick={() => setViewSupplier(s)}
+                            className="text-left underline decoration-dotted underline-offset-2 hover:text-foreground"
+                            title="View supplier details"
+                          >
+                            {s.name}
+                          </button>
+                        );
+                      },
+                    },
+                  ]
                 : []),
               ...(visibleCols.has("funding")
                 ? [
@@ -802,6 +832,47 @@ export function PurchaseManager({
                 </Button>
               </DialogFooter>
             </form>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Supplier details — opened from the supplier name in the table */}
+      <Dialog open={!!viewSupplier} onOpenChange={(o) => !o && setViewSupplier(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{viewSupplier?.name}</DialogTitle>
+          </DialogHeader>
+          {viewSupplier && (
+            <div className="space-y-3 text-sm">
+              <div>
+                <div className="text-xs font-medium text-muted-foreground">Phone</div>
+                {viewSupplier.phone ? (
+                  <a href={`tel:${viewSupplier.phone}`} className="underline underline-offset-2">
+                    {viewSupplier.phone}
+                  </a>
+                ) : (
+                  <span className="text-muted-foreground">—</span>
+                )}
+              </div>
+              {viewSupplier.altPhone && (
+                <div>
+                  <div className="text-xs font-medium text-muted-foreground">Alt. phone</div>
+                  <a href={`tel:${viewSupplier.altPhone}`} className="underline underline-offset-2">
+                    {viewSupplier.altPhone}
+                  </a>
+                </div>
+              )}
+              <div>
+                <div className="text-xs font-medium text-muted-foreground">Address</div>
+                <div className="whitespace-pre-wrap">{viewSupplier.address || <span className="text-muted-foreground">—</span>}</div>
+              </div>
+              {viewSupplier.notes && (
+                <div>
+                  <div className="text-xs font-medium text-muted-foreground">Notes</div>
+                  <div className="whitespace-pre-wrap">{viewSupplier.notes}</div>
+                </div>
+              )}
+            </div>
           )}
         </DialogContent>
       </Dialog>

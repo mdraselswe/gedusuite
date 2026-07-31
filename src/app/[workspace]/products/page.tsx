@@ -102,7 +102,7 @@ export default async function ProductsPage({
 
   return (
     <div className="space-y-6">
-      <PageHeader icon={<Package />} color="violet" title={(await serverT())("productsSuppliers")} />
+      <PageHeader icon={<Package />} color="violet" title={(await serverT())("productsSuppliers")} count={products.length} />
       <Tabs defaultValue={page > 1 ? "adjustments" : "products"}>
         <TabsList className="w-full sm:w-fit">
           <TabsTrigger value="products">Products</TabsTrigger>

@@ -131,7 +131,7 @@ export default async function OrdersPage({
 
   return (
     <div className="space-y-6">
-      <PageHeader icon={<Receipt />} color="emerald" title={(await serverT())("salesOrders")} />
+      <PageHeader icon={<Receipt />} color="emerald" title={(await serverT())("salesOrders")} count={orderCount} />
       <OrderManager
         slug={slug}
         hasProducts={productCount > 0}

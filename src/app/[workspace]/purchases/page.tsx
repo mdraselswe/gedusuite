@@ -70,7 +70,8 @@ export default async function PurchasesPage({
       prisma.supplier.findMany({
         where: { workspaceId: access.workspaceId },
         orderBy: { name: "asc" },
-        select: { id: true, name: true },
+        // full contact details so the table can show a supplier info modal
+        select: { id: true, name: true, address: true, phone: true, altPhone: true, notes: true },
       }),
       prisma.purchase.count({ where }),
       prisma.purchase.findMany({
@@ -134,6 +135,7 @@ export default async function PurchasesPage({
       <PageHeader
         icon={<ShoppingCart />}
         color="orange"
+        count={purchaseCount}
         title={(await serverT())("purchases")}
         action={
           <span className="text-sm text-muted-foreground">

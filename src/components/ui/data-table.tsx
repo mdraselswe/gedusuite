@@ -171,7 +171,19 @@ export function DataTable<T>({
         </div>
       )}
       {sortableCols.length > 0 && (
-        <Select value={sortKey} onValueChange={(v) => v && setSortKey(v)}>
+        <Select
+          value={sortKey}
+          onValueChange={(v) => v && setSortKey(v)}
+          // items is required for SelectValue to render labels instead of the
+          // raw value (base-ui gotcha with non-enum values like "__default__").
+          items={[
+            { value: DEFAULT_SORT, label: "Default" },
+            ...sortableCols.flatMap((c) => [
+              { value: `${c.key}:asc`, label: `${labelOf(c)} ↑` },
+              { value: `${c.key}:desc`, label: `${labelOf(c)} ↓` },
+            ]),
+          ]}
+        >
           <SelectTrigger className="w-48">
             <span className="shrink-0 text-muted-foreground">Sort:</span>
             <SelectValue />

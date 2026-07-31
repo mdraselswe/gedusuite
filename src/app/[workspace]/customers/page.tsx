@@ -66,7 +66,7 @@ export default async function CustomersPage({
 
   return (
     <div className="space-y-6">
-      <PageHeader icon={<Users />} color="pink" title={(await serverT())("customers")} />
+      <PageHeader icon={<Users />} color="pink" title={(await serverT())("customers")} count={customerCount} />
       <CustomerManager slug={slug} customers={rows} perms={perms} />
       <Pagination
         page={page}
