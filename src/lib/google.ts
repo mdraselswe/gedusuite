@@ -1,5 +1,6 @@
 import { google } from "googleapis";
 import type { Snapshot } from "@/lib/backup";
+import { variantFullName } from "@/lib/variants";
 
 /**
  * Personal per-user backup uses each user's own OAuth token (see
@@ -41,6 +42,7 @@ const TAB_SPECS: TabSpec[] = [
     table: "purchases",
     columns: [
       { key: "date", label: "Date", date: true },
+      { key: "productName", label: "Product" }, // enriched (see enrichSnapshotTables)
       { key: "unitCost", label: "Unit cost", currency: true },
       { key: "salePrice", label: "Sale price", currency: true },
       { key: "quantity", label: "Quantity" },
@@ -62,6 +64,7 @@ const TAB_SPECS: TabSpec[] = [
     table: "orders",
     columns: [
       { key: "date", label: "Date", date: true },
+      { key: "customerName", label: "Customer" }, // enriched (see enrichSnapshotTables)
       { key: "status", label: "Status" },
       { key: "paymentMethod", label: "Payment method" },
       { key: "paymentStatus", label: "Payment status" },
@@ -140,6 +143,41 @@ function cellValue(row: Record<string, unknown>, col: Col): string | number {
   return typeof raw === "number" ? raw : String(raw);
 }
 
+/**
+ * The snapshot stores raw rows with foreign keys only — unreadable in a
+ * spreadsheet ("which product was this purchase?"). Derive human columns from
+ * data already inside the snapshot: productName on purchases (via variants +
+ * products) and customerName on orders. Pure/read-only; the snapshot itself
+ * is never mutated.
+ */
+function enrichSnapshotTables(snapshot: Snapshot): Snapshot["tables"] {
+  const t = snapshot.tables;
+  const rows = (name: string) => (t[name] ?? []) as Record<string, unknown>[];
+
+  const productNameById = new Map(rows("products").map((p) => [p.id as string, p.name as string]));
+  const variantLabelById = new Map(
+    rows("productVariants").map((v) => [
+      v.id as string,
+      variantFullName(productNameById.get(v.productId as string) ?? "?", v.attributes),
+    ]),
+  );
+  const customerNameById = new Map(
+    rows("customers").map((c) => [c.id as string, c.name as string]),
+  );
+
+  return {
+    ...t,
+    purchases: rows("purchases").map((p) => ({
+      ...p,
+      productName: variantLabelById.get(p.productVariantId as string) ?? "",
+    })),
+    orders: rows("orders").map((o) => ({
+      ...o,
+      customerName: o.customerId ? (customerNameById.get(o.customerId as string) ?? "") : "Walk-in",
+    })),
+  };
+}
+
 export type BackupSummary = {
   workspaceName: string;
   totalSales: number;
@@ -194,6 +232,8 @@ export async function writeFormattedWorkbook(
     }
   }
 
+  const tables = enrichSnapshotTables(snapshot);
+
   // ── Write values ──
   // Summary tab (first): at-a-glance totals.
   const summaryValues: (string | number)[][] = [
@@ -213,7 +253,7 @@ export async function writeFormattedWorkbook(
   });
 
   for (const t of TAB_SPECS) {
-    const data = (snapshot.tables[t.table] ?? []) as Record<string, unknown>[];
+    const data = (tables[t.table] ?? []) as Record<string, unknown>[];
     const values = [
       t.columns.map((c) => c.label),
       ...data.map((row) => t.columns.map((c) => cellValue(row, c))),
