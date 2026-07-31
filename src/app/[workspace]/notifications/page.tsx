@@ -44,7 +44,7 @@ export default async function NotificationsPage({
 
   return (
     <div className="space-y-6">
-      <PageHeader icon={<Bell />} color="blue" title={(await serverT())("notifications")} />
+      <PageHeader icon={<Bell />} color="blue" title={(await serverT())("notifications")} count={notificationCount} />
       <NotificationList slug={slug} notifications={rows} />
       <Pagination
         page={page}

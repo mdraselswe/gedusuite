@@ -135,6 +135,7 @@ export default async function PurchasesPage({
       <PageHeader
         icon={<ShoppingCart />}
         color="orange"
+        count={purchaseCount}
         title={(await serverT())("purchases")}
         action={
           <span className="text-sm text-muted-foreground">

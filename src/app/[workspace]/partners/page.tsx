@@ -71,6 +71,7 @@ export default async function PartnersPage({
       <PageHeader
         icon={<Handshake />}
         color="cyan"
+        count={partners.length}
         title={(await serverT())("partners")}
         action={
           <span className="text-sm text-muted-foreground">

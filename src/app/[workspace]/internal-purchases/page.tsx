@@ -89,6 +89,7 @@ export default async function InternalPurchasesPage({
       <PageHeader
         icon={<ClipboardList />}
         color="indigo"
+        count={itemCount}
         title={(await serverT())("internalPurchases")}
         action={
           <span className="text-sm text-muted-foreground">
