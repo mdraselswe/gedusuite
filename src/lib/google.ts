@@ -391,14 +391,60 @@ export async function syncSnapshotForUser(
  * fully owned/quota-charged to them). A new dated file each run, no overwrite,
  * so past snapshots stay available as history.
  */
+const BACKUP_FOLDER_NAME = "GeduSuite Backups";
+
+/**
+ * Find-or-create the "GeduSuite Backups" folder. drive.file scope only sees
+ * files/folders THIS app created, so a folder the user made by hand is
+ * invisible here — the app maintains its own folder of the same name.
+ */
+async function ensureBackupFolder(drive: ReturnType<typeof google.drive>): Promise<string> {
+  const found = await drive.files.list({
+    q: `name = '${BACKUP_FOLDER_NAME}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
+    fields: "files(id)",
+    pageSize: 1,
+  });
+  const existing = found.data.files?.[0]?.id;
+  if (existing) return existing;
+  const created = await drive.files.create({
+    requestBody: { name: BACKUP_FOLDER_NAME, mimeType: "application/vnd.google-apps.folder" },
+    fields: "id",
+  });
+  return created.data.id!;
+}
+
+/** One-time tidy: move app-created backup JSONs still loose in My Drive root
+ * into the backups folder, so history collects in one place. */
+async function sweepLooseBackups(
+  drive: ReturnType<typeof google.drive>,
+  folderId: string,
+): Promise<void> {
+  const loose = await drive.files.list({
+    q: `name contains 'gedusuite-backup-' and mimeType = 'application/json' and 'root' in parents and trashed = false`,
+    fields: "files(id)",
+    pageSize: 100,
+  });
+  for (const f of loose.data.files ?? []) {
+    if (!f.id) continue;
+    await drive.files.update({ fileId: f.id, addParents: folderId, removeParents: "root" });
+  }
+}
+
 export async function uploadJsonBackupToDrive(
   auth: SheetsAuth,
   json: string,
   filename: string,
 ): Promise<{ fileId: string; url: string }> {
   const drive = google.drive({ version: "v3", auth });
+  const folderId = await ensureBackupFolder(drive);
+  // Best-effort — a failed sweep must never block the fresh backup itself.
+  try {
+    await sweepLooseBackups(drive, folderId);
+  } catch {
+    // Old files stay in root until the next run retries.
+  }
   const created = await drive.files.create({
-    requestBody: { name: filename, mimeType: "application/json" },
+    requestBody: { name: filename, mimeType: "application/json", parents: [folderId] },
     media: { mimeType: "application/json", body: json },
     fields: "id",
   });
