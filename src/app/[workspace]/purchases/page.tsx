@@ -62,16 +62,11 @@ export default async function PurchasesPage({
       : {}),
   };
 
-  // Products are searched on demand by the form's async picker, so we only
-  // need a cheap existence check here, not the full catalog.
-  const [productCount, suppliers, purchaseCount, purchases, partners, treasury, allCostQuantities] =
+  // Products and suppliers are searched on demand by the form's async
+  // pickers, so we only need a cheap existence check here, not the full catalog.
+  const [productCount, purchaseCount, purchases, partners, treasury, allCostQuantities] =
     await Promise.all([
       prisma.productVariant.count({ where: { product: { workspaceId: access.workspaceId } } }),
-      prisma.supplier.findMany({
-        where: { workspaceId: access.workspaceId },
-        orderBy: { name: "asc" },
-        select: { id: true, name: true },
-      }),
       prisma.purchase.count({ where }),
       prisma.purchase.findMany({
         where,
@@ -144,7 +139,6 @@ export default async function PurchasesPage({
       <PurchaseManager
         slug={slug}
         hasProducts={productCount > 0}
-        suppliers={suppliers}
         partnerOptions={partnerOptions}
         purchases={purchaseRows}
         treasuryBalance={treasury}

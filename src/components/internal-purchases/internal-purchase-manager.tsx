@@ -28,6 +28,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { type ComboOption } from "@/components/ui/async-combobox";
+import { SupplierPicker } from "@/components/products/supplier-picker";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { Receipt } from "lucide-react";
 
@@ -55,8 +57,6 @@ function fundingSourceOf(i: { paidByPartnerId: string | null; paidFromTreasury: 
   return "NONE";
 }
 
-const NO_SUPPLIER = "__none__";
-
 const CATEGORIES = [
   "OFFICE_SUPPLIES",
   "PACKAGING_MATERIAL",
@@ -75,14 +75,12 @@ const LABEL: Record<string, string> = {
 export function InternalPurchaseManager({
   slug,
   items,
-  suppliers,
   partnerOptions,
   treasuryBalance,
   perms,
 }: {
   slug: string;
   items: Item[];
-  suppliers: { id: string; name: string }[];
   partnerOptions: { id: string; label: string }[];
   treasuryBalance: number;
   perms: Perms;
@@ -91,7 +89,7 @@ export function InternalPurchaseManager({
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Item | null>(null);
   const [category, setCategory] = useState("OTHER");
-  const [supplierId, setSupplierId] = useState(NO_SUPPLIER);
+  const [supplier, setSupplier] = useState<ComboOption | null>(null);
   const [fundingSource, setFundingSource] = useState<FundingSource>("NONE");
   const [paidByPartnerId, setPaidByPartnerId] = useState(NO_PARTNER);
   const [loading, setLoading] = useState(false);
@@ -102,7 +100,7 @@ export function InternalPurchaseManager({
   function openNew() {
     setEditing(null);
     setCategory("OTHER");
-    setSupplierId(NO_SUPPLIER);
+    setSupplier(null);
     setFundingSource("NONE");
     setPaidByPartnerId(NO_PARTNER);
     setOpen(true);
@@ -110,7 +108,7 @@ export function InternalPurchaseManager({
   function openEdit(i: Item) {
     setEditing(i);
     setCategory(i.category);
-    setSupplierId(i.supplierId ?? NO_SUPPLIER);
+    setSupplier(i.supplierId && i.supplierName ? { value: i.supplierId, label: i.supplierName } : null);
     setFundingSource(fundingSourceOf(i));
     setPaidByPartnerId(i.paidByPartnerId ?? NO_PARTNER);
     setOpen(true);
@@ -121,7 +119,7 @@ export function InternalPurchaseManager({
     setLoading(true);
     const fd = new FormData(e.currentTarget);
     fd.set("category", category);
-    fd.set("supplierId", supplierId === NO_SUPPLIER ? "" : supplierId);
+    fd.set("supplierId", supplier?.value ?? "");
     fd.set("fundingSource", fundingSource);
     fd.set("paidByPartnerId", fundingSource === "PARTNER" && paidByPartnerId !== NO_PARTNER ? paidByPartnerId : "");
     const res = editing
@@ -274,26 +272,7 @@ export function InternalPurchaseManager({
               </div>
               <div className="space-y-2">
                 <Label>Supplier / shop</Label>
-                <Select
-                  value={supplierId}
-                  onValueChange={(v) => setSupplierId(v ?? NO_SUPPLIER)}
-                  items={[
-                    { value: NO_SUPPLIER, label: "No supplier" },
-                    ...suppliers.map((s) => ({ value: s.id, label: s.name })),
-                  ]}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={NO_SUPPLIER}>No supplier</SelectItem>
-                    {suppliers.map((s) => (
-                      <SelectItem key={s.id} value={s.id}>
-                        {s.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <SupplierPicker slug={slug} value={supplier} onChange={setSupplier} />
               </div>
               <div className="space-y-2">
                 <Label>Funding source</Label>

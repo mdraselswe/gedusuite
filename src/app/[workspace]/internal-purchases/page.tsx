@@ -31,7 +31,7 @@ export default async function InternalPurchasesPage({
     canEdit: can(access.role, "internal-purchases", "edit", access.permissions),
   };
 
-  const [itemCount, items, suppliers, partners, allCostQuantities, treasury] = await Promise.all([
+  const [itemCount, items, partners, allCostQuantities, treasury] = await Promise.all([
     prisma.internalPurchase.count({ where: { workspaceId: access.workspaceId } }),
     prisma.internalPurchase.findMany({
       where: { workspaceId: access.workspaceId },
@@ -42,11 +42,6 @@ export default async function InternalPurchasesPage({
         supplier: { select: { name: true } },
         paidByPartner: { select: { id: true, user: { select: { name: true, email: true } } } },
       },
-    }),
-    prisma.supplier.findMany({
-      where: { workspaceId: access.workspaceId },
-      orderBy: { name: "asc" },
-      select: { id: true, name: true },
     }),
     prisma.partner.findMany({
       where: { workspaceId: access.workspaceId },
@@ -98,7 +93,6 @@ export default async function InternalPurchasesPage({
       <InternalPurchaseManager
         slug={slug}
         items={rows}
-        suppliers={suppliers}
         partnerOptions={partnerOptions}
         treasuryBalance={treasury}
         perms={perms}

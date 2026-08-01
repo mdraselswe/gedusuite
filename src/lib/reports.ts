@@ -31,6 +31,8 @@ export type ProductPerf = {
   profit: number;
 };
 
+export type PaymentMethodTotal = { method: string; amount: number; orders: number };
+
 export type Report = {
   kpis: {
     revenue: number;
@@ -43,17 +45,21 @@ export type Report = {
   series: { date: string; sales: number; profit: number }[];
   products: ProductPerf[]; // all products, sorted by qty desc
   partnerShares: { name: string; percent: number; amount: number }[];
+  // Money actually collected (paymentStatus PAID only — UNPAID/PARTIAL isn't
+  // "collected" yet), grouped by how the customer paid. Sorted by amount desc.
+  collectedByMethod: PaymentMethodTotal[];
 };
 
+/** `range: null` means "all time" — no date filter at all. */
 export async function buildReport(
   workspaceId: string,
-  range: DateRange,
+  range: DateRange | null,
 ): Promise<Report> {
   const orders = await prisma.order.findMany({
     where: {
       workspaceId,
       status: { not: "CANCELLED" },
-      date: { gte: range.from, lte: range.to },
+      ...(range ? { date: { gte: range.from, lte: range.to } } : {}),
     },
     include: {
       items: {
@@ -70,6 +76,7 @@ export async function buildReport(
   let profit = 0;
   const seriesMap = new Map<string, { sales: number; profit: number }>();
   const productMap = new Map<string, ProductPerf>();
+  const methodMap = new Map<string, { amount: number; orders: number }>();
 
   for (const o of orders) {
     const t = computeOrderTotals(o);
@@ -81,6 +88,13 @@ export async function buildReport(
     s.sales += t.netRevenue;
     s.profit += t.netProfit;
     seriesMap.set(day, s);
+
+    if (o.paymentStatus === "PAID") {
+      const m = methodMap.get(o.paymentMethod) ?? { amount: 0, orders: 0 };
+      m.amount += t.customerTotal;
+      m.orders += 1;
+      methodMap.set(o.paymentMethod, m);
+    }
 
     for (const it of o.items) {
       const returned = it.returns.reduce((a, r) => a + r.quantity, 0);
@@ -116,11 +130,15 @@ export async function buildReport(
     .map((p) => ({ ...p, revenue: round2(p.revenue), profit: round2(p.profit) }))
     .sort((a, b) => b.qty - a.qty);
 
+  const collectedByMethod = [...methodMap.entries()]
+    .map(([method, v]) => ({ method, amount: round2(v.amount), orders: v.orders }))
+    .sort((a, b) => b.amount - a.amount);
+
   // Boosting (ad) spend inside the range — shown alongside order profit so the
   // report reflects what marketing actually cost.
   const adSpendAgg = await prisma.boostDailySpend.aggregate({
     _sum: { amount: true },
-    where: { workspaceId, date: { gte: range.from, lte: range.to } },
+    where: { workspaceId, ...(range ? { date: { gte: range.from, lte: range.to } } : {}) },
   });
   const adSpend = round2(Number(adSpendAgg._sum.amount ?? 0));
 
@@ -149,5 +167,6 @@ export async function buildReport(
     series,
     products,
     partnerShares,
+    collectedByMethod,
   };
 }

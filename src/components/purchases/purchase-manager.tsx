@@ -31,8 +31,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { AsyncCombobox } from "@/components/ui/async-combobox";
+import { AsyncCombobox, type ComboOption } from "@/components/ui/async-combobox";
 import { searchVariants, type VariantOption } from "@/server/actions/search";
+import { SupplierPicker } from "@/components/products/supplier-picker";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { formatStock } from "@/lib/units";
 import { Columns3, MoreVertical, PackageOpen, X } from "lucide-react";
@@ -67,7 +68,6 @@ type PurchaseRow = {
 type Perms = { canAdd: boolean; canEdit: boolean };
 type FundingSource = "NONE" | "PARTNER" | "TREASURY";
 
-const NO_SUPPLIER = "__none__";
 const NO_PARTNER = "__none__";
 
 // Optional (toggleable) columns for the Recent purchases table. Date, product,
@@ -98,7 +98,6 @@ function fundingSourceOf(p: { paidByPartnerId: string | null; paidFromTreasury: 
 export function PurchaseManager({
   slug,
   hasProducts,
-  suppliers,
   partnerOptions,
   purchases,
   treasuryBalance,
@@ -108,7 +107,6 @@ export function PurchaseManager({
 }: {
   slug: string;
   hasProducts: boolean;
-  suppliers: { id: string; name: string }[];
   partnerOptions: { id: string; label: string }[];
   purchases: PurchaseRow[];
   treasuryBalance: number;
@@ -151,7 +149,7 @@ export function PurchaseManager({
     });
   }
   const [variant, setVariant] = useState<VariantOption | null>(null);
-  const [supplierId, setSupplierId] = useState<string>(NO_SUPPLIER);
+  const [supplier, setSupplier] = useState<ComboOption | null>(null);
   const [fundingSource, setFundingSource] = useState<FundingSource>("NONE");
   const [paidByPartnerId, setPaidByPartnerId] = useState<string>(NO_PARTNER);
   const [buyUnit, setBuyUnit] = useState<"PIECE" | "PACK">("PIECE");
@@ -167,7 +165,7 @@ export function PurchaseManager({
   // "record a purchase" form above.
   const [editing, setEditing] = useState<PurchaseRow | null>(null);
   const [editVariant, setEditVariant] = useState<VariantOption | null>(null);
-  const [editSupplierId, setEditSupplierId] = useState<string>(NO_SUPPLIER);
+  const [editSupplier, setEditSupplier] = useState<ComboOption | null>(null);
   const [editFundingSource, setEditFundingSource] = useState<FundingSource>("NONE");
   const [editPaidByPartnerId, setEditPaidByPartnerId] = useState<string>(NO_PARTNER);
   // Controlled so the Packet/Piece toggle can re-express the same purchase in
@@ -190,7 +188,7 @@ export function PurchaseManager({
     // Seed the combobox from the row itself (the variant may not be in any
     // fetched search page). Stock isn't shown in this form, so 0 is fine.
     setEditVariant({ value: p.productVariantId, label: p.product, stock: 0, expiryTracked: p.expiryTracked, unitCost: 0, salePrice: null, unitsPerPack: p.unitsPerPack });
-    setEditSupplierId(p.supplierId ?? NO_SUPPLIER);
+    setEditSupplier(p.supplierId ? { value: p.supplierId, label: p.supplier } : null);
     setEditFundingSource(fundingSourceOf(p));
     setEditPaidByPartnerId(p.paidByPartnerId ?? NO_PARTNER);
     setEditBuyUnit("PIECE");
@@ -226,7 +224,7 @@ export function PurchaseManager({
     setLoading(true);
     const fd = new FormData(e.currentTarget);
     fd.set("productVariantId", variant.value);
-    fd.set("supplierId", supplierId === NO_SUPPLIER ? "" : supplierId);
+    fd.set("supplierId", supplier?.value ?? "");
     fd.set("fundingSource", fundingSource);
     fd.set("paidByPartnerId", fundingSource === "PARTNER" && paidByPartnerId !== NO_PARTNER ? paidByPartnerId : "");
     if (buyingByPack && upp) {
@@ -249,7 +247,7 @@ export function PurchaseManager({
     toast.success(res.queued ? "Saved offline — will sync when online" : "Purchase recorded");
     (e.target as HTMLFormElement).reset();
     setVariant(null);
-    setSupplierId(NO_SUPPLIER);
+    setSupplier(null);
     setFundingSource("NONE");
     setPaidByPartnerId(NO_PARTNER);
     setBuyUnit("PIECE");
@@ -266,7 +264,7 @@ export function PurchaseManager({
     setEditLoading(true);
     const fd = new FormData(e.currentTarget);
     fd.set("productVariantId", editVariant.value);
-    fd.set("supplierId", editSupplierId === NO_SUPPLIER ? "" : editSupplierId);
+    fd.set("supplierId", editSupplier?.value ?? "");
     fd.set("fundingSource", editFundingSource);
     fd.set(
       "paidByPartnerId",
@@ -368,26 +366,7 @@ export function PurchaseManager({
                 )}
                 <div className="space-y-2">
                   <Label>Supplier</Label>
-                  <Select
-                    value={supplierId}
-                    onValueChange={(v) => setSupplierId(v ?? NO_SUPPLIER)}
-                    items={[
-                      { value: NO_SUPPLIER, label: "No supplier" },
-                      ...suppliers.map((s) => ({ value: s.id, label: s.name })),
-                    ]}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={NO_SUPPLIER}>No supplier</SelectItem>
-                      {suppliers.map((s) => (
-                        <SelectItem key={s.id} value={s.id}>
-                          {s.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <SupplierPicker slug={slug} value={supplier} onChange={setSupplier} />
                 </div>
                 <div className="space-y-2">
                   <Label>Funding source</Label>
@@ -671,26 +650,7 @@ export function PurchaseManager({
               )}
               <div className="space-y-2">
                 <Label>Supplier</Label>
-                <Select
-                  value={editSupplierId}
-                  onValueChange={(v) => setEditSupplierId(v ?? NO_SUPPLIER)}
-                  items={[
-                    { value: NO_SUPPLIER, label: "No supplier" },
-                    ...suppliers.map((s) => ({ value: s.id, label: s.name })),
-                  ]}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={NO_SUPPLIER}>No supplier</SelectItem>
-                    {suppliers.map((s) => (
-                      <SelectItem key={s.id} value={s.id}>
-                        {s.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <SupplierPicker slug={slug} value={editSupplier} onChange={setEditSupplier} />
               </div>
               <div className="space-y-2">
                 <Label>Funding source</Label>

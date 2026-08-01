@@ -17,8 +17,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTable, type Column } from "@/components/ui/data-table";
-import { BarChart3, Users } from "lucide-react";
+import { BarChart3, Users, Wallet } from "lucide-react";
 import type { Report } from "@/lib/reports";
+
+function formatMethod(value: string) {
+  return value
+    .toLowerCase()
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
 
 
 export function ReportView({
@@ -26,6 +34,7 @@ export function ReportView({
   report,
   from,
   to,
+  isAllTime,
   workspaceName,
   logoUrl,
 }: {
@@ -33,6 +42,7 @@ export function ReportView({
   report: Report;
   from: string;
   to: string;
+  isAllTime: boolean;
   workspaceName: string;
   logoUrl: string | null;
 }) {
@@ -44,16 +54,24 @@ export function ReportView({
   const best = sold.slice(0, 5);
   const slow = [...report.products].sort((a, b) => a.qty - b.qty).slice(0, 5);
 
+  // Used in export filenames/headers — a real "from to" range normally, or a
+  // plain label once "All time" is selected (actual dates would be misleading).
+  const period = isAllTime ? "All time" : `${from} to ${to}`;
+
   function applyRange(e: React.FormEvent) {
     e.preventDefault();
     router.push(`/${slug}/reports?from=${f}&to=${t}`);
+  }
+
+  function viewAllTime() {
+    router.push(`/${slug}/reports?range=all`);
   }
 
   async function exportExcel() {
     const XLSX = await import("xlsx");
     const wb = XLSX.utils.book_new();
     const summary = XLSX.utils.aoa_to_sheet([
-      [workspaceName, `${from} to ${to}`],
+      [workspaceName, period],
       [],
       ["Revenue", report.kpis.revenue],
       ["Net profit", report.kpis.profit],
@@ -87,7 +105,20 @@ export function ReportView({
         "Partner shares",
       );
     }
-    XLSX.writeFile(wb, `gedusuite-report-${from}_${to}.xlsx`);
+    if (report.collectedByMethod.length) {
+      XLSX.utils.book_append_sheet(
+        wb,
+        XLSX.utils.json_to_sheet(
+          report.collectedByMethod.map((m) => ({
+            Method: formatMethod(m.method),
+            Orders: m.orders,
+            Amount: m.amount,
+          })),
+        ),
+        "Collected by method",
+      );
+    }
+    XLSX.writeFile(wb, `gedusuite-report-${isAllTime ? "all-time" : `${from}_${to}`}.xlsx`);
   }
 
   async function exportPdf() {
@@ -117,7 +148,7 @@ export function ReportView({
     doc.setFontSize(16);
     doc.text(workspaceName, titleX, 15);
     doc.setFontSize(10);
-    doc.text(`${from} to ${to}`, titleX, 21);
+    doc.text(period, titleX, 21);
 
     autoTable(doc, {
       startY: 32,
@@ -150,7 +181,17 @@ export function ReportView({
         ]),
       });
     }
-    doc.save(`gedusuite-report-${from}_${to}.pdf`);
+    if (report.collectedByMethod.length) {
+      autoTable(doc, {
+        head: [["Payment method", "Orders", "Amount collected"]],
+        body: report.collectedByMethod.map((m) => [
+          formatMethod(m.method),
+          String(m.orders),
+          m.amount.toFixed(2),
+        ]),
+      });
+    }
+    doc.save(`gedusuite-report-${isAllTime ? "all-time" : `${from}_${to}`}.pdf`);
   }
 
   const kpis: [string, string | number][] = [
@@ -174,7 +215,16 @@ export function ReportView({
             <Label htmlFor="to">To</Label>
             <Input id="to" type="date" value={t} onChange={(e) => setT(e.target.value)} />
           </div>
-          <Button type="submit">Apply</Button>
+          <Button type="submit" variant={isAllTime ? "outline" : "default"}>
+            Apply
+          </Button>
+          <Button
+            type="button"
+            variant={isAllTime ? "default" : "outline"}
+            onClick={viewAllTime}
+          >
+            All time
+          </Button>
         </form>
         <div className="flex gap-2">
           <Button variant="outline" onClick={exportExcel}>
@@ -274,6 +324,36 @@ export function ReportView({
           </CardContent>
         </Card>
       )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Collected by payment method</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <DataTable
+            rows={report.collectedByMethod}
+            rowKey={(m) => m.method}
+            empty={{ icon: Wallet, title: "Nothing collected in this range" }}
+            columns={
+              [
+                {
+                  key: "method",
+                  header: "Method",
+                  cardTitle: true,
+                  cell: (m) => formatMethod(m.method),
+                },
+                { key: "orders", header: "Orders", align: "right", cell: (m) => m.orders },
+                {
+                  key: "amount",
+                  header: "Amount collected",
+                  align: "right",
+                  cell: (m) => <span className="font-medium">{m.amount.toFixed(2)}</span>,
+                },
+              ] as Column<Report["collectedByMethod"][number]>[]
+            }
+          />
+        </CardContent>
+      </Card>
     </div>
   );
 }

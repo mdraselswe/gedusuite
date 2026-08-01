@@ -5,7 +5,9 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAccess } from "@/lib/authz";
 
-export type ActionResult = { ok: true } | { ok: false; error: string };
+export type ActionResult =
+  | { ok: true; id?: string; name?: string }
+  | { ok: false; error: string };
 
 const SupplierSchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(120),
@@ -37,7 +39,7 @@ export async function createSupplier(
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
   const { name, address, phone, altPhone, notes } = parsed.data;
-  await prisma.supplier.create({
+  const created = await prisma.supplier.create({
     data: {
       workspaceId: gate.access.workspaceId,
       name,
@@ -48,7 +50,7 @@ export async function createSupplier(
     },
   });
   revalidatePath(`/${slug}/products`);
-  return { ok: true };
+  return { ok: true, id: created.id, name: created.name };
 }
 
 export async function updateSupplier(

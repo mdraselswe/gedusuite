@@ -108,6 +108,39 @@ export async function searchVariants(
   };
 }
 
+/** Search suppliers by name. */
+export async function searchSuppliers(
+  slug: string,
+  query: string,
+  cursor = 0,
+): Promise<SearchResult<ComboOption>> {
+  const gate = await requireAccess(slug, "products", "view");
+  if (!gate.ok) return gate;
+  const workspaceId = gate.access.workspaceId;
+
+  const q = query.trim();
+  const where = {
+    workspaceId,
+    ...(q ? { name: { contains: q, mode: "insensitive" as const } } : {}),
+  };
+
+  const rows = await prisma.supplier.findMany({
+    where,
+    orderBy: { name: "asc" },
+    skip: cursor,
+    take: SEARCH_PAGE_SIZE,
+    select: { id: true, name: true },
+  });
+
+  const items = rows.map((r) => ({ value: r.id, label: r.name }));
+
+  return {
+    ok: true,
+    items,
+    next: rows.length === SEARCH_PAGE_SIZE ? cursor + SEARCH_PAGE_SIZE : null,
+  };
+}
+
 /** Search customers by name / phone. */
 export async function searchCustomers(
   slug: string,
