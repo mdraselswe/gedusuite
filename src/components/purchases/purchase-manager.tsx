@@ -68,6 +68,7 @@ type PurchaseRow = {
 type Perms = { canAdd: boolean; canEdit: boolean };
 type FundingSource = "NONE" | "PARTNER" | "TREASURY";
 
+const ALL_SUPPLIERS = "__all__";
 const NO_PARTNER = "__none__";
 
 // Optional (toggleable) columns for the Recent purchases table. Date, product,
@@ -98,21 +99,32 @@ function fundingSourceOf(p: { paidByPartnerId: string | null; paidFromTreasury: 
 export function PurchaseManager({
   slug,
   hasProducts,
+  suppliers,
   partnerOptions,
   purchases,
   treasuryBalance,
   perms,
   query,
   sort,
+  supplierFilter,
 }: {
   slug: string;
   hasProducts: boolean;
+  suppliers: {
+    id: string;
+    name: string;
+    address?: string | null;
+    phone?: string | null;
+    altPhone?: string | null;
+    notes?: string | null;
+  }[];
   partnerOptions: { id: string; label: string }[];
   purchases: PurchaseRow[];
   treasuryBalance: number;
   perms: Perms;
   query: string;
   sort: string;
+  supplierFilter: string;
 }) {
   const router = useRouter();
 
@@ -121,11 +133,12 @@ export function PurchaseManager({
   const [visibleCols, setVisibleCols] = useState<Set<string>>(new Set(["salePrice"]));
   const searchDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  function pushListParams(nextQ: string, nextSort: string) {
+  function pushListParams(nextQ: string, nextSort: string, nextSupplier = supplierFilter) {
     const params = new URLSearchParams();
     if (nextQ.trim()) params.set("q", nextQ.trim());
     if (nextSort !== "date_desc") params.set("sort", nextSort);
-    // Search/sort changes restart from page 1 (no page param).
+    if (nextSupplier) params.set("supplier", nextSupplier);
+    // Search/sort/filter changes restart from page 1 (no page param).
     router.replace(`/${slug}/purchases${params.size ? `?${params}` : ""}`);
   }
 
@@ -160,6 +173,9 @@ export function PurchaseManager({
   // converted to per-piece before hitting the server (stock stays in pieces).
   const upp = variant?.unitsPerPack && variant.unitsPerPack > 1 ? variant.unitsPerPack : null;
   const buyingByPack = !!upp && buyUnit === "PACK";
+
+  // Supplier details modal — opened by clicking a supplier name in the table.
+  const [viewSupplier, setViewSupplier] = useState<(typeof suppliers)[number] | null>(null);
 
   // Edit dialog state — separate controlled fields from the always-visible
   // "record a purchase" form above.
@@ -477,6 +493,28 @@ export function PurchaseManager({
               </button>
             )}
           </div>
+          <Select
+            value={supplierFilter || ALL_SUPPLIERS}
+            onValueChange={(v) =>
+              pushListParams(search, sort, !v || v === ALL_SUPPLIERS ? "" : v)
+            }
+            items={[
+              { value: ALL_SUPPLIERS, label: "All suppliers" },
+              ...suppliers.map((s) => ({ value: s.id, label: s.name })),
+            ]}
+          >
+            <SelectTrigger className="w-48">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL_SUPPLIERS}>All suppliers</SelectItem>
+              {suppliers.map((s) => (
+                <SelectItem key={s.id} value={s.id}>
+                  {s.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Select value={sort} onValueChange={(v) => v && pushListParams(search, v)} items={SORT_OPTIONS}>
             <SelectTrigger className="w-60">
               <span className="shrink-0 text-muted-foreground">Sort:</span>
@@ -527,7 +565,27 @@ export function PurchaseManager({
                 cell: (p) => p.product,
               },
               ...(visibleCols.has("supplier")
-                ? [{ key: "supplier", header: "Supplier", wrap: true, cell: (p: PurchaseRow) => p.supplier }]
+                ? [
+                    {
+                      key: "supplier",
+                      header: "Supplier",
+                      wrap: true,
+                      cell: (p: PurchaseRow) => {
+                        const s = p.supplierId ? suppliers.find((x) => x.id === p.supplierId) : undefined;
+                        if (!s) return p.supplier;
+                        return (
+                          <button
+                            type="button"
+                            onClick={() => setViewSupplier(s)}
+                            className="text-left underline decoration-dotted underline-offset-2 hover:text-foreground"
+                            title="View supplier details"
+                          >
+                            {s.name}
+                          </button>
+                        );
+                      },
+                    },
+                  ]
                 : []),
               ...(visibleCols.has("funding")
                 ? [
@@ -762,6 +820,47 @@ export function PurchaseManager({
                 </Button>
               </DialogFooter>
             </form>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Supplier details — opened from the supplier name in the table */}
+      <Dialog open={!!viewSupplier} onOpenChange={(o) => !o && setViewSupplier(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{viewSupplier?.name}</DialogTitle>
+          </DialogHeader>
+          {viewSupplier && (
+            <div className="space-y-3 text-sm">
+              <div>
+                <div className="text-xs font-medium text-muted-foreground">Phone</div>
+                {viewSupplier.phone ? (
+                  <a href={`tel:${viewSupplier.phone}`} className="underline underline-offset-2">
+                    {viewSupplier.phone}
+                  </a>
+                ) : (
+                  <span className="text-muted-foreground">—</span>
+                )}
+              </div>
+              {viewSupplier.altPhone && (
+                <div>
+                  <div className="text-xs font-medium text-muted-foreground">Alt. phone</div>
+                  <a href={`tel:${viewSupplier.altPhone}`} className="underline underline-offset-2">
+                    {viewSupplier.altPhone}
+                  </a>
+                </div>
+              )}
+              <div>
+                <div className="text-xs font-medium text-muted-foreground">Address</div>
+                <div className="whitespace-pre-wrap">{viewSupplier.address || <span className="text-muted-foreground">—</span>}</div>
+              </div>
+              {viewSupplier.notes && (
+                <div>
+                  <div className="text-xs font-medium text-muted-foreground">Notes</div>
+                  <div className="whitespace-pre-wrap">{viewSupplier.notes}</div>
+                </div>
+              )}
+            </div>
           )}
         </DialogContent>
       </Dialog>

@@ -7,11 +7,14 @@ export function PageHeader({
   icon,
   color,
   title,
+  count,
   action,
 }: {
   icon: React.ReactNode;
   color: SectionColor;
   title: React.ReactNode;
+  /** Total record count for this module's list, shown as a pill by the title. */
+  count?: number;
   action?: React.ReactNode;
 }) {
   return (
@@ -26,6 +29,16 @@ export function PageHeader({
           {icon}
         </span>
         <h1 className="text-2xl font-bold">{title}</h1>
+        {typeof count === "number" && (
+          <span
+            className={cn(
+              "rounded-full px-2.5 py-0.5 text-sm font-semibold tabular-nums",
+              sectionColorClasses[color],
+            )}
+          >
+            {count}
+          </span>
+        )}
       </div>
       {action}
     </div>

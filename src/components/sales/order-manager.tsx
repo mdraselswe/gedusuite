@@ -8,11 +8,13 @@ import { confirmDialog } from "@/components/ui/confirm-dialog";
 import {
   createOrder,
   updateOrderStatus,
+  updateOrderHeader,
   updatePaymentStatus,
   updateCourierTrackingId,
   createReturn,
   deleteOrder,
 } from "@/server/actions/orders";
+import { createCustomer } from "@/server/actions/customers";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -61,12 +63,19 @@ type OrderItem = {
 type OrderRow = {
   id: string;
   date: string;
+  customerId: string | null;
   customerName: string;
   status: string;
   deliveryType: string;
   courierTrackingId: string | null;
   paymentStatus: string;
   paymentMethod: string;
+  deliveryCharge: number;
+  deliveryCost: number | null;
+  packagingCost: number;
+  giftCost: number;
+  discount: number;
+  notes: string | null;
   heldByName: string | null;
   totals: { customerTotal: number; netProfit: number; returnedUnits: number };
   gifts: { label: string; quantity: number }[];
@@ -265,6 +274,33 @@ export function OrderManager({
   const [returnOrder, setReturnOrder] = useState<OrderRow | null>(null);
   const [returnItemId, setReturnItemId] = useState("");
 
+  // ── Edit details dialog state ──
+  const [editOpen, setEditOpen] = useState(false);
+  const [editOrder, setEditOrder] = useState<OrderRow | null>(null);
+  const [editCustomer, setEditCustomer] = useState<ComboOption | null>(null);
+  const [editDeliveryType, setEditDeliveryType] = useState("SELF");
+  const [editPaymentMethod, setEditPaymentMethod] = useState("CASH");
+  const [editSaving, setEditSaving] = useState(false);
+
+  // ── Inline "new customer" dialog (shortcut from the order form) ──
+  const [newCustomerOpen, setNewCustomerOpen] = useState(false);
+  const [newCustomerSaving, setNewCustomerSaving] = useState(false);
+
+  async function onCreateCustomer(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setNewCustomerSaving(true);
+    const res = await createCustomer(slug, new FormData(e.currentTarget));
+    setNewCustomerSaving(false);
+    if (!res.ok) return toast.error(res.error ?? "Failed");
+    // Select the fresh customer on the order right away (label matches the
+    // search results' "Name · phone" format).
+    if (res.id && res.name) {
+      setCustomer({ value: res.id, label: res.phone ? `${res.name} · ${res.phone}` : res.name });
+    }
+    toast.success("Customer added & selected");
+    setNewCustomerOpen(false);
+  }
+
   // ── List toolbar: URL-driven search/filter/sort (server queries all pages) ──
   const [search, setSearch] = useState(query);
   const [visibleCols, setVisibleCols] = useState<Set<string>>(new Set(["profit"]));
@@ -446,6 +482,30 @@ export function OrderManager({
     if (!res.ok) return toast.error(res.error);
     toast.success("Return recorded");
     setReturnOpen(false);
+    router.refresh();
+  }
+
+  function openEdit(o: OrderRow) {
+    setEditOrder(o);
+    setEditCustomer(o.customerId ? { value: o.customerId, label: o.customerName } : null);
+    setEditDeliveryType(o.deliveryType);
+    setEditPaymentMethod(o.paymentMethod);
+    setEditOpen(true);
+  }
+
+  async function onSubmitEdit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!editOrder) return;
+    setEditSaving(true);
+    const fd = new FormData(e.currentTarget);
+    fd.set("customerId", editCustomer?.value ?? "");
+    fd.set("deliveryType", editDeliveryType);
+    fd.set("paymentMethod", editPaymentMethod);
+    const res = await updateOrderHeader(slug, editOrder.id, fd);
+    setEditSaving(false);
+    if (!res.ok) return toast.error(res.error);
+    toast.success("Order updated");
+    setEditOpen(false);
     router.refresh();
   }
 
@@ -702,6 +762,7 @@ export function OrderManager({
                         <MoreVertical className="size-4" />
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => openEdit(o)}>Edit details</DropdownMenuItem>
                         <DropdownMenuItem onClick={() => openReturn(o)}>Return</DropdownMenuItem>
                         <DropdownMenuItem variant="destructive" onClick={() => onDelete(o.id)}>
                           Delete
@@ -1059,7 +1120,16 @@ export function OrderManager({
                   </div>
                   <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                     <div className="space-y-2">
-                      <Label>Customer</Label>
+                      <div className="flex items-center justify-between">
+                        <Label>Customer</Label>
+                        <button
+                          type="button"
+                          onClick={() => setNewCustomerOpen(true)}
+                          className="text-xs text-primary underline underline-offset-2 hover:opacity-80"
+                        >
+                          + New customer
+                        </button>
+                      </div>
                       <AsyncCombobox
                         value={customer}
                         onChange={setCustomer}
@@ -1291,6 +1361,40 @@ export function OrderManager({
         </DialogContent>
       </Dialog>
 
+      {/* Inline new-customer dialog — quick create + auto-select on the order */}
+      <Dialog open={newCustomerOpen} onOpenChange={setNewCustomerOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>New customer</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={onCreateCustomer} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="nc-name">Name</Label>
+              <Input id="nc-name" name="name" required autoFocus />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="nc-phone">Phone</Label>
+                <Input id="nc-phone" name="phone" />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="nc-alt-phone">Alt phone</Label>
+                <Input id="nc-alt-phone" name="altPhone" />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="nc-address">Address</Label>
+              <Input id="nc-address" name="address" />
+            </div>
+            <DialogFooter>
+              <Button type="submit" disabled={newCustomerSaving}>
+                {newCustomerSaving ? "Saving…" : "Add & select"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
       {/* Return dialog */}
       <Dialog open={returnOpen} onOpenChange={setReturnOpen}>
         <DialogContent>
@@ -1342,6 +1446,146 @@ export function OrderManager({
             </form>
           ) : (
             <p className="text-sm text-muted-foreground">Nothing left to return on this order.</p>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit details dialog — header/money fields only; items and status have
+          their own flows (stock and returns hang off items). */}
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit order details</DialogTitle>
+          </DialogHeader>
+          {editOrder && (
+            <form key={editOrder.id} onSubmit={onSubmitEdit} className="space-y-4">
+              <div className="space-y-2">
+                <Label>Customer</Label>
+                <AsyncCombobox
+                  value={editCustomer}
+                  onChange={setEditCustomer}
+                  fetchPage={async (q, cursor) => {
+                    const res = await searchCustomers(slug, q, cursor);
+                    return res.ok ? { items: res.items, next: res.next } : { items: [], next: null };
+                  }}
+                  placeholder="Walk-in — search to attach…"
+                  emptyText="No customers"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label htmlFor="eo-date">Date</Label>
+                  <Input id="eo-date" name="date" type="date" required defaultValue={editOrder.date} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Delivery type</Label>
+                  <Select value={editDeliveryType} onValueChange={(v) => setEditDeliveryType(v ?? "SELF")}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="SELF">SELF</SelectItem>
+                      <SelectItem value="COURIER">COURIER</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label htmlFor="eo-charge">Delivery charge (customer pays)</Label>
+                  <Input
+                    id="eo-charge"
+                    name="deliveryCharge"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    required
+                    defaultValue={editOrder.deliveryCharge}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="eo-cost">Courier cost (actual)</Label>
+                  <Input
+                    id="eo-cost"
+                    name="deliveryCost"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="blank = same as charge"
+                    defaultValue={editOrder.deliveryCost ?? ""}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>Payment method</Label>
+                  <Select value={editPaymentMethod} onValueChange={(v) => setEditPaymentMethod(v ?? "CASH")}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {METHODS.map((m) => (
+                        <SelectItem key={m} value={m}>
+                          {formatEnum(m)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="eo-discount">Order discount</Label>
+                  <Input
+                    id="eo-discount"
+                    name="discount"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    required
+                    defaultValue={editOrder.discount}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label htmlFor="eo-packaging">Packaging cost</Label>
+                  <Input
+                    id="eo-packaging"
+                    name="packagingCost"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    required
+                    defaultValue={editOrder.packagingCost}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="eo-gift">Gift cost</Label>
+                  <Input
+                    id="eo-gift"
+                    name="giftCost"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    required
+                    defaultValue={editOrder.giftCost}
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="eo-notes">Notes</Label>
+                <Textarea id="eo-notes" name="notes" defaultValue={editOrder.notes ?? ""} />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Items, status, payment status and courier ID are edited from their own controls.
+                If this order&apos;s cash is already in the treasury, that entry re-syncs
+                automatically.
+              </p>
+              <DialogFooter>
+                <Button type="submit" disabled={editSaving}>
+                  {editSaving ? "Saving…" : "Save changes"}
+                </Button>
+              </DialogFooter>
+            </form>
           )}
         </DialogContent>
       </Dialog>

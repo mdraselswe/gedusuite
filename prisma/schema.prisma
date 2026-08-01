@@ -700,7 +700,7 @@ model BoostDailySpend {
   id               String   @id @default(cuid())
   workspaceId      String
   adSetId          String
-  date             DateTime // date-only (midnight UTC); one entry per ad set per day
+  date             DateTime // date-only (midnight UTC); Facebook can charge a card several times in one day, so multiple entries per day are expected
   amount           Decimal  @db.Decimal(12, 2)
   note             String?
   paidByPartnerId  String? // which partner's money funded this spend (optional)
@@ -713,7 +713,7 @@ model BoostDailySpend {
   treasuryEntry TreasuryEntry?
   partnerTxn    PartnerTxn? // the auto INVESTMENT credit when a partner funded this spend
 
-  @@unique([adSetId, date])
+  @@index([adSetId, date])
   @@index([workspaceId])
   @@index([workspaceId, date])
   @@index([paidByPartnerId])

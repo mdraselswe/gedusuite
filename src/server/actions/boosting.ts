@@ -330,17 +330,10 @@ export async function addDailySpend(
     }
   }
 
-  // Normalize to date-only so the (adSetId, date) uniqueness works regardless
-  // of what time-of-day the input parsed to.
+  // Normalize to date-only so per-day grouping works regardless of what
+  // time-of-day the input parsed to. No same-day uniqueness: Facebook charges
+  // a card as many times per day as it hits billing thresholds.
   const day = new Date(d.date.toISOString().slice(0, 10));
-
-  const existing = await prisma.boostDailySpend.findUnique({
-    where: { adSetId_date: { adSetId, date: day } },
-    select: { id: true },
-  });
-  if (existing) {
-    return { ok: false, error: "This day already has a spend entry — delete it first to re-enter" };
-  }
 
   await prisma.$transaction(async (tx) => {
     const spend = await tx.boostDailySpend.create({

@@ -98,7 +98,14 @@ export function BoostingManager({
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         <h2 className="mr-auto text-lg font-semibold">Campaigns</h2>
-        <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v ?? ALL)}>
+        <Select
+          value={statusFilter}
+          onValueChange={(v) => setStatusFilter(v ?? ALL)}
+          items={[
+            { value: ALL, label: "All statuses" },
+            ...STATUSES.map((s) => ({ value: s, label: s })),
+          ]}
+        >
           <SelectTrigger className="w-36">
             <SelectValue />
           </SelectTrigger>

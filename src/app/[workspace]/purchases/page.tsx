@@ -28,12 +28,13 @@ export default async function PurchasesPage({
   searchParams,
 }: {
   params: Promise<{ workspace: string }>;
-  searchParams: Promise<{ page?: string; q?: string; sort?: string }>;
+  searchParams: Promise<{ page?: string; q?: string; sort?: string; supplier?: string }>;
 }) {
   const { workspace: slug } = await params;
   const sp = await searchParams;
   const page = parsePage(sp.page);
   const q = (sp.q ?? "").trim();
+  const supplierFilter = (sp.supplier ?? "").trim();
   const sort: PurchaseSort = sp.sort && sp.sort in SORTS ? (sp.sort as PurchaseSort) : "date_desc";
   const access = await workspaceAccess(slug);
   if (!access) redirect("/");
@@ -50,6 +51,7 @@ export default async function PurchasesPage({
   // the query narrows the paginated result set server-side.
   const where = {
     workspaceId: access.workspaceId,
+    ...(supplierFilter ? { supplierId: supplierFilter } : {}),
     ...(q
       ? {
           OR: [
@@ -62,11 +64,19 @@ export default async function PurchasesPage({
       : {}),
   };
 
-  // Products and suppliers are searched on demand by the form's async
-  // pickers, so we only need a cheap existence check here, not the full catalog.
-  const [productCount, purchaseCount, purchases, partners, treasury, allCostQuantities] =
+  // Products are searched on demand by the form's async picker, so we only
+  // need a cheap existence check here, not the full catalog. Suppliers still
+  // need a full fetch — the list's filter dropdown and the supplier-details
+  // modal both need every supplier up front, not just search matches.
+  const [productCount, suppliers, purchaseCount, purchases, partners, treasury, allCostQuantities] =
     await Promise.all([
       prisma.productVariant.count({ where: { product: { workspaceId: access.workspaceId } } }),
+      prisma.supplier.findMany({
+        where: { workspaceId: access.workspaceId },
+        orderBy: { name: "asc" },
+        // full contact details so the table can show a supplier info modal
+        select: { id: true, name: true, address: true, phone: true, altPhone: true, notes: true },
+      }),
       prisma.purchase.count({ where }),
       prisma.purchase.findMany({
         where,
@@ -129,6 +139,7 @@ export default async function PurchasesPage({
       <PageHeader
         icon={<ShoppingCart />}
         color="orange"
+        count={purchaseCount}
         title={(await serverT())("purchases")}
         action={
           <span className="text-sm text-muted-foreground">
@@ -139,18 +150,24 @@ export default async function PurchasesPage({
       <PurchaseManager
         slug={slug}
         hasProducts={productCount > 0}
+        suppliers={suppliers}
         partnerOptions={partnerOptions}
         purchases={purchaseRows}
         treasuryBalance={treasury}
         perms={perms}
         query={q}
         sort={sort}
+        supplierFilter={supplierFilter}
       />
       <Pagination
         page={page}
         totalPages={Math.ceil(purchaseCount / PAGE_SIZE)}
         basePath={`/${slug}/purchases`}
-        query={{ q: q || undefined, sort: sort !== "date_desc" ? sort : undefined }}
+        query={{
+          q: q || undefined,
+          sort: sort !== "date_desc" ? sort : undefined,
+          supplier: supplierFilter || undefined,
+        }}
       />
     </div>
   );

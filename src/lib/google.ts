@@ -1,5 +1,6 @@
 import { google } from "googleapis";
 import type { Snapshot } from "@/lib/backup";
+import { variantFullName } from "@/lib/variants";
 
 /**
  * Personal per-user backup uses each user's own OAuth token (see
@@ -41,6 +42,7 @@ const TAB_SPECS: TabSpec[] = [
     table: "purchases",
     columns: [
       { key: "date", label: "Date", date: true },
+      { key: "productName", label: "Product" }, // enriched (see enrichSnapshotTables)
       { key: "unitCost", label: "Unit cost", currency: true },
       { key: "salePrice", label: "Sale price", currency: true },
       { key: "quantity", label: "Quantity" },
@@ -62,6 +64,7 @@ const TAB_SPECS: TabSpec[] = [
     table: "orders",
     columns: [
       { key: "date", label: "Date", date: true },
+      { key: "customerName", label: "Customer" }, // enriched (see enrichSnapshotTables)
       { key: "status", label: "Status" },
       { key: "paymentMethod", label: "Payment method" },
       { key: "paymentStatus", label: "Payment status" },
@@ -172,6 +175,41 @@ function cellValue(row: Record<string, unknown>, col: Col): string | number {
   return typeof raw === "number" ? raw : String(raw);
 }
 
+/**
+ * The snapshot stores raw rows with foreign keys only — unreadable in a
+ * spreadsheet ("which product was this purchase?"). Derive human columns from
+ * data already inside the snapshot: productName on purchases (via variants +
+ * products) and customerName on orders. Pure/read-only; the snapshot itself
+ * is never mutated.
+ */
+function enrichSnapshotTables(snapshot: Snapshot): Snapshot["tables"] {
+  const t = snapshot.tables;
+  const rows = (name: string) => (t[name] ?? []) as Record<string, unknown>[];
+
+  const productNameById = new Map(rows("products").map((p) => [p.id as string, p.name as string]));
+  const variantLabelById = new Map(
+    rows("productVariants").map((v) => [
+      v.id as string,
+      variantFullName(productNameById.get(v.productId as string) ?? "?", v.attributes),
+    ]),
+  );
+  const customerNameById = new Map(
+    rows("customers").map((c) => [c.id as string, c.name as string]),
+  );
+
+  return {
+    ...t,
+    purchases: rows("purchases").map((p) => ({
+      ...p,
+      productName: variantLabelById.get(p.productVariantId as string) ?? "",
+    })),
+    orders: rows("orders").map((o) => ({
+      ...o,
+      customerName: o.customerId ? (customerNameById.get(o.customerId as string) ?? "") : "Walk-in",
+    })),
+  };
+}
+
 export type BackupSummary = {
   workspaceName: string;
   totalSales: number;
@@ -226,6 +264,8 @@ export async function writeFormattedWorkbook(
     }
   }
 
+  const tables = enrichSnapshotTables(snapshot);
+
   // ── Write values ──
   // Summary tab (first): at-a-glance totals.
   const summaryValues: (string | number)[][] = [
@@ -245,7 +285,7 @@ export async function writeFormattedWorkbook(
   });
 
   for (const t of TAB_SPECS) {
-    const data = (snapshot.tables[t.table] ?? []) as Record<string, unknown>[];
+    const data = (tables[t.table] ?? []) as Record<string, unknown>[];
     const values = [
       t.columns.map((c) => c.label),
       ...data.map((row) => t.columns.map((c) => cellValue(row, c))),
@@ -351,14 +391,60 @@ export async function syncSnapshotForUser(
  * fully owned/quota-charged to them). A new dated file each run, no overwrite,
  * so past snapshots stay available as history.
  */
+const BACKUP_FOLDER_NAME = "GeduSuite Backups";
+
+/**
+ * Find-or-create the "GeduSuite Backups" folder. drive.file scope only sees
+ * files/folders THIS app created, so a folder the user made by hand is
+ * invisible here — the app maintains its own folder of the same name.
+ */
+async function ensureBackupFolder(drive: ReturnType<typeof google.drive>): Promise<string> {
+  const found = await drive.files.list({
+    q: `name = '${BACKUP_FOLDER_NAME}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
+    fields: "files(id)",
+    pageSize: 1,
+  });
+  const existing = found.data.files?.[0]?.id;
+  if (existing) return existing;
+  const created = await drive.files.create({
+    requestBody: { name: BACKUP_FOLDER_NAME, mimeType: "application/vnd.google-apps.folder" },
+    fields: "id",
+  });
+  return created.data.id!;
+}
+
+/** One-time tidy: move app-created backup JSONs still loose in My Drive root
+ * into the backups folder, so history collects in one place. */
+async function sweepLooseBackups(
+  drive: ReturnType<typeof google.drive>,
+  folderId: string,
+): Promise<void> {
+  const loose = await drive.files.list({
+    q: `name contains 'gedusuite-backup-' and mimeType = 'application/json' and 'root' in parents and trashed = false`,
+    fields: "files(id)",
+    pageSize: 100,
+  });
+  for (const f of loose.data.files ?? []) {
+    if (!f.id) continue;
+    await drive.files.update({ fileId: f.id, addParents: folderId, removeParents: "root" });
+  }
+}
+
 export async function uploadJsonBackupToDrive(
   auth: SheetsAuth,
   json: string,
   filename: string,
 ): Promise<{ fileId: string; url: string }> {
   const drive = google.drive({ version: "v3", auth });
+  const folderId = await ensureBackupFolder(drive);
+  // Best-effort — a failed sweep must never block the fresh backup itself.
+  try {
+    await sweepLooseBackups(drive, folderId);
+  } catch {
+    // Old files stay in root until the next run retries.
+  }
   const created = await drive.files.create({
-    requestBody: { name: filename, mimeType: "application/json" },
+    requestBody: { name: filename, mimeType: "application/json", parents: [folderId] },
     media: { mimeType: "application/json", body: json },
     fields: "id",
   });

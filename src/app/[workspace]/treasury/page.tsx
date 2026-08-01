@@ -107,6 +107,7 @@ export default async function TreasuryPage({
       <PageHeader
         icon={<Wallet />}
         color="amber"
+        count={entryCount}
         title={(await serverT())("treasury")}
         action={
           <div className="flex gap-4 text-sm text-muted-foreground">

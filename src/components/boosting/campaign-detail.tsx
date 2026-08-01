@@ -167,12 +167,19 @@ function AdSetCard({
   // the same card, so keep the last choice selected after submit.
   const [paidFrom, setPaidFrom] = useState<string>(NONE);
 
-  // A day is over budget when that single day's charge exceeds the ad set's
-  // Facebook daily budget (small overshoot is normal — FB can spend up to
-  // ~125% of daily on a given day — but it's still worth surfacing).
+  // Facebook can charge several times in one day, so budget comparison is
+  // against the DAY'S TOTAL, not each entry. A day is over budget when its
+  // summed charges exceed the ad set's daily budget (small overshoot is
+  // normal — FB can spend up to ~125% of daily — but worth surfacing).
+  const dayTotals = new Map<string, number>();
+  for (const s of adSet.spends) {
+    dayTotals.set(s.date, (dayTotals.get(s.date) ?? 0) + s.amount);
+  }
+  const overBudgetDay = (date: string) =>
+    adSet.dailyBudget !== null && (dayTotals.get(date) ?? 0) > adSet.dailyBudget;
   const overBudgetDays =
     adSet.dailyBudget !== null
-      ? adSet.spends.filter((s) => s.amount > adSet.dailyBudget!).length
+      ? [...dayTotals.values()].filter((total) => total > adSet.dailyBudget!).length
       : 0;
 
   async function onAddSpend(e: React.FormEvent<HTMLFormElement>) {
@@ -263,7 +270,7 @@ function AdSetCard({
         {canAdd && (
           <form
             onSubmit={onAddSpend}
-            className="grid gap-3 rounded-md border bg-muted/40 p-3 sm:grid-cols-[10rem_minmax(0,8rem)_minmax(0,11rem)_minmax(0,1fr)_auto] sm:items-end"
+            className="grid gap-3 rounded-md border bg-muted/40 p-3 sm:grid-cols-[10rem_minmax(0,8rem)_minmax(0,11rem)_minmax(0,1fr)_auto] sm:items-start"
           >
             <div className="space-y-2">
               <Label htmlFor={`sp-date-${adSet.id}`}>Date</Label>
@@ -288,7 +295,15 @@ function AdSetCard({
             </div>
             <div className="space-y-2">
               <Label>Paid from</Label>
-              <Select value={paidFrom} onValueChange={(v) => setPaidFrom(v ?? NONE)}>
+              <Select
+                value={paidFrom}
+                onValueChange={(v) => setPaidFrom(v ?? NONE)}
+                items={[
+                  { value: NONE, label: "— not tracked" },
+                  { value: TREASURY, label: "Treasury" },
+                  ...partnerOptions.map((p) => ({ value: p.id, label: p.label })),
+                ]}
+              >
                 <SelectTrigger className="w-full">
                   <SelectValue />
                 </SelectTrigger>
@@ -307,9 +322,16 @@ function AdSetCard({
               <Label htmlFor={`sp-note-${adSet.id}`}>Note (optional)</Label>
               <Input id={`sp-note-${adSet.id}`} name="note" />
             </div>
-            <Button type="submit" disabled={adding}>
-              {adding ? "Saving…" : "Add spend"}
-            </Button>
+            {/* Same label+control stack as the fields so the button row-aligns
+                with the inputs instead of floating against the label line. */}
+            <div className="space-y-2">
+              <Label aria-hidden className="invisible select-none">
+                Add
+              </Label>
+              <Button type="submit" disabled={adding}>
+                {adding ? "Saving…" : "Add spend"}
+              </Button>
+            </div>
           </form>
         )}
         <DataTable
@@ -327,9 +349,12 @@ function AdSetCard({
                 align: "right",
                 sortValue: (s) => s.amount,
                 cell: (s) => {
-                  const over = adSet.dailyBudget !== null && s.amount > adSet.dailyBudget;
+                  const over = overBudgetDay(s.date);
                   return (
-                    <span className={over ? "font-medium text-destructive" : "font-medium"}>
+                    <span
+                      className={over ? "font-medium text-destructive" : "font-medium"}
+                      title={over ? `Day total ${dayTotals.get(s.date)?.toFixed(2)} exceeds daily budget` : undefined}
+                    >
                       {s.amount.toFixed(2)}
                       {over && " ↑"}
                     </span>
