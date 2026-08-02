@@ -4,6 +4,12 @@ import withSerwistInit from "@serwist/next";
 const nextConfig: NextConfig = {
   poweredByHeader: false,
 
+  // ws (used by Neon's serverless driver) probes for optional native addons at
+  // require time. Bundling it breaks that lookup and the socket dies mid-query
+  // with "TypeError: b.mask is not a function" — passes the build, fails on the
+  // first write. Leave it to be required from node_modules at runtime.
+  serverExternalPackages: ["ws"],
+
   experimental: {
     // Barrel-file libraries: pull in only the modules actually referenced
     // instead of the whole package graph. Next does this for lucide-react out
