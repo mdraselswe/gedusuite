@@ -177,6 +177,8 @@ export function StockAdjustmentManager({
         <DataTable
           rows={adjustments}
           rowKey={(a) => a.id}
+          colorGroupBy={(a) => a.date}
+          colorToggleLabel="Color by date"
           searchText={(a) => `${a.product} ${a.type} ${a.reason ?? ""}`}
           searchPlaceholder="Search product, type, reason…"
           empty={{ icon: ClipboardList, title: "No adjustments recorded" }}

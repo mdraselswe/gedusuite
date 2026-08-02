@@ -172,6 +172,8 @@ export function InternalPurchaseManager({
       <DataTable
         rows={filtered}
         rowKey={(i) => i.id}
+        colorGroupBy={(i) => i.date}
+        colorToggleLabel="Color by date"
         searchText={(i) => `${i.itemName} ${i.description ?? ""} ${i.supplierName ?? ""} ${i.category}`}
         searchPlaceholder="Search item, supplier…"
         empty={{ icon: Receipt, title: "No entries" }}

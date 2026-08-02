@@ -30,6 +30,8 @@ export function CustomerOrdersTable({
     <DataTable
       rows={rows}
       rowKey={(o) => o.id}
+      colorGroupBy={(o) => o.date}
+      colorToggleLabel="Color by date"
       empty={{ icon: ShoppingBag, title: "No orders yet" }}
       columns={
         [

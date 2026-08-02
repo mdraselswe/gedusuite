@@ -337,6 +337,8 @@ function AdSetCard({
         <DataTable
           rows={adSet.spends}
           rowKey={(s) => s.id}
+          colorGroupBy={(s) => s.date}
+          colorToggleLabel="Color by date"
           empty={{ title: "No spend entries yet" }}
           columns={
             [

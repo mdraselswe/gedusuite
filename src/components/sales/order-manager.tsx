@@ -613,6 +613,8 @@ export function OrderManager({
       <DataTable
         rows={shownOrders}
         rowKey={(o) => o.id}
+        colorGroupBy={(o) => o.date}
+        colorToggleLabel="Color by date"
         empty={{
           icon: ShoppingCart,
           title: query || statusFilter || payFilter ? "No orders match your filters" : "No orders found",

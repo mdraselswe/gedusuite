@@ -549,6 +549,8 @@ export function PurchaseManager({
         <DataTable
           rows={purchases}
           rowKey={(p) => p.id}
+          colorGroupBy={(p) => p.date}
+          colorToggleLabel="Color by date"
           stickyHeader
           empty={{
             icon: PackageOpen,

@@ -2,8 +2,9 @@
 
 import { useMemo, useState } from "react";
 import type { LucideIcon } from "lucide-react";
-import { Columns3, X } from "lucide-react";
+import { Columns3, Palette, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { assignRowColorSlots } from "@/lib/row-colors";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -76,6 +77,8 @@ export function DataTable<T>({
   pageSize = 50,
   searchText,
   searchPlaceholder = "Search…",
+  colorGroupBy,
+  colorToggleLabel = "Multicolor",
 }: {
   columns: Column<T>[];
   rows: T[];
@@ -86,6 +89,13 @@ export function DataTable<T>({
   /** Text a row is matched against by the toolbar search box. */
   searchText?: (row: T) => string;
   searchPlaceholder?: string;
+  /**
+   * Optional: group rows sharing this key under the same color (e.g. same
+   * date -> same color), toggled on/off via a toolbar button. Assignment is
+   * first-seen and stable regardless of sort/search/paging.
+   */
+  colorGroupBy?: (row: T) => string;
+  colorToggleLabel?: string;
 }) {
   const [pageState, setPageState] = useState(1);
   const [query, setQuery] = useState("");
@@ -93,10 +103,19 @@ export function DataTable<T>({
   const [hidden, setHidden] = useState<Set<string>>(
     () => new Set(columns.filter((c) => c.hideable && c.defaultHidden).map((c) => c.key)),
   );
+  const [colorOn, setColorOn] = useState(false);
 
   const sortableCols = columns.filter((c) => c.sortValue);
   const hideableCols = columns.filter((c) => c.hideable);
-  const hasToolbar = !!searchText || sortableCols.length > 0 || hideableCols.length > 0;
+  const hasToolbar =
+    !!searchText || sortableCols.length > 0 || hideableCols.length > 0 || !!colorGroupBy;
+
+  const colorSlots = useMemo(
+    () => (colorGroupBy ? assignRowColorSlots(rows, colorGroupBy) : null),
+    [rows, colorGroupBy],
+  );
+  const colorClassFor = (row: T) =>
+    colorOn && colorSlots && colorGroupBy ? colorSlots.get(colorGroupBy(row)) : undefined;
 
   const labelOf = (c: Column<T>) =>
     c.label ?? (typeof c.header === "string" && c.header ? c.header : c.key);
@@ -220,6 +239,17 @@ export function DataTable<T>({
           </DropdownMenuContent>
         </DropdownMenu>
       )}
+      {colorGroupBy && (
+        <Button
+          type="button"
+          variant={colorOn ? "secondary" : "outline"}
+          size="sm"
+          onClick={() => setColorOn((v) => !v)}
+        >
+          <Palette data-icon="inline-start" />
+          {colorToggleLabel}
+        </Button>
+      )}
     </div>
   );
 
@@ -254,7 +284,7 @@ export function DataTable<T>({
               </TableHeader>
               <TableBody>
                 {pageRows.map((row) => (
-                  <TableRow key={rowKey(row)}>
+                  <TableRow key={rowKey(row)} className={cn("border-l-4 border-l-transparent", colorClassFor(row))}>
                     {visibleColumns.map((c) => (
                       <TableCell
                         key={c.key}
@@ -275,7 +305,10 @@ export function DataTable<T>({
           {/* Mobile: stacked cards */}
           <div className="space-y-3 md:hidden">
             {pageRows.map((row) => (
-              <div key={rowKey(row)} className="rounded-lg border p-3">
+              <div
+                key={rowKey(row)}
+                className={cn("rounded-lg border border-l-4 border-l-transparent p-3", colorClassFor(row))}
+              >
                 {visibleColumns.map((c) => {
                   const value = c.cell(row);
                   if (c.cardFullWidth) {

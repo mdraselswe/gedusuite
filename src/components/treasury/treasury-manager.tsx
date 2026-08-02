@@ -277,6 +277,8 @@ export function TreasuryManager({
             <DataTable
               rows={withCourier}
               rowKey={(o) => o.orderId}
+              colorGroupBy={(o) => o.date}
+              colorToggleLabel="Color by date"
               empty={{ title: "Nothing pending from courier" }}
               columns={
                 [
@@ -330,6 +332,8 @@ export function TreasuryManager({
             <DataTable
               rows={withMembers}
               rowKey={(o) => o.orderId}
+              colorGroupBy={(o) => o.date}
+              colorToggleLabel="Color by date"
               empty={{ title: "Nothing pending deposit" }}
               columns={
                 [
@@ -385,6 +389,8 @@ export function TreasuryManager({
             <DataTable
               rows={overdue}
               rowKey={(o) => o.orderId}
+              colorGroupBy={(o) => o.date}
+              colorToggleLabel="Color by date"
               empty={{ title: "No due payments" }}
               columns={
                 [
@@ -510,6 +516,8 @@ export function TreasuryManager({
               <DataTable
                 rows={distributions}
                 rowKey={(d) => d.id}
+                colorGroupBy={(d) => d.date}
+                colorToggleLabel="Color by date"
                 empty={{ title: "No distributions yet" }}
                 columns={
                   [
@@ -638,6 +646,8 @@ export function TreasuryManager({
         <DataTable
           rows={filtered}
           rowKey={(e) => e.id}
+          colorGroupBy={(e) => e.date}
+          colorToggleLabel="Color by date"
           searchText={(e) => `${e.source} ${e.partnerName ?? ""} ${e.note ?? ""}`}
           searchPlaceholder="Search source, partner, note…"
           empty={{ icon: Wallet, title: "No entries" }}

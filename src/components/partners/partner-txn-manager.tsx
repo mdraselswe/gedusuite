@@ -133,6 +133,8 @@ export function PartnerTxnManager({
         <DataTable
           rows={txns}
           rowKey={(t) => t.id}
+          colorGroupBy={(t) => t.date}
+          colorToggleLabel="Color by date"
           searchText={(t) => `${t.type} ${t.purpose ?? ""}`}
           searchPlaceholder="Search type, purpose…"
           empty={{ icon: ArrowLeftRight, title: "No transactions" }}

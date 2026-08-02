@@ -167,6 +167,8 @@ export function BackupManager({
         <DataTable
           rows={logs}
           rowKey={(l) => l.id}
+          colorGroupBy={(l) => l.createdAt.slice(0, 10)}
+          colorToggleLabel="Color by date"
           empty={{ icon: DatabaseBackup, title: "No backups yet" }}
           columns={
             [
