@@ -98,7 +98,7 @@ export default async function DashboardPage({
   // Notification reconciliation happens on mutations + the scheduled cron.
   const now = new Date();
   const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-  const [memberCount, alerts, overdue, profit, treasury, adSpendAgg, monthOrders] =
+  const [memberCount, alerts, overdue, profit, treasury, adSpendAgg, monthOrders, partners] =
     await Promise.all([
       prisma.membership.count({ where: { workspaceId } }),
       computeInventoryAlerts(workspaceId),
@@ -113,6 +113,14 @@ export default async function DashboardPage({
         ? prisma.order.findMany({
             where: { workspaceId, status: { not: "CANCELLED" }, date: { gte: monthStart } },
             include: { items: { include: { returns: true } } },
+          })
+        : Promise.resolve([]),
+      // Was a sequential findMany after this Promise.all resolved — one more
+      // full round trip tacked onto every dashboard render for no reason.
+      canViewPartners
+        ? prisma.partner.findMany({
+            where: { workspaceId },
+            include: { user: { select: { name: true, email: true } } },
           })
         : Promise.resolve([]),
     ]);
@@ -136,10 +144,6 @@ export default async function DashboardPage({
   // Partner profit-share breakdown (only for those who can view partners).
   let partnerShares: { name: string; percent: number; amount: number }[] = [];
   if (canViewPartners) {
-    const partners = await prisma.partner.findMany({
-      where: { workspaceId },
-      include: { user: { select: { name: true, email: true } } },
-    });
     // If the viewer is a plain PARTNER, only show their own share.
     const scoped =
       access?.role === "PARTNER"
