@@ -12,6 +12,7 @@ import {
   deleteLead,
 } from "@/server/actions/leads";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -36,6 +37,7 @@ type Lead = {
   id: string;
   source: string;
   orderNo: string | null;
+  wooStatus: string | null;
   date: string;
   customerName: string;
   phone: string;
@@ -194,7 +196,16 @@ export function LeadManager({
       sortValue: (l) => l.date,
       cell: (l) => (
         <span>
-          {l.orderNo ?? "—"}
+          <span className="inline-flex items-center gap-1.5">
+            {l.orderNo ?? "—"}
+            {/* An abandoned checkout, not a placed order — the call is "do you
+                want to finish it?", not "confirming your order". */}
+            {l.wooStatus === "checkout-draft" && (
+              <Badge variant="outline" title="Customer filled the checkout form but never placed the order">
+                Draft
+              </Badge>
+            )}
+          </span>
           <span className="block text-xs font-normal text-muted-foreground">{l.date}</span>
         </span>
       ),

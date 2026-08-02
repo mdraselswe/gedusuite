@@ -61,6 +61,7 @@ export default async function LeadsPage({
     id: l.id,
     source: l.source,
     orderNo: l.orderNo,
+    wooStatus: l.wooStatus,
     date: dhakaDate.format(l.orderedAt),
     customerName: l.customerName,
     phone: l.phone,

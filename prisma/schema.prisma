@@ -749,6 +749,10 @@ model OrderLead {
   source     String  @default("WOOCOMMERCE")
   externalId String // WooCommerce order id
   orderNo    String? // the #1234 shown in the Telegram message
+  // WooCommerce's own status. "checkout-draft" means the customer filled the
+  // checkout form but never pressed Place order — worth calling, but a very
+  // different conversation from a confirmed order, so it's shown in the list.
+  wooStatus  String?
   rawPayload Json? // full webhook body, for anything not mapped above
 
   customerName String

@@ -33,6 +33,7 @@ type WooLineItem = {
 type WooOrder = {
   id?: number;
   number?: string;
+  status?: string;
   date_created?: string;
   date_created_gmt?: string;
   total?: string;
@@ -117,6 +118,10 @@ export async function POST(req: NextRequest) {
 
   const fields = {
     orderNo: order.number ? `#${order.number}` : null,
+    // "checkout-draft" = the customer filled the checkout form but never
+    // pressed Place order. No webhook ever fires for those, so they only
+    // arrive via the backfill script — but once here they're worth calling.
+    wooStatus: order.status ?? null,
     customerName: name,
     // Never drop an order for a missing phone — an empty cell is still callable
     // information ("no number given"), a 400 back to WooCommerce is not.
