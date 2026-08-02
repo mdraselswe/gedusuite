@@ -7,7 +7,7 @@ import { CallStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireAccess } from "@/lib/authz";
 import { requireUser } from "@/lib/session";
-import { createCustomer } from "@/server/actions/customers";
+import { createCustomer, findCustomerByPhone } from "@/server/actions/customers";
 import { syncWooOrders, wooConfigured } from "@/lib/woo";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
@@ -153,7 +153,7 @@ export async function updateLeadNotes(
 export async function createCustomerFromLead(
   slug: string,
   id: string,
-): Promise<ActionResult & { customerId?: string; customerName?: string }> {
+): Promise<ActionResult & { customerId?: string; customerName?: string; matched?: boolean }> {
   const gate = await requireAccess(slug, MODULE, "add");
   if (!gate.ok) return gate;
 
@@ -163,6 +163,20 @@ export async function createCustomerFromLead(
   if (!lead) return { ok: false, error: "Lead not found" };
   if (lead.convertedCustomerId) {
     return { ok: false, error: "A customer was already created from this order" };
+  }
+
+  // A repeat buyer would otherwise become a second customer row, splitting
+  // their order history and outstanding balance in half — and hiding how often
+  // this number has cancelled before, which is the thing worth knowing before
+  // sending a COD parcel. Link to the existing record instead.
+  const existing = await findCustomerByPhone(slug, lead.phone);
+  if (existing) {
+    await prisma.orderLead.updateMany({
+      where: { id, workspaceId: gate.access.workspaceId },
+      data: { convertedCustomerId: existing.id },
+    });
+    revalidatePath(`/${slug}/leads`);
+    return { ok: true, customerId: existing.id, customerName: existing.name, matched: true };
   }
 
   const fd = new FormData();

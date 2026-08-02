@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAccess } from "@/lib/authz";
+import { normalizePhone } from "@/lib/phone";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -27,6 +28,9 @@ function parse(formData: FormData) {
 
 const clean = (s?: string) => (s && s.trim() ? s.trim() : null);
 
+// Stored normalised so the same person typed two different ways still matches.
+const cleanPhone = (s?: string) => normalizePhone(s);
+
 export async function createCustomer(
   slug: string,
   formData: FormData,
@@ -42,8 +46,8 @@ export async function createCustomer(
     data: {
       workspaceId: gate.access.workspaceId,
       name: d.name,
-      phone: clean(d.phone),
-      altPhone: clean(d.altPhone),
+      phone: cleanPhone(d.phone),
+      altPhone: cleanPhone(d.altPhone),
       address: clean(d.address),
       notes: clean(d.notes),
     },
@@ -70,8 +74,8 @@ export async function updateCustomer(
     where: { id, workspaceId: gate.access.workspaceId },
     data: {
       name: d.name,
-      phone: clean(d.phone),
-      altPhone: clean(d.altPhone),
+      phone: cleanPhone(d.phone),
+      altPhone: cleanPhone(d.altPhone),
       address: clean(d.address),
       notes: clean(d.notes),
     },
@@ -79,6 +83,35 @@ export async function updateCustomer(
   if (res.count === 0) return { ok: false, error: "Customer not found" };
   revalidatePath(`/${slug}/customers`);
   return { ok: true };
+}
+
+/**
+ * Find an existing customer on this number, so the same person doesn't become
+ * two rows with half their order history each.
+ *
+ * Matches on the normalised form and on altPhone too — plenty of people order
+ * once from their own number and once from the one they listed as alternate.
+ * Purely advisory: callers warn or link, nothing here blocks a create, because
+ * a genuinely shared family or shop number has to stay possible.
+ */
+export async function findCustomerByPhone(
+  slug: string,
+  phone: string,
+): Promise<{ id: string; name: string; phone: string | null } | null> {
+  const gate = await requireAccess(slug, "customers", "view");
+  if (!gate.ok) return null;
+
+  const normalized = normalizePhone(phone);
+  if (!normalized) return null;
+
+  return prisma.customer.findFirst({
+    where: {
+      workspaceId: gate.access.workspaceId,
+      OR: [{ phone: normalized }, { altPhone: normalized }],
+    },
+    select: { id: true, name: true, phone: true },
+    orderBy: { createdAt: "asc" },
+  });
 }
 
 export async function deleteCustomer(

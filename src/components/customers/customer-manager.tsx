@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
-import { updateCustomer, deleteCustomer } from "@/server/actions/customers";
+import { updateCustomer, deleteCustomer, findCustomerByPhone } from "@/server/actions/customers";
 import { submitOrQueue } from "@/lib/offline-queue";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,7 +20,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { DataTable, type Column } from "@/components/ui/data-table";
-import { Users } from "lucide-react";
+import { Users, AlertTriangle } from "lucide-react";
 
 type Customer = {
   id: string;
@@ -49,6 +49,15 @@ export function CustomerManager({
   const [loading, setLoading] = useState(false);
   const [query, setQuery] = useState("");
   const [duesOnly, setDuesOnly] = useState(false);
+  const [phoneMatch, setPhoneMatch] = useState<{ id: string; name: string } | null>(null);
+
+  async function checkPhone(value: string) {
+    setPhoneMatch(null);
+    if (!value.trim()) return;
+    const found = await findCustomerByPhone(slug, value);
+    // Editing a customer always "matches" itself; that isn't a duplicate.
+    if (found && found.id !== editing?.id) setPhoneMatch(found);
+  }
 
   const filtered = customers.filter((c) => {
     const matches =
@@ -231,7 +240,14 @@ export function CustomerManager({
         }
       />
 
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog
+        open={open}
+        onOpenChange={(o) => {
+          setOpen(o);
+          // Don't carry a warning from the last customer into the next one.
+          if (!o) setPhoneMatch(null);
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{editing ? "Edit customer" : "Add customer"}</DialogTitle>
@@ -243,7 +259,25 @@ export function CustomerManager({
             </div>
             <div className="space-y-2">
               <Label htmlFor="c-phone">Phone</Label>
-              <Input id="c-phone" name="phone" defaultValue={editing?.phone ?? ""} />
+              <Input
+                id="c-phone"
+                name="phone"
+                defaultValue={editing?.phone ?? ""}
+                onBlur={(e) => checkPhone(e.currentTarget.value)}
+              />
+              {/* Advisory only. A shared family or shop number is a real, if
+                  rare, thing — but the same person entered twice splits their
+                  order history and outstanding balance, which is the far more
+                  common accident. */}
+              {phoneMatch && (
+                <p className="flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-400">
+                  <AlertTriangle className="size-3.5 shrink-0" />
+                  <span>
+                    This number is already on <strong>{phoneMatch.name}</strong> — same person?
+                    Saving anyway creates a second customer.
+                  </span>
+                </p>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="c-alt-phone">Alternate phone</Label>
