@@ -1,15 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Check, Copy, PhoneCall, UserPlus } from "lucide-react";
+import { Check, Copy, PhoneCall, RefreshCw, UserPlus } from "lucide-react";
 import {
   createLead,
   setLeadStatus,
   updateLeadNotes,
   createCustomerFromLead,
   deleteLead,
+  syncFromWebsite,
 } from "@/server/actions/leads";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { Badge } from "@/components/ui/badge";
@@ -129,6 +130,30 @@ export function LeadManager({
   const [addSaving, setAddSaving] = useState(false);
   const [notesFor, setNotesFor] = useState<Lead | null>(null);
   const [notesSaving, setNotesSaving] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+
+  // Pull from the website once the list is on screen, not while rendering it:
+  // WooCommerce fires no webhook for abandoned checkouts, so they'd otherwise
+  // never appear. The page paints from the database first and picks up
+  // anything new a moment later; the action throttles itself server-side, so
+  // opening the list repeatedly doesn't hammer the store.
+  const autoSynced = useRef(false);
+  useEffect(() => {
+    if (autoSynced.current) return;
+    autoSynced.current = true;
+    syncFromWebsite(slug).then((res) => {
+      if (res.ok && !res.skipped && res.imported) router.refresh();
+    });
+  }, [slug, router]);
+
+  async function onRefresh() {
+    setSyncing(true);
+    const res = await syncFromWebsite(slug, true);
+    setSyncing(false);
+    if (!res.ok) return toast.error(res.error);
+    toast.success(res.imported ? `Checked the website — ${res.imported} orders` : "Up to date");
+    router.refresh();
+  }
 
   const filtered = statusFilter === ALL ? leads : leads.filter((l) => l.callStatus === statusFilter);
 
@@ -365,6 +390,12 @@ export function LeadManager({
         {perms.canAdd && (
           <Button size="sm" onClick={() => setAddOpen(true)}>
             + Add order
+          </Button>
+        )}
+        {perms.canAdd && (
+          <Button size="sm" variant="outline" onClick={onRefresh} disabled={syncing}>
+            <RefreshCw data-icon="inline-start" className={cn(syncing && "animate-spin")} />
+            {syncing ? "Checking…" : "Refresh"}
           </Button>
         )}
       </div>

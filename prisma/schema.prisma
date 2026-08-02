@@ -781,3 +781,13 @@ model OrderLead {
   @@index([workspaceId, callStatus])
   @@index([workspaceId, orderedAt])
 }
+
+// Remembers when the call list last pulled from WooCommerce, so opening the
+// page repeatedly doesn't hammer the store. Deliberately standalone — plain
+// workspaceId, no relation — for the same reason as OrderLead: restoreSnapshot
+// must never trip over it.
+model WooSyncState {
+  workspaceId String   @id
+  lastSyncAt  DateTime @default(now())
+  lastResult  String?
+}

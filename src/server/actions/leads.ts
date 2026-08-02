@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAccess } from "@/lib/authz";
 import { requireUser } from "@/lib/session";
 import { createCustomer } from "@/server/actions/customers";
+import { syncWooOrders, wooConfigured } from "@/lib/woo";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -181,6 +182,59 @@ export async function createCustomerFromLead(
 
   revalidatePath(`/${slug}/leads`);
   return { ok: true, customerId: created.id, customerName: created.name };
+}
+
+/** How long a pull is considered fresh enough to skip repeating. */
+const SYNC_THROTTLE_MS = 10 * 60 * 1000;
+
+/**
+ * Pull orders from WooCommerce into the call list.
+ *
+ * The webhook already delivers real orders, but WooCommerce fires nothing for
+ * a checkout-draft — a customer who filled in the checkout and never pressed
+ * Place order. Those only ever appear by asking, which is what this does.
+ *
+ * Called on its own from the page (throttled, so opening the list repeatedly
+ * doesn't hammer the store) and by the Refresh button (force). Failure is
+ * reported, never thrown: the list still renders fine from what's already in
+ * the database, and the website being unreachable must not break the page.
+ */
+export async function syncFromWebsite(
+  slug: string,
+  force = false,
+): Promise<ActionResult & { imported?: number; skipped?: boolean }> {
+  const gate = await requireAccess(slug, MODULE, "add");
+  if (!gate.ok) return gate;
+  if (!wooConfigured()) return { ok: false, error: "Website connection is not configured" };
+
+  const workspaceId = gate.access.workspaceId;
+
+  if (!force) {
+    const state = await prisma.wooSyncState.findUnique({ where: { workspaceId } });
+    if (state && Date.now() - state.lastSyncAt.getTime() < SYNC_THROTTLE_MS) {
+      return { ok: true, skipped: true };
+    }
+  }
+
+  try {
+    const res = await syncWooOrders(workspaceId);
+    await prisma.wooSyncState.upsert({
+      where: { workspaceId },
+      create: { workspaceId, lastSyncAt: new Date(), lastResult: `${res.upserted} orders` },
+      update: { lastSyncAt: new Date(), lastResult: `${res.upserted} orders` },
+    });
+    revalidatePath(`/${slug}/leads`);
+    return { ok: true, imported: res.upserted };
+  } catch (e) {
+    // Stamp the attempt anyway, so a website that's down doesn't turn every
+    // page view into another slow, failing round trip.
+    await prisma.wooSyncState.upsert({
+      where: { workspaceId },
+      create: { workspaceId, lastSyncAt: new Date(), lastResult: `failed: ${String(e)}` },
+      update: { lastSyncAt: new Date(), lastResult: `failed: ${String(e)}` },
+    });
+    return { ok: false, error: "Couldn't reach the website just now" };
+  }
 }
 
 export async function deleteLead(slug: string, id: string): Promise<ActionResult> {
