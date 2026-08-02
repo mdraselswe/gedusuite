@@ -82,11 +82,19 @@ export async function POST(req: NextRequest) {
   }
 
   const raw = await req.text();
+
+  // Saving a webhook makes WooCommerce call deliver_ping(), which posts the
+  // form body "webhook_id=N" with NO signature header, and refuses to activate
+  // the webhook unless it gets a 200 back. Answering it costs nothing: the
+  // body carries no data and nothing below this line runs.
+  if (/^webhook_id=\d+$/.test(raw.trim())) {
+    return NextResponse.json({ ok: true, pong: true });
+  }
+
   if (!signatureMatches(raw, req.headers.get("x-wc-webhook-signature"), secret)) {
     return NextResponse.json({ error: "Bad signature" }, { status: 401 });
   }
 
-  // WooCommerce fires a tiny "webhook_id only" ping when the hook is saved.
   let order: WooOrder;
   try {
     order = JSON.parse(raw) as WooOrder;
