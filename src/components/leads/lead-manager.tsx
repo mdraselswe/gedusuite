@@ -224,9 +224,15 @@ export function LeadManager({
           <span className="inline-flex items-center gap-1.5">
             {l.orderNo ?? "—"}
             {/* An abandoned checkout, not a placed order — the call is "do you
-                want to finish it?", not "confirming your order". */}
+                want to finish it?", not "confirming your order". Amber rather
+                than red: it needs noticing, but it's an opportunity, not a
+                failure. Stronger than the section palette's /10 tint because
+                this one has to carry across a dense table at a glance. */}
             {l.wooStatus === "checkout-draft" && (
-              <Badge variant="outline" title="Customer filled the checkout form but never placed the order">
+              <Badge
+                className="border-amber-500/40 bg-amber-500/20 font-semibold text-amber-700 dark:bg-amber-500/25 dark:text-amber-300"
+                title="Customer filled the checkout form but never placed the order"
+              >
                 Draft
               </Badge>
             )}
