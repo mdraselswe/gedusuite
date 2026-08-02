@@ -44,6 +44,15 @@ function NavLink({
     <Link
       href={item.href}
       onClick={onNavigate}
+      // Every workspace route now ships a loading.tsx, which is exactly what
+      // makes a dynamic route prefetchable — so the default turned all 13
+      // sidebar links into background renders, doubled because this nav is
+      // rendered twice (desktop aside + mobile drawer). That was ~26 lambda
+      // invocations and their DB queries on every single page view, which
+      // showed up as intermittent failures against the Neon pooler. The
+      // skeletons still do their job on a real click; we just don't
+      // speculatively render the whole app behind the user's back.
+      prefetch={false}
       className={cn(
         "group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors md:py-2",
         active
