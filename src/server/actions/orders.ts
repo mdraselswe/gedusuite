@@ -7,6 +7,7 @@ import { requireAccess } from "@/lib/authz";
 import { variantStockMap, STOCK_CONSUMING_STATUSES } from "@/lib/inventory";
 import { variantFullName } from "@/lib/variants";
 import { computeOrderTotals } from "@/lib/orders";
+import { isOrderSource } from "@/lib/order-source";
 import type { OrderStatus, PaymentStatus } from "@prisma/client";
 
 export type ActionResult = { ok: true; id?: string } | { ok: false; error: string };
@@ -546,5 +547,40 @@ export async function deleteOrder(slug: string, id: string): Promise<ActionResul
   });
   revalidatePath(`/${slug}/sales/orders`);
   revalidatePath(`/${slug}/dashboard`);
+  return { ok: true };
+}
+
+/**
+ * Tag where an order came from.
+ *
+ * Deliberately its own action rather than a field on the order form: this way
+ * the form and its submit path stay untouched, and existing orders can be
+ * tagged after the fact from the list.
+ *
+ * Gated on sales:edit rather than sales:add — this is a correction to an
+ * existing order, not creating one.
+ */
+export async function setOrderSource(
+  slug: string,
+  id: string,
+  source: string | null,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const gate = await requireAccess(slug, "sales", "edit");
+  if (!gate.ok) return gate;
+
+  // The column is a plain string, so nothing at the database level would
+  // reject a typo — validate here instead.
+  if (source !== null && !isOrderSource(source)) {
+    return { ok: false, error: "Unknown order source" };
+  }
+
+  const res = await prisma.order.updateMany({
+    where: { id, workspaceId: gate.access.workspaceId },
+    data: { source },
+  });
+  if (res.count === 0) return { ok: false, error: "Order not found" };
+
+  revalidatePath(`/${slug}/sales/orders`);
+  revalidatePath(`/${slug}/reports`);
   return { ok: true };
 }

@@ -48,6 +48,7 @@ import {
   type VariantOption as SearchVariantOption,
 } from "@/server/actions/search";
 import { DataTable, type Column } from "@/components/ui/data-table";
+import { OrderSourceCell } from "@/components/sales/order-source-cell";
 import { Columns3, Plus, ShoppingCart, Trash2, MoreVertical, X } from "lucide-react";
 import { formatStock } from "@/lib/units";
 
@@ -70,6 +71,7 @@ type OrderRow = {
   courierTrackingId: string | null;
   paymentStatus: string;
   paymentMethod: string;
+  source: string | null;
   deliveryCharge: number;
   deliveryCost: number | null;
   packagingCost: number;
@@ -720,6 +722,18 @@ export function OrderManager({
                   },
                 ]
               : []),
+            {
+              key: "source",
+              header: "Came from",
+              cell: (o) => (
+                <OrderSourceCell
+                  slug={slug}
+                  orderId={o.id}
+                  value={o.source}
+                  canEdit={perms.canEdit}
+                />
+              ),
+            },
             {
               key: "total",
               header: "Total",

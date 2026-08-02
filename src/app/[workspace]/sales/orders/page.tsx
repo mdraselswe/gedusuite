@@ -106,6 +106,7 @@ export default async function OrdersPage({
       courierTrackingId: o.courierTrackingId,
       paymentStatus: o.paymentStatus,
       paymentMethod: o.paymentMethod,
+      source: o.source,
       deliveryCharge: Number(o.deliveryCharge),
       deliveryCost: o.deliveryCost !== null ? Number(o.deliveryCost) : null,
       packagingCost: Number(o.packagingCost),

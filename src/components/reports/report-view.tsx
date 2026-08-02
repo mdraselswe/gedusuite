@@ -17,6 +17,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTable, type Column } from "@/components/ui/data-table";
+import { orderSourceLabel } from "@/lib/order-source";
+import { cn } from "@/lib/utils";
 import { BarChart3, Users, Wallet } from "lucide-react";
 import type { Report } from "@/lib/reports";
 
@@ -105,6 +107,20 @@ export function ReportView({
         "Partner shares",
       );
     }
+    if (report.bySource.length) {
+      XLSX.utils.book_append_sheet(
+        wb,
+        XLSX.utils.json_to_sheet(
+          report.bySource.map((s) => ({
+            Channel: orderSourceLabel(s.source),
+            Orders: s.orders,
+            Revenue: s.revenue,
+            Profit: s.profit,
+          })),
+        ),
+        "Order sources",
+      );
+    }
     if (report.collectedByMethod.length) {
       XLSX.utils.book_append_sheet(
         wb,
@@ -178,6 +194,17 @@ export function ReportView({
           p.name,
           p.percent.toFixed(2),
           p.amount.toFixed(2),
+        ]),
+      });
+    }
+    if (report.bySource.length) {
+      autoTable(doc, {
+        head: [["Came from", "Orders", "Revenue", "Profit"]],
+        body: report.bySource.map((s) => [
+          orderSourceLabel(s.source),
+          String(s.orders),
+          s.revenue.toFixed(2),
+          s.profit.toFixed(2),
         ]),
       });
     }
@@ -324,6 +351,48 @@ export function ReportView({
           </CardContent>
         </Card>
       )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Where orders came from</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <DataTable
+            rows={report.bySource}
+            rowKey={(s) => s.source ?? "__unset__"}
+            empty={{ icon: Wallet, title: "No orders in this range" }}
+            columns={
+              [
+                {
+                  key: "source",
+                  header: "Channel",
+                  cardTitle: true,
+                  cell: (s) => (
+                    // Untagged orders are called out, not quietly dashed: the
+                    // report is only as complete as the tagging.
+                    <span className={cn(!s.source && "text-amber-700 dark:text-amber-400")}>
+                      {orderSourceLabel(s.source)}
+                    </span>
+                  ),
+                },
+                { key: "orders", header: "Orders", align: "right", cell: (s) => s.orders },
+                {
+                  key: "revenue",
+                  header: "Revenue",
+                  align: "right",
+                  cell: (s) => <span className="font-medium">{s.revenue.toFixed(2)}</span>,
+                },
+                {
+                  key: "profit",
+                  header: "Profit",
+                  align: "right",
+                  cell: (s) => s.profit.toFixed(2),
+                },
+              ] as Column<Report["bySource"][number]>[]
+            }
+          />
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

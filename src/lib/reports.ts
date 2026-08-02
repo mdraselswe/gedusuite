@@ -33,6 +33,14 @@ export type ProductPerf = {
 
 export type PaymentMethodTotal = { method: string; amount: number; orders: number };
 
+/** Where orders came from. `source` is null for anything never tagged. */
+export type SourceTotal = {
+  source: string | null;
+  orders: number;
+  revenue: number;
+  profit: number;
+};
+
 export type Report = {
   kpis: {
     revenue: number;
@@ -48,6 +56,9 @@ export type Report = {
   // Money actually collected (paymentStatus PAID only — UNPAID/PARTIAL isn't
   // "collected" yet), grouped by how the customer paid. Sorted by amount desc.
   collectedByMethod: PaymentMethodTotal[];
+  // Which channel the orders came from — count, revenue and profit each.
+  // Cancelled orders are already excluded upstream, so this counts real sales.
+  bySource: SourceTotal[];
 };
 
 /** `range: null` means "all time" — no date filter at all. */
@@ -77,6 +88,7 @@ export async function buildReport(
   const seriesMap = new Map<string, { sales: number; profit: number }>();
   const productMap = new Map<string, ProductPerf>();
   const methodMap = new Map<string, { amount: number; orders: number }>();
+  const sourceMap = new Map<string, { orders: number; revenue: number; profit: number }>();
 
   for (const o of orders) {
     const t = computeOrderTotals(o);
@@ -88,6 +100,13 @@ export async function buildReport(
     s.sales += t.netRevenue;
     s.profit += t.netProfit;
     seriesMap.set(day, s);
+
+    const srcKey = o.source ?? "";
+    const src = sourceMap.get(srcKey) ?? { orders: 0, revenue: 0, profit: 0 };
+    src.orders += 1;
+    src.revenue += t.netRevenue;
+    src.profit += t.netProfit;
+    sourceMap.set(srcKey, src);
 
     if (o.paymentStatus === "PAID") {
       const m = methodMap.get(o.paymentMethod) ?? { amount: 0, orders: 0 };
@@ -168,5 +187,18 @@ export async function buildReport(
     products,
     partnerShares,
     collectedByMethod,
+    // Biggest channel first; untagged orders sort last however large, because
+    // "Not set" is a gap to close rather than a channel to celebrate.
+    bySource: [...sourceMap.entries()]
+      .map(([source, v]) => ({
+        source: source || null,
+        orders: v.orders,
+        revenue: round2(v.revenue),
+        profit: round2(v.profit),
+      }))
+      .sort((a, b) => {
+        if (!a.source !== !b.source) return a.source ? -1 : 1;
+        return b.revenue - a.revenue;
+      }),
   };
 }
