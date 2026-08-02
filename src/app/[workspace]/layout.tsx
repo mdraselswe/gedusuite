@@ -1,4 +1,3 @@
-import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import {
   LayoutDashboard,
@@ -21,7 +20,6 @@ import { can } from "@/lib/rbac";
 import { getUserPrefs } from "@/lib/user-prefs";
 import { translate, isLocale, type Locale } from "@/lib/i18n";
 import { AppShell, type NavItem } from "@/components/layout/app-shell";
-import { AppShellSkeleton } from "@/components/layout/app-shell-skeleton";
 
 // Identity helper so each object literal below is individually contextually
 // typed against NavItem (narrowing `color` to the SectionColor union) instead
@@ -30,27 +28,7 @@ function navItem(n: NavItem & { show: boolean }) {
   return n;
 }
 
-/**
- * Deliberately synchronous, so the HTML shell flushes on the first tick and
- * the skeleton streams out while the chrome's DB round trips are still in
- * flight. Awaiting here instead would block the whole document: a segment's
- * loading.tsx sits *inside* its own layout, so it cannot cover this.
- */
-export default function WorkspaceLayout({
-  children,
-  params,
-}: {
-  children: React.ReactNode;
-  params: Promise<{ workspace: string }>;
-}) {
-  return (
-    <Suspense fallback={<AppShellSkeleton />}>
-      <WorkspaceChrome params={params}>{children}</WorkspaceChrome>
-    </Suspense>
-  );
-}
-
-async function WorkspaceChrome({
+export default async function WorkspaceLayout({
   children,
   params,
 }: {

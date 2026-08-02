@@ -1,4 +1,3 @@
-import { cache } from "react";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { can, type Access, type Module } from "@/lib/rbac";
@@ -16,9 +15,7 @@ export type WorkspaceAccess = {
  * (authoritative — picks up granular permission overrides, unlike the JWT).
  * Returns null if unauthenticated or not a member.
  */
-export const workspaceAccess = cache(async function workspaceAccess(
-  slug: string,
-): Promise<WorkspaceAccess | null> {
+export async function workspaceAccess(slug: string): Promise<WorkspaceAccess | null> {
   const user = await requireUser();
   // Single round trip (was 2 sequential queries): filter membership directly by
   // the workspace's slug via the relation instead of looking up the workspace
@@ -35,7 +32,7 @@ export const workspaceAccess = cache(async function workspaceAccess(
     role: membership.role,
     permissions: membership.permissions,
   };
-});
+}
 
 /**
  * Require a specific access level on a module. Returns the access context on
