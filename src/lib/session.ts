@@ -1,12 +1,18 @@
+import { cache } from "react";
 import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import { authOptions } from "@/lib/auth";
 import type { SessionMembership } from "@/lib/auth";
 import { translate, isLocale, type Locale, type MsgKey } from "@/lib/i18n";
 
-export function auth() {
-  return getServerSession(authOptions);
-}
+/**
+ * Cached per-request: a single page render calls this many times over (root
+ * layout, workspace layout, the page's own requireMembership, workspaceAccess,
+ * serverT). Each uncached call re-reads the cookie and re-decrypts the session
+ * JWE from scratch. The cookie can't change mid-request, so one decode is
+ * enough — React dedupes within a render pass.
+ */
+export const auth = cache(() => getServerSession(authOptions));
 
 /** Server-side translator bound to the signed-in user's locale. */
 export async function serverT(): Promise<(k: MsgKey) => string> {
