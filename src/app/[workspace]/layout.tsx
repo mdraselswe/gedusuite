@@ -14,6 +14,7 @@ import {
   UserCog,
   DatabaseBackup,
   Palette,
+  PhoneCall,
 } from "lucide-react";
 import { requireMembership } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
@@ -100,6 +101,15 @@ async function WorkspaceChrome({
       label: t("sales"),
       icon: <Receipt className="size-4" />,
       color: "emerald",
+      show: can(role, "sales", "view"),
+    }),
+    navItem({
+      // Gated on `sales` (not a module of its own) and labelled in English
+      // rather than via t(), so neither rbac.ts nor i18n.ts needs an entry.
+      href: `/${slug}/leads`,
+      label: "Call list",
+      icon: <PhoneCall className="size-4" />,
+      color: "sky",
       show: can(role, "sales", "view"),
     }),
     navItem({

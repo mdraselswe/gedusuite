@@ -31,28 +31,29 @@ model Workspace {
   themeColor String?
   createdAt  DateTime @default(now())
 
-  memberships   Membership[]
-  invites       Invite[]
-  suppliers     Supplier[]
-  products      Product[]
-  purchases     Purchase[]
-  notifications Notification[]
-  customers     Customer[]
-  orders        Order[]
-  returns       Return[]
-  partners      Partner[]
-  partnerTxns   PartnerTxn[]
-  treasury      TreasuryEntry[]
-  internalPurchases InternalPurchase[]
-  backupLogs    BackupLog[]
-  backupSetting BackupSetting?
-  stockAdjustments StockAdjustment[]
-  productCategories ProductCategory[]
+  memberships           Membership[]
+  invites               Invite[]
+  suppliers             Supplier[]
+  products              Product[]
+  purchases             Purchase[]
+  notifications         Notification[]
+  customers             Customer[]
+  orders                Order[]
+  returns               Return[]
+  partners              Partner[]
+  partnerTxns           PartnerTxn[]
+  treasury              TreasuryEntry[]
+  internalPurchases     InternalPurchase[]
+  backupLogs            BackupLog[]
+  backupSetting         BackupSetting?
+  stockAdjustments      StockAdjustment[]
+  productCategories     ProductCategory[]
   userGoogleConnections UserGoogleConnection[]
-  profitDistributions ProfitDistribution[]
-  boostCampaigns    BoostCampaign[]
-  boostAdSets       BoostAdSet[]
-  boostDailySpends  BoostDailySpend[]
+  profitDistributions   ProfitDistribution[]
+  boostCampaigns        BoostCampaign[]
+  boostAdSets           BoostAdSet[]
+  boostDailySpends      BoostDailySpend[]
+  orderLeads            OrderLead[]
 }
 
 model User {
@@ -67,10 +68,10 @@ model User {
   locale        String    @default("en") // en | bn
   createdAt     DateTime  @default(now())
 
-  accounts        Account[]
-  sessions        Session[]
-  memberships     Membership[]
-  partners        Partner[]
+  accounts         Account[]
+  sessions         Session[]
+  memberships      Membership[]
+  partners         Partner[]
   googleConnection UserGoogleConnection?
 }
 
@@ -205,18 +206,18 @@ model ProductCategory {
 }
 
 model ProductVariant {
-  id        String  @id @default(cuid())
-  productId String
+  id                String   @id @default(cuid())
+  productId         String
   // The variant's attribute combination as [{ name, value }], e.g.
   // [{ "name": "Size", "value": "M" }, { "name": "Color", "value": "Red" }].
   // [] = the product's single default variant.
-  attributes Json    @default("[]")
-  sku        String?
+  attributes        Json     @default("[]")
+  sku               String?
   // Per-variant catalogue pricing; used as the default in purchase/order forms.
-  salePrice  Decimal? @db.Decimal(12, 2) // default selling price per piece
-  unitCost   Decimal? @db.Decimal(12, 2) // default buying cost per piece
-  barcode    String?
-  imageUrl   String? // data URI (Phase 1), like Product.imageUrl
+  salePrice         Decimal? @db.Decimal(12, 2) // default selling price per piece
+  unitCost          Decimal? @db.Decimal(12, 2) // default buying cost per piece
+  barcode           String?
+  imageUrl          String? // data URI (Phase 1), like Product.imageUrl
   // Overrides Product.lowStockThreshold for this variant when set.
   lowStockThreshold Int?
   description       String? // short note shown with the variant
@@ -327,24 +328,24 @@ model Customer {
 }
 
 model Order {
-  id            String        @id @default(cuid())
-  workspaceId   String
-  customerId    String?
-  date          DateTime      @default(now())
-  status        OrderStatus   @default(PENDING)
-  deliveryType  DeliveryType  @default(SELF)
-  deliveryCharge Decimal      @default(0) @db.Decimal(12, 2) // charged to the customer
-  deliveryCost  Decimal?      @db.Decimal(12, 2) // actual amount paid to the courier; null = assume it equals deliveryCharge (pure pass-through)
-  courierTrackingId String? // the courier's own order/consignment number (deliveryType=COURIER); shown on the invoice instead of the internal id
-  paymentMethod PaymentMethod @default(CASH)
-  paymentStatus PaymentStatus @default(UNPAID)
-  packagingCost Decimal       @default(0) @db.Decimal(12, 2)
-  giftCost      Decimal       @default(0) @db.Decimal(12, 2)
-  discount      Decimal       @default(0) @db.Decimal(12, 2) // order-level discount
+  id                 String        @id @default(cuid())
+  workspaceId        String
+  customerId         String?
+  date               DateTime      @default(now())
+  status             OrderStatus   @default(PENDING)
+  deliveryType       DeliveryType  @default(SELF)
+  deliveryCharge     Decimal       @default(0) @db.Decimal(12, 2) // charged to the customer
+  deliveryCost       Decimal?      @db.Decimal(12, 2) // actual amount paid to the courier; null = assume it equals deliveryCharge (pure pass-through)
+  courierTrackingId  String? // the courier's own order/consignment number (deliveryType=COURIER); shown on the invoice instead of the internal id
+  paymentMethod      PaymentMethod @default(CASH)
+  paymentStatus      PaymentStatus @default(UNPAID)
+  packagingCost      Decimal       @default(0) @db.Decimal(12, 2)
+  giftCost           Decimal       @default(0) @db.Decimal(12, 2)
+  discount           Decimal       @default(0) @db.Decimal(12, 2) // order-level discount
   heldByMembershipId String? // which partner/member currently holds this order's cash
-  cashInTreasury Boolean      @default(false) // true once this PAID order's cash is confirmed deposited into the shared treasury
-  notes         String?
-  createdAt     DateTime      @default(now())
+  cashInTreasury     Boolean       @default(false) // true once this PAID order's cash is confirmed deposited into the shared treasury
+  notes              String?
+  createdAt          DateTime      @default(now())
 
   workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   customer      Customer?      @relation(fields: [customerId], references: [id], onDelete: SetNull)
@@ -428,17 +429,17 @@ enum TreasuryDirection {
 }
 
 model Partner {
-  id                String   @id @default(cuid())
-  workspaceId       String
-  userId            String
-  profitSharePercent Decimal @default(0) @db.Decimal(5, 2) // 0–100
-  notes             String?
-  createdAt         DateTime @default(now())
+  id                 String   @id @default(cuid())
+  workspaceId        String
+  userId             String
+  profitSharePercent Decimal  @default(0) @db.Decimal(5, 2) // 0–100
+  notes              String?
+  createdAt          DateTime @default(now())
 
-  workspace Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  txns      PartnerTxn[]
-  treasury  TreasuryEntry[]
+  workspace         Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  txns              PartnerTxn[]
+  treasury          TreasuryEntry[]
   purchases         Purchase[]
   internalPurchases InternalPurchase[]
   boostSpends       BoostDailySpend[]
@@ -459,10 +460,10 @@ model PartnerTxn {
   boostSpendId   String?        @unique // set when auto-created by a partner-funded boost daily spend (the matching INVESTMENT credit)
   createdAt      DateTime       @default(now())
 
-  workspace    Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  partner      Partner             @relation(fields: [partnerId], references: [id], onDelete: Cascade)
-  distribution ProfitDistribution? @relation(fields: [distributionId], references: [id], onDelete: Cascade)
-  boostSpend   BoostDailySpend?    @relation(fields: [boostSpendId], references: [id], onDelete: Cascade)
+  workspace     Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  partner       Partner             @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  distribution  ProfitDistribution? @relation(fields: [distributionId], references: [id], onDelete: Cascade)
+  boostSpend    BoostDailySpend?    @relation(fields: [boostSpendId], references: [id], onDelete: Cascade)
   // A DEPOSIT_TO_TREASURY txn auto-creates one linked treasury entry.
   treasuryEntry TreasuryEntry?
 
@@ -473,21 +474,21 @@ model PartnerTxn {
 }
 
 model TreasuryEntry {
-  id           String            @id @default(cuid())
-  workspaceId  String
-  type         TreasuryDirection
-  amount       Decimal           @db.Decimal(12, 2)
-  source       String // e.g. "Partner deposit", "Sales", "Rent"
-  note         String?
-  date         DateTime          @default(now())
-  partnerId    String? // which partner this entry is attributed to (optional)
-  partnerTxnId String?           @unique // set when auto-created from a partner txn
-  orderId      String?           @unique // set when auto-created by "mark cash deposited" on an order
-  purchaseId   String?           @unique // set when auto-created by a treasury-funded product purchase
-  internalPurchaseId String?     @unique // set when auto-created by a treasury-funded internal purchase
-  distributionId String?         @unique // set when auto-created by a treasury profit distribution
-  boostSpendId String?           @unique // set when auto-created by a treasury-funded boost daily spend
-  createdAt    DateTime          @default(now())
+  id                 String            @id @default(cuid())
+  workspaceId        String
+  type               TreasuryDirection
+  amount             Decimal           @db.Decimal(12, 2)
+  source             String // e.g. "Partner deposit", "Sales", "Rent"
+  note               String?
+  date               DateTime          @default(now())
+  partnerId          String? // which partner this entry is attributed to (optional)
+  partnerTxnId       String?           @unique // set when auto-created from a partner txn
+  orderId            String?           @unique // set when auto-created by "mark cash deposited" on an order
+  purchaseId         String?           @unique // set when auto-created by a treasury-funded product purchase
+  internalPurchaseId String?           @unique // set when auto-created by a treasury-funded internal purchase
+  distributionId     String?           @unique // set when auto-created by a treasury profit distribution
+  boostSpendId       String?           @unique // set when auto-created by a treasury-funded boost daily spend
+  createdAt          DateTime          @default(now())
 
   workspace        Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   partner          Partner?            @relation(fields: [partnerId], references: [id], onDelete: SetNull)
@@ -515,7 +516,7 @@ model ProfitDistribution {
   date        DateTime @default(now())
   createdAt   DateTime @default(now())
 
-  workspace     Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   treasuryEntry TreasuryEntry?
   partnerTxns   PartnerTxn[]
 
@@ -535,23 +536,23 @@ enum ExpenseCategory {
 }
 
 model InternalPurchase {
-  id              String          @id @default(cuid())
-  workspaceId     String
-  itemName        String
-  description     String?
-  supplierId      String? // preset supplier/shop, picked from the Suppliers list
-  supplierName    String? // denormalized supplier name (kept in sync with supplierId); legacy free-text for rows created before supplierId existed
-  cost            Decimal         @db.Decimal(12, 2) // unit cost
-  quantity        Int             @default(1)
-  category        ExpenseCategory @default(OTHER)
-  paidByPartnerId String? // which partner's money funded this purchase (optional)
-  paidFromTreasury Boolean        @default(false) // funded from the shared treasury instead of a partner (mutually exclusive with paidByPartnerId)
-  date            DateTime        @default(now())
-  createdAt       DateTime        @default(now())
+  id               String          @id @default(cuid())
+  workspaceId      String
+  itemName         String
+  description      String?
+  supplierId       String? // preset supplier/shop, picked from the Suppliers list
+  supplierName     String? // denormalized supplier name (kept in sync with supplierId); legacy free-text for rows created before supplierId existed
+  cost             Decimal         @db.Decimal(12, 2) // unit cost
+  quantity         Int             @default(1)
+  category         ExpenseCategory @default(OTHER)
+  paidByPartnerId  String? // which partner's money funded this purchase (optional)
+  paidFromTreasury Boolean         @default(false) // funded from the shared treasury instead of a partner (mutually exclusive with paidByPartnerId)
+  date             DateTime        @default(now())
+  createdAt        DateTime        @default(now())
 
-  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  supplier      Supplier? @relation(fields: [supplierId], references: [id], onDelete: SetNull)
-  paidByPartner Partner?  @relation(fields: [paidByPartnerId], references: [id], onDelete: SetNull)
+  workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  supplier      Supplier?      @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  paidByPartner Partner?       @relation(fields: [paidByPartnerId], references: [id], onDelete: SetNull)
   treasuryEntry TreasuryEntry?
 
   @@index([workspaceId])
@@ -590,14 +591,14 @@ model BackupLog {
 }
 
 model BackupSetting {
-  id            String   @id @default(cuid())
-  workspaceId   String   @unique
+  id            String    @id @default(cuid())
+  workspaceId   String    @unique
   googleSheetId String? // per-workspace spreadsheet id
   driveFolderId String? // Drive folder for JSON snapshots
-  autoJson      Boolean  @default(false) // include in scheduled JSON backups
+  autoJson      Boolean   @default(false) // include in scheduled JSON backups
   lastJsonAt    DateTime?
   lastSheetsAt  DateTime?
-  updatedAt     DateTime @updatedAt
+  updatedAt     DateTime  @updatedAt
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 }
@@ -717,4 +718,62 @@ model BoostDailySpend {
   @@index([workspaceId])
   @@index([workspaceId, date])
   @@index([paidByPartnerId])
+}
+
+// ── Online order leads (call tracking) ──────────────────────────────
+// Orders placed on gedushop.com land here first. This is a TRACKING table
+// only: it never touches stock, treasury or profit, and the real Order is
+// still created by hand from the sales page exactly as before.
+//
+// Deliberately holds NO foreign keys to Order/Customer/Membership — only
+// plain ids. restoreSnapshot() deletes orders and customers inside one
+// transaction, and a Restrict FK from here would make every backup restore
+// fail. Plain strings keep this table invisible to that code path.
+
+enum CallStatus {
+  NOT_CALLED
+  NO_ANSWER
+  PHONE_OFF
+  WRONG_NUMBER
+  CALL_LATER
+  CONFIRMED
+  CANCELLED
+}
+
+model OrderLead {
+  id          String @id @default(cuid())
+  workspaceId String
+
+  // Kept as a plain string rather than an enum so a second channel (Facebook,
+  // phone order) doesn't need an enum migration on a live table later.
+  source     String  @default("WOOCOMMERCE")
+  externalId String // WooCommerce order id
+  orderNo    String? // the #1234 shown in the Telegram message
+  rawPayload Json? // full webhook body, for anything not mapped above
+
+  customerName String
+  phone        String
+  altPhone     String?
+  address      String?
+  itemsText    String   @default("") // "Robotic Aeroplane (Blue) x2" — for reading, not for stock
+  total        Decimal  @default(0) @db.Decimal(12, 2)
+  orderedAt    DateTime @default(now())
+
+  callStatus     CallStatus @default(NOT_CALLED)
+  callAttempts   Int        @default(0)
+  lastCalledAt   DateTime?
+  calledByName   String? // plain text, not a Membership FK — deleting a member must never be blocked by this table
+  customerAdvice String? // what the customer said about sending the product
+  internalNote   String?
+
+  convertedCustomerId String? // set once "Create customer" is used; plain id, no relation
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, source, externalId]) // webhook retries can't duplicate a lead
+  @@index([workspaceId, callStatus])
+  @@index([workspaceId, orderedAt])
 }

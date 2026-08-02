@@ -1,0 +1,466 @@
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+import { Check, Copy, PhoneCall, UserPlus } from "lucide-react";
+import {
+  createLead,
+  setLeadStatus,
+  updateLeadNotes,
+  createCustomerFromLead,
+  deleteLead,
+} from "@/server/actions/leads";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+} from "@/components/ui/select";
+import { DataTable, type Column } from "@/components/ui/data-table";
+import { cn } from "@/lib/utils";
+
+type Lead = {
+  id: string;
+  source: string;
+  orderNo: string | null;
+  date: string;
+  customerName: string;
+  phone: string;
+  altPhone: string | null;
+  address: string | null;
+  itemsText: string;
+  total: number;
+  callStatus: string;
+  callAttempts: number;
+  calledByName: string | null;
+  customerAdvice: string | null;
+  internalNote: string | null;
+  convertedCustomerId: string | null;
+};
+type Perms = { canAdd: boolean; canDelete: boolean; canAddCustomer: boolean };
+
+const STATUSES = [
+  "NOT_CALLED",
+  "NO_ANSWER",
+  "PHONE_OFF",
+  "WRONG_NUMBER",
+  "CALL_LATER",
+  "CONFIRMED",
+  "CANCELLED",
+] as const;
+
+const STATUS_LABEL: Record<string, string> = {
+  NOT_CALLED: "Not called",
+  NO_ANSWER: "No answer",
+  PHONE_OFF: "Phone off",
+  WRONG_NUMBER: "Wrong number",
+  CALL_LATER: "Call later",
+  CONFIRMED: "Confirmed",
+  CANCELLED: "Cancelled",
+};
+
+// Tints the status trigger so the list is scannable without reading every row.
+const STATUS_TONE: Record<string, string> = {
+  NOT_CALLED: "border-muted-foreground/30",
+  NO_ANSWER: "border-amber-500/60 text-amber-700 dark:text-amber-400",
+  PHONE_OFF: "border-orange-500/60 text-orange-700 dark:text-orange-400",
+  WRONG_NUMBER: "border-red-500/60 text-red-700 dark:text-red-400",
+  CALL_LATER: "border-sky-500/60 text-sky-700 dark:text-sky-400",
+  CONFIRMED: "border-emerald-500/60 text-emerald-700 dark:text-emerald-400",
+  CANCELLED: "border-muted-foreground/40 text-muted-foreground line-through",
+};
+
+const ALL = "__all__";
+
+/** One-tap copy, so a detail can be pasted straight into the order form. */
+function CopyButton({ value, label }: { value: string; label: string }) {
+  const [done, setDone] = useState(false);
+  if (!value) return null;
+  return (
+    <button
+      type="button"
+      title={`Copy ${label}`}
+      aria-label={`Copy ${label}`}
+      className="inline-flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(value);
+          setDone(true);
+          setTimeout(() => setDone(false), 1200);
+        } catch {
+          toast.error("Couldn't copy — your browser blocked clipboard access");
+        }
+      }}
+    >
+      {done ? <Check className="size-3.5 text-emerald-600" /> : <Copy className="size-3.5" />}
+    </button>
+  );
+}
+
+export function LeadManager({
+  slug,
+  leads,
+  perms,
+}: {
+  slug: string;
+  leads: Lead[];
+  perms: Perms;
+}) {
+  const router = useRouter();
+  const [statusFilter, setStatusFilter] = useState<string>(ALL);
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  const [addOpen, setAddOpen] = useState(false);
+  const [addSaving, setAddSaving] = useState(false);
+  const [notesFor, setNotesFor] = useState<Lead | null>(null);
+  const [notesSaving, setNotesSaving] = useState(false);
+
+  const filtered = statusFilter === ALL ? leads : leads.filter((l) => l.callStatus === statusFilter);
+
+  async function onStatusChange(lead: Lead, next: string) {
+    setBusyId(lead.id);
+    const res = await setLeadStatus(slug, lead.id, next);
+    setBusyId(null);
+    if (!res.ok) return toast.error(res.error);
+    toast.success(`Marked "${STATUS_LABEL[next]}"`);
+    router.refresh();
+  }
+
+  async function onAdd(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setAddSaving(true);
+    const res = await createLead(slug, new FormData(e.currentTarget));
+    setAddSaving(false);
+    if (!res.ok) return toast.error(res.error);
+    toast.success("Order added");
+    setAddOpen(false);
+    router.refresh();
+  }
+
+  async function onSaveNotes(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!notesFor) return;
+    setNotesSaving(true);
+    const res = await updateLeadNotes(slug, notesFor.id, new FormData(e.currentTarget));
+    setNotesSaving(false);
+    if (!res.ok) return toast.error(res.error);
+    toast.success("Saved");
+    setNotesFor(null);
+    router.refresh();
+  }
+
+  async function onCreateCustomer(lead: Lead) {
+    setBusyId(lead.id);
+    const res = await createCustomerFromLead(slug, lead.id);
+    setBusyId(null);
+    if (!res.ok) return toast.error(res.error);
+    toast.success(
+      `"${res.customerName}" added — now search this name on the sales page`,
+    );
+    router.refresh();
+  }
+
+  async function onDelete(lead: Lead) {
+    const ok = await confirmDialog({
+      title: "Delete this entry?",
+      description: `"${lead.customerName}" will be removed from the call list. No order or customer is affected.`,
+      confirmText: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
+    const res = await deleteLead(slug, lead.id);
+    if (!res.ok) return toast.error(res.error);
+    toast.success("Deleted");
+    router.refresh();
+  }
+
+  const columns: Column<Lead>[] = [
+    {
+      key: "order",
+      header: "Order",
+      sortValue: (l) => l.date,
+      cell: (l) => (
+        <span>
+          {l.orderNo ?? "—"}
+          <span className="block text-xs font-normal text-muted-foreground">{l.date}</span>
+        </span>
+      ),
+    },
+    {
+      key: "customer",
+      header: "Customer",
+      cardTitle: true,
+      wrap: true,
+      sortValue: (l) => l.customerName.toLowerCase(),
+      cell: (l) => (
+        <span>
+          <span className="inline-flex items-center gap-1">
+            {l.customerName}
+            <CopyButton value={l.customerName} label="name" />
+          </span>
+          {l.address && (
+            <span className="flex items-start gap-1 text-xs font-normal text-muted-foreground">
+              <span className="max-w-60 whitespace-normal">{l.address}</span>
+              <CopyButton value={l.address} label="address" />
+            </span>
+          )}
+        </span>
+      ),
+    },
+    {
+      key: "phone",
+      header: "Phone",
+      cell: (l) => (
+        <span className="inline-flex items-center gap-1">
+          {/* tel: makes this one tap to dial from the installed PWA on a phone. */}
+          <a href={`tel:${l.phone}`} className="font-medium tabular-nums hover:underline">
+            {l.phone}
+          </a>
+          <CopyButton value={l.phone} label="phone" />
+        </span>
+      ),
+    },
+    {
+      key: "items",
+      header: "Items",
+      wrap: true,
+      cell: (l) => (
+        <span className="max-w-72 whitespace-normal text-sm">{l.itemsText || "—"}</span>
+      ),
+    },
+    {
+      key: "total",
+      header: "Total",
+      align: "right",
+      sortValue: (l) => l.total,
+      cell: (l) => l.total.toFixed(2),
+    },
+    {
+      key: "status",
+      header: "Call status",
+      label: "Call status",
+      sortValue: (l) => l.callStatus,
+      cell: (l) => (
+        <Select
+          value={l.callStatus}
+          onValueChange={(v) => v && onStatusChange(l, v)}
+          disabled={!perms.canAdd || busyId === l.id}
+        >
+          {/* Base UI's <SelectValue/> prints the raw value until the popup has
+              mounted its items, so the label is rendered directly instead. */}
+          <SelectTrigger className={cn("h-8 w-38", STATUS_TONE[l.callStatus])}>
+            <span data-slot="select-value">{STATUS_LABEL[l.callStatus]}</span>
+          </SelectTrigger>
+          <SelectContent>
+            {STATUSES.map((s) => (
+              <SelectItem key={s} value={s}>
+                {STATUS_LABEL[s]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      ),
+    },
+    {
+      key: "attempts",
+      header: "Tries",
+      align: "right",
+      hideable: true,
+      sortValue: (l) => l.callAttempts,
+      cell: (l) => (
+        <span title={l.calledByName ? `Last by ${l.calledByName}` : undefined}>
+          {l.callAttempts || "—"}
+        </span>
+      ),
+    },
+    {
+      key: "advice",
+      header: "Customer said",
+      wrap: true,
+      hideable: true,
+      cell: (l) => (
+        <button
+          type="button"
+          onClick={() => setNotesFor(l)}
+          disabled={!perms.canAdd}
+          className="max-w-64 text-left text-sm whitespace-normal hover:underline disabled:hover:no-underline"
+        >
+          {l.customerAdvice ?? <span className="text-muted-foreground">+ Add note</span>}
+        </button>
+      ),
+    },
+    {
+      key: "actions",
+      header: "",
+      cardFullWidth: true,
+      cell: (l) => (
+        <div className="flex items-center justify-end gap-1">
+          {perms.canAddCustomer &&
+            (l.convertedCustomerId ? (
+              <span className="text-xs text-muted-foreground">Customer added</span>
+            ) : (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={busyId === l.id}
+                onClick={() => onCreateCustomer(l)}
+                title="Create this person as a customer, then pick them on the sales page"
+              >
+                <UserPlus data-icon="inline-start" />
+                Customer
+              </Button>
+            ))}
+          {perms.canDelete && (
+            <Button size="sm" variant="ghost" onClick={() => onDelete(l)}>
+              Delete
+            </Button>
+          )}
+        </div>
+      ),
+    },
+  ];
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v ?? ALL)}>
+          <SelectTrigger className="h-9 w-44">
+            <span data-slot="select-value">
+              {statusFilter === ALL ? "All statuses" : STATUS_LABEL[statusFilter]}
+            </span>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>All statuses</SelectItem>
+            {STATUSES.map((s) => (
+              <SelectItem key={s} value={s}>
+                {STATUS_LABEL[s]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {perms.canAdd && (
+          <Button size="sm" onClick={() => setAddOpen(true)}>
+            + Add order
+          </Button>
+        )}
+      </div>
+
+      <DataTable
+        rows={filtered}
+        rowKey={(l) => l.id}
+        colorGroupBy={(l) => l.date}
+        colorToggleLabel="Color by date"
+        searchText={(l) =>
+          `${l.customerName} ${l.phone} ${l.orderNo ?? ""} ${l.itemsText} ${l.address ?? ""}`
+        }
+        searchPlaceholder="Search name, phone, order…"
+        empty={{
+          icon: PhoneCall,
+          title:
+            statusFilter === ALL ? "No online orders yet" : "No orders with this status",
+        }}
+        columns={columns}
+      />
+
+      {/* Manual entry — lets the list be used before the website is wired up. */}
+      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+        <DialogContent>
+          <form onSubmit={onAdd}>
+            <DialogHeader>
+              <DialogTitle>Add an order to the call list</DialogTitle>
+            </DialogHeader>
+            <div className="grid gap-3 py-4">
+              <div className="grid gap-1.5">
+                <Label htmlFor="customerName">Customer name</Label>
+                <Input id="customerName" name="customerName" required maxLength={120} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="grid gap-1.5">
+                  <Label htmlFor="phone">Phone</Label>
+                  <Input id="phone" name="phone" required maxLength={40} inputMode="tel" />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="orderNo">Order no.</Label>
+                  <Input id="orderNo" name="orderNo" maxLength={40} placeholder="#1284" />
+                </div>
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="address">Address</Label>
+                <Textarea id="address" name="address" rows={2} maxLength={500} />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="itemsText">Items</Label>
+                <Input
+                  id="itemsText"
+                  name="itemsText"
+                  maxLength={1000}
+                  placeholder="Robotic Aeroplane (Blue) x2"
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="total">Total</Label>
+                <Input id="total" name="total" type="number" step="0.01" min="0" defaultValue={0} />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="submit" disabled={addSaving}>
+                {addSaving ? "Saving…" : "Add"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!notesFor} onOpenChange={(o) => !o && setNotesFor(null)}>
+        <DialogContent>
+          <form onSubmit={onSaveNotes}>
+            <DialogHeader>
+              <DialogTitle>{notesFor?.customerName}</DialogTitle>
+            </DialogHeader>
+            <div className="grid gap-3 py-4">
+              <div className="grid gap-1.5">
+                <Label htmlFor="customerAdvice">What the customer said</Label>
+                <Textarea
+                  id="customerAdvice"
+                  name="customerAdvice"
+                  rows={3}
+                  maxLength={1000}
+                  defaultValue={notesFor?.customerAdvice ?? ""}
+                  placeholder="e.g. send after Eid, call before delivery"
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="internalNote">Internal note</Label>
+                <Textarea
+                  id="internalNote"
+                  name="internalNote"
+                  rows={2}
+                  maxLength={1000}
+                  defaultValue={notesFor?.internalNote ?? ""}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="submit" disabled={notesSaving}>
+                {notesSaving ? "Saving…" : "Save"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
