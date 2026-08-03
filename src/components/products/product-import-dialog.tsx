@@ -3,7 +3,12 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { Download } from "lucide-react";
 import { importProducts } from "@/server/actions/products";
+import {
+  PRODUCT_IMPORT_SAMPLE_FILENAME,
+  PRODUCT_IMPORT_SAMPLE_JSON,
+} from "@/lib/product-import-sample";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -15,31 +20,20 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
-const EXAMPLE = `[
-  {
-    "name": "Baby Romper",
-    "category": "Baby Clothing",
-    "sku": "ROM-001",
-    "barcode": "8901234567890",
-    "expiryTracked": false,
-    "lowStockThreshold": 5,
-    "attributeNames": ["Size", "Color"],
-    "variants": [
-      {
-        "attributes": [
-          { "name": "Size", "value": "0-3M" },
-          { "name": "Color", "value": "Pink" }
-        ],
-        "salePrice": 450,
-        "unitCost": 300
-      },
-      { "size": "3-6M", "color": "Blue", "sku": "ROM-001-36B", "salePrice": 480 }
-    ]
-  },
-  {
-    "name": "Baby Wipes 120pcs"
-  }
-]`;
+/**
+ * Hand the sample over as a real file rather than asking someone to select
+ * the example text and paste it into an editor — downloading it, changing the
+ * values and uploading it back is the whole workflow.
+ */
+function downloadSample() {
+  const blob = new Blob([PRODUCT_IMPORT_SAMPLE_JSON], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = PRODUCT_IMPORT_SAMPLE_FILENAME;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 export function ProductImportDialog({ slug }: { slug: string }) {
   const router = useRouter();
@@ -134,7 +128,7 @@ export function ProductImportDialog({ slug }: { slug: string }) {
                 <li>
                   <code className="rounded bg-muted px-1">variants</code> — list of{" "}
                   <code className="rounded bg-muted px-1">
-                    {`{ attributes: [{name,value}], salePrice, unitCost, sku, barcode }`}
+                    {`{ attributes: [{name,value}], salePrice, unitCost, sku, barcode, description, lowStockThreshold }`}
                   </code>
                   ; legacy <code className="rounded bg-muted px-1">{`{ size, color }`}</code> still
                   works. Omit for a single default variant
@@ -143,11 +137,17 @@ export function ProductImportDialog({ slug }: { slug: string }) {
               </ul>
               <p className="font-medium">Example</p>
               <pre className="max-h-56 max-w-full overflow-auto rounded-md bg-muted p-3 text-xs leading-relaxed">
-                {EXAMPLE}
+                {PRODUCT_IMPORT_SAMPLE_JSON}
               </pre>
             </div>
 
             <div className="space-y-2">
+              {/* Same content as the example above, as a file — edit the values
+                  and upload it straight back. */}
+              <Button type="button" variant="outline" size="sm" onClick={downloadSample}>
+                <Download data-icon="inline-start" />
+                Download sample file
+              </Button>
               <Input type="file" accept="application/json,.json" onChange={onFile} />
               {fileText && (
                 <p className="text-sm text-muted-foreground">
