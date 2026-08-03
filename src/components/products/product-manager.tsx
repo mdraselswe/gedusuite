@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/select";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ProductImportDialog } from "@/components/products/product-import-dialog";
+import { SkuBuilder } from "@/components/products/sku-builder";
 import { formatStock } from "@/lib/units";
 import { Package } from "lucide-react";
 
@@ -607,10 +608,19 @@ export function ProductManager({
                   onChange={(e) => setThreshold(e.target.value)}
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="p-sku">SKU</Label>
-                <Input id="p-sku" value={sku} onChange={(e) => setSku(e.target.value)} />
-              </div>
+              <SkuBuilder
+                // Remounts per dialog opening, so the suggested number and
+                // prefix are recomputed for each product rather than carried
+                // over from the last one.
+                key={editing?.id ?? "new"}
+                value={sku}
+                onChange={setSku}
+                products={products}
+                category={category}
+                ownSku={editing?.sku}
+                // Three controls plus a preview don't fit a half-width cell.
+                className="sm:col-span-2"
+              />
               <div className="space-y-2">
                 <Label htmlFor="p-barcode">Barcode</Label>
                 <Input id="p-barcode" value={barcode} onChange={(e) => setBarcode(e.target.value)} />
