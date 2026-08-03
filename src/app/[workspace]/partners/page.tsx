@@ -1,8 +1,10 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { workspaceAccess } from "@/lib/authz";
 import { can } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
 import { partnerBalances, totalBusinessProfit, businessCapitalSummary } from "@/lib/finance";
+import { unlinkedPartnerFundingCount } from "@/lib/partner-credit";
 import { serverT } from "@/lib/session";
 import { PartnerManager } from "@/components/partners/partner-manager";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -22,8 +24,9 @@ export default async function PartnersPage({
   }
   const workspaceId = access.workspaceId;
   const canManage = can(access.role, "partners", "full", access.permissions);
+  const canReconcile = can(access.role, "partners", "edit", access.permissions);
 
-  const [partners, balances, profit, members, capital] = await Promise.all([
+  const [partners, balances, profit, members, capital, unreconciled] = await Promise.all([
     prisma.partner.findMany({
       where: { workspaceId },
       include: { user: { select: { name: true, email: true } } },
@@ -36,6 +39,7 @@ export default async function PartnersPage({
       include: { user: { select: { id: true, name: true, email: true } } },
     }),
     businessCapitalSummary(workspaceId),
+    canReconcile ? unlinkedPartnerFundingCount(workspaceId) : Promise.resolve(0),
   ]);
 
   // Full transparency model (owner's decision): every partner sees every
@@ -80,6 +84,29 @@ export default async function PartnersPage({
           </span>
         }
       />
+
+      {/* Purchases made before the credit was derived from the purchase — until
+          they're resolved, these partners' "invested" totals may be missing
+          money they actually put in. Disappears once the list is empty. */}
+      {unreconciled > 0 && (
+        <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm">
+          <p className="font-semibold text-amber-800 dark:text-amber-300">
+            {unreconciled} partner-funded {unreconciled === 1 ? "purchase has" : "purchases have"}{" "}
+            no investment credit linked
+          </p>
+          <p className="mt-1 text-muted-foreground">
+            Those purchases count as spending but the money the partner put in to make them
+            isn&apos;t counted, so &quot;Remaining&quot; reads lower than it is.{" "}
+            <Link
+              href={`/${slug}/partners/reconcile`}
+              className="font-medium text-foreground underline"
+            >
+              Reconcile them
+            </Link>
+            .
+          </p>
+        </div>
+      )}
 
       <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-6">
         <Card>

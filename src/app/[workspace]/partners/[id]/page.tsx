@@ -4,6 +4,7 @@ import { workspaceAccess } from "@/lib/authz";
 import { can } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
 import { partnerBalances } from "@/lib/finance";
+import { derivedSource } from "@/lib/partner-credit";
 import { PartnerTxnManager } from "@/components/partners/partner-txn-manager";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -43,8 +44,7 @@ export default async function PartnerDetailPage({
     type: t.type,
     amount: Number(t.amount),
     purpose: t.purpose,
-    fromDistribution: !!t.distributionId,
-    fromBoost: !!t.boostSpendId,
+    derivedFrom: derivedSource(t)?.tag ?? null,
   }));
 
   const cards: [string, number][] = [

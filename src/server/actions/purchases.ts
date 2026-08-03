@@ -6,11 +6,25 @@ import { prisma } from "@/lib/prisma";
 import { requireAccess } from "@/lib/authz";
 import { refreshInventoryAlerts } from "@/lib/inventory";
 import { treasuryBalance } from "@/lib/finance";
+import { removePartnerCredit, syncPartnerCredit } from "@/lib/partner-credit";
 import { variantFullName } from "@/lib/variants";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
 const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
+
+/**
+ * Funding touches three ledgers besides this list. Partners is revalidated as
+ * a layout so the per-partner detail pages — where the derived credit shows —
+ * are refreshed too, not just the list.
+ */
+function revalidateAll(slug: string) {
+  revalidatePath(`/${slug}/purchases`);
+  revalidatePath(`/${slug}/products`);
+  revalidatePath(`/${slug}/treasury`);
+  revalidatePath(`/${slug}/partners`, "layout");
+  revalidatePath(`/${slug}/dashboard`);
+}
 
 const PurchaseSchema = z.object({
   productVariantId: z.string().min(1, "Select a product variant"),
@@ -120,15 +134,22 @@ export async function createPurchase(
         },
       });
     }
+    if (paidByPartnerId) {
+      await syncPartnerCredit(tx, {
+        workspaceId,
+        link: { purchaseId: purchase.id },
+        partnerId: paidByPartnerId,
+        amount: cost,
+        purpose: `Product purchase: ${label}`,
+        date: d.date,
+      });
+    }
   });
 
   // Stock changed → recompute low-stock / expiry alerts.
   await refreshInventoryAlerts(workspaceId);
 
-  revalidatePath(`/${slug}/purchases`);
-  revalidatePath(`/${slug}/products`);
-  revalidatePath(`/${slug}/treasury`);
-  revalidatePath(`/${slug}/dashboard`);
+  revalidateAll(slug);
   return { ok: true };
 }
 
@@ -243,15 +264,23 @@ export async function updatePurchase(
         data: { amount: newCost, source: `Product purchase: ${label}`, date: d.date },
       });
     }
+
+    // Unconditional: this one call covers becoming partner-funded, ceasing to
+    // be, switching partner, and a plain cost change.
+    await syncPartnerCredit(tx, {
+      workspaceId,
+      link: { purchaseId: id },
+      partnerId: paidByPartnerId,
+      amount: newCost,
+      purpose: `Product purchase: ${label}`,
+      date: d.date,
+    });
   });
 
   // Cost/quantity/variant may have changed → stock and alerts must recompute.
   await refreshInventoryAlerts(workspaceId);
 
-  revalidatePath(`/${slug}/purchases`);
-  revalidatePath(`/${slug}/products`);
-  revalidatePath(`/${slug}/treasury`);
-  revalidatePath(`/${slug}/dashboard`);
+  revalidateAll(slug);
   return { ok: true };
 }
 
@@ -269,12 +298,11 @@ export async function deletePurchase(
     // still counting against the treasury balance for a purchase that no
     // longer exists.
     await tx.treasuryEntry.deleteMany({ where: { workspaceId, purchaseId: id } });
+    await removePartnerCredit(tx, workspaceId, { purchaseId: id });
     await tx.purchase.deleteMany({ where: { id, workspaceId } });
   });
 
   await refreshInventoryAlerts(workspaceId);
-  revalidatePath(`/${slug}/purchases`);
-  revalidatePath(`/${slug}/treasury`);
-  revalidatePath(`/${slug}/dashboard`);
+  revalidateAll(slug);
   return { ok: true };
 }

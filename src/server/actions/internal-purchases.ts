@@ -5,6 +5,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAccess } from "@/lib/authz";
 import { treasuryBalance } from "@/lib/finance";
+import { removePartnerCredit, syncPartnerCredit } from "@/lib/partner-credit";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -48,6 +49,18 @@ function parse(formData: FormData) {
 
 const clean = (s?: string) => (s && s.trim() ? s.trim() : null);
 const MODULE = "internal-purchases" as const;
+
+/**
+ * Funding touches three ledgers besides this list. Partners is revalidated as
+ * a layout so the per-partner detail pages — where the derived credit shows —
+ * are refreshed too, not just the list.
+ */
+function revalidateAll(slug: string) {
+  revalidatePath(`/${slug}/internal-purchases`);
+  revalidatePath(`/${slug}/treasury`);
+  revalidatePath(`/${slug}/partners`, "layout");
+  revalidatePath(`/${slug}/dashboard`);
+}
 
 /** Resolve a supplierId to {id, name} within the workspace, or null if none given. */
 async function resolveSupplier(workspaceId: string, supplierId?: string) {
@@ -127,11 +140,19 @@ export async function createInternalPurchase(
         },
       });
     }
+    if (paidByPartnerId) {
+      await syncPartnerCredit(tx, {
+        workspaceId,
+        link: { internalPurchaseId: item.id },
+        partnerId: paidByPartnerId,
+        amount: cost,
+        purpose: `Internal purchase: ${d.itemName}`,
+        date: d.date,
+      });
+    }
   });
 
-  revalidatePath(`/${slug}/internal-purchases`);
-  revalidatePath(`/${slug}/treasury`);
-  revalidatePath(`/${slug}/dashboard`);
+  revalidateAll(slug);
   return { ok: true };
 }
 
@@ -228,11 +249,20 @@ export async function updateInternalPurchase(
         data: { amount: newCost, source: `Internal purchase: ${d.itemName}`, date: d.date },
       });
     }
+
+    // Unconditional: this one call covers becoming partner-funded, ceasing to
+    // be, switching partner, and a plain cost change.
+    await syncPartnerCredit(tx, {
+      workspaceId,
+      link: { internalPurchaseId: id },
+      partnerId: paidByPartnerId,
+      amount: newCost,
+      purpose: `Internal purchase: ${d.itemName}`,
+      date: d.date,
+    });
   });
 
-  revalidatePath(`/${slug}/internal-purchases`);
-  revalidatePath(`/${slug}/treasury`);
-  revalidatePath(`/${slug}/dashboard`);
+  revalidateAll(slug);
   return { ok: true };
 }
 
@@ -250,11 +280,10 @@ export async function deleteInternalPurchase(
     // still counting against the treasury balance for an entry that no
     // longer exists.
     await tx.treasuryEntry.deleteMany({ where: { workspaceId, internalPurchaseId: id } });
+    await removePartnerCredit(tx, workspaceId, { internalPurchaseId: id });
     await tx.internalPurchase.deleteMany({ where: { id, workspaceId } });
   });
 
-  revalidatePath(`/${slug}/internal-purchases`);
-  revalidatePath(`/${slug}/treasury`);
-  revalidatePath(`/${slug}/dashboard`);
+  revalidateAll(slug);
   return { ok: true };
 }

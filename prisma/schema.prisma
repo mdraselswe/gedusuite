@@ -250,6 +250,7 @@ model Purchase {
   productVariant ProductVariant @relation(fields: [productVariantId], references: [id], onDelete: Cascade)
   paidByPartner  Partner?       @relation(fields: [paidByPartnerId], references: [id], onDelete: SetNull)
   treasuryEntry  TreasuryEntry?
+  partnerTxn     PartnerTxn? // the INVESTMENT credit mirroring a partner-funded purchase
 
   @@index([workspaceId])
   @@index([workspaceId, date])
@@ -463,13 +464,20 @@ model PartnerTxn {
   purpose        String?
   date           DateTime       @default(now())
   distributionId String? // set when auto-created by a treasury profit distribution (batch, not unique — one distribution fans out to many partner txns)
-  boostSpendId   String?        @unique // set when auto-created by a partner-funded boost daily spend (the matching INVESTMENT credit)
+  // The three "out-of-pocket" links below all mean the same thing: a partner
+  // paid for something with their own money, so the business owes them an
+  // INVESTMENT credit. Each is unique — one source row, one credit, no drift.
+  boostSpendId       String? @unique // set when auto-created by a partner-funded boost daily spend
+  purchaseId         String? @unique // set when auto-created by a partner-funded product purchase
+  internalPurchaseId String? @unique // set when auto-created by a partner-funded internal purchase
   createdAt      DateTime       @default(now())
 
-  workspace     Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  partner       Partner             @relation(fields: [partnerId], references: [id], onDelete: Cascade)
-  distribution  ProfitDistribution? @relation(fields: [distributionId], references: [id], onDelete: Cascade)
-  boostSpend    BoostDailySpend?    @relation(fields: [boostSpendId], references: [id], onDelete: Cascade)
+  workspace        Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  partner          Partner             @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  distribution     ProfitDistribution? @relation(fields: [distributionId], references: [id], onDelete: Cascade)
+  boostSpend       BoostDailySpend?    @relation(fields: [boostSpendId], references: [id], onDelete: Cascade)
+  purchase         Purchase?           @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  internalPurchase InternalPurchase?   @relation(fields: [internalPurchaseId], references: [id], onDelete: Cascade)
   // A DEPOSIT_TO_TREASURY txn auto-creates one linked treasury entry.
   treasuryEntry TreasuryEntry?
 
@@ -560,6 +568,7 @@ model InternalPurchase {
   supplier      Supplier?      @relation(fields: [supplierId], references: [id], onDelete: SetNull)
   paidByPartner Partner?       @relation(fields: [paidByPartnerId], references: [id], onDelete: SetNull)
   treasuryEntry TreasuryEntry?
+  partnerTxn    PartnerTxn? // the INVESTMENT credit mirroring a partner-funded purchase
 
   @@index([workspaceId])
   @@index([workspaceId, date])

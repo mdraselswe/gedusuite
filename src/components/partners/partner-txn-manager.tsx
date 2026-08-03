@@ -25,8 +25,8 @@ type Txn = {
   type: string;
   amount: number;
   purpose: string | null;
-  fromDistribution: boolean;
-  fromBoost: boolean;
+  /** "from boosting", "from internal purchase", … — null when hand-entered. */
+  derivedFrom: string | null;
 };
 
 const TYPES = ["INVESTMENT", "EXPENSE", "WITHDRAWAL", "DEPOSIT_TO_TREASURY"];
@@ -161,11 +161,10 @@ export function PartnerTxnManager({
                       key: "actions",
                       header: "",
                       cardFullWidth: true,
+                      // A derived row is edited through its source, never here.
                       cell: (t: Txn) =>
-                        t.fromDistribution ? (
-                          <span className="text-xs text-muted-foreground">from distribution</span>
-                        ) : t.fromBoost ? (
-                          <span className="text-xs text-muted-foreground">from boosting</span>
+                        t.derivedFrom ? (
+                          <span className="text-xs text-muted-foreground">{t.derivedFrom}</span>
                         ) : (
                           <Button variant="ghost" size="sm" onClick={() => onDelete(t.id)}>
                             Delete
