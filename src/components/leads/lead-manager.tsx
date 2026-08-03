@@ -62,6 +62,7 @@ const STATUSES = [
   "WRONG_NUMBER",
   "CALL_LATER",
   "CONFIRMED",
+  "DELIVERED",
   "CANCELLED",
 ] as const;
 
@@ -72,6 +73,7 @@ const STATUS_LABEL: Record<string, string> = {
   WRONG_NUMBER: "Wrong number",
   CALL_LATER: "Call later",
   CONFIRMED: "Confirmed",
+  DELIVERED: "Delivered",
   CANCELLED: "Cancelled",
 };
 
@@ -83,6 +85,10 @@ const STATUS_TONE: Record<string, string> = {
   WRONG_NUMBER: "border-red-500/60 text-red-700 dark:text-red-400",
   CALL_LATER: "border-sky-500/60 text-sky-700 dark:text-sky-400",
   CONFIRMED: "border-emerald-500/60 text-emerald-700 dark:text-emerald-400",
+  // Same happy path as Confirmed but the end of it — filled rather than a
+  // second emerald outline, so the two aren't a coin-flip at a glance.
+  DELIVERED:
+    "border-emerald-600/70 bg-emerald-500/10 font-semibold text-emerald-700 dark:text-emerald-300",
   CANCELLED: "border-muted-foreground/40 text-muted-foreground line-through",
 };
 

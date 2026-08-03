@@ -18,9 +18,13 @@ const MODULE = "sales" as const;
 
 const clean = (s?: string | null) => (s && s.trim() ? s.trim() : null);
 
-/** Every status except NOT_CALLED means someone actually dialled. */
+/**
+ * Every status means someone actually dialled, except NOT_CALLED and
+ * DELIVERED — the latter is recorded after the parcel arrives, so counting it
+ * as a call would inflate "called 3 times" for every completed order.
+ */
 function isCallOutcome(status: CallStatus) {
-  return status !== CallStatus.NOT_CALLED;
+  return status !== CallStatus.NOT_CALLED && status !== CallStatus.DELIVERED;
 }
 
 const LeadSchema = z.object({
