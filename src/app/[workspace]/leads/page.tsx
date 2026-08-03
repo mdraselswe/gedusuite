@@ -60,6 +60,7 @@ export default async function LeadsPage({
   const rows = leads.map((l) => ({
     id: l.id,
     source: l.source,
+    channel: l.channel,
     orderNo: l.orderNo,
     wooStatus: l.wooStatus,
     date: dhakaDate.format(l.orderedAt),

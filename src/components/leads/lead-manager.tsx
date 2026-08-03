@@ -33,11 +33,23 @@ import {
 } from "@/components/ui/select";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { useFilterBar, type FilterDef } from "@/components/ui/filter-bar";
+import {
+  LeadItemsEditor,
+  itemsTotal,
+  newItemRow,
+  rowsToItemsText,
+  type ItemRow,
+} from "@/components/leads/lead-items-editor";
+import { splitLeadItems } from "@/lib/lead-items";
+import { LeadChannelCell } from "@/components/leads/lead-channel-cell";
+import { ORDER_SOURCES, ORDER_SOURCE_LABEL, NO_SOURCE_LABEL } from "@/lib/order-source";
 import { cn } from "@/lib/utils";
 
 type Lead = {
   id: string;
   source: string;
+  /** Which channel the customer came through; null until somebody tags it. */
+  channel: string | null;
   orderNo: string | null;
   wooStatus: string | null;
   date: string;
@@ -97,6 +109,8 @@ const STATUS_TONE: Record<string, string> = {
  *  than a source — the two live in one dropdown because "where did this come
  *  from" is one question to the person making the calls. */
 const DRAFT = "__draft__";
+/** Leads nobody has tagged yet — a real answer, not the absence of one. */
+const UNTAGGED = "__untagged__";
 
 /** One-tap copy, so a detail can be pasted straight into the order form. */
 function CopyButton({ value, label }: { value: string; label: string }) {
@@ -137,6 +151,17 @@ export function LeadManager({
 
   const [addOpen, setAddOpen] = useState(false);
   const [addSaving, setAddSaving] = useState(false);
+  const [itemRows, setItemRows] = useState<ItemRow[]>([newItemRow()]);
+  const [total, setTotal] = useState("0");
+  // Once the total is typed in by hand, the items stop overwriting it — the
+  // person on the phone may have agreed a different figure.
+  const [totalTouched, setTotalTouched] = useState(false);
+  const [channel, setChannel] = useState<string>(UNTAGGED);
+
+  // Only offered when every row is a catalogue product with a price — a
+  // half-known total is worse than none.
+  const suggestedTotal = itemsTotal(itemRows);
+  const effectiveTotal = !totalTouched && suggestedTotal !== null ? String(suggestedTotal) : total;
   const [notesFor, setNotesFor] = useState<Lead | null>(null);
   const [notesSaving, setNotesSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -174,18 +199,23 @@ export function LeadManager({
       match: (l, v) => l.callStatus === v,
     },
     {
-      key: "source",
+      key: "channel",
       label: "Where it came from",
       kind: "select",
       options: [
-        { value: "WOOCOMMERCE", label: "From the website" },
-        { value: "MANUAL", label: "Added by hand" },
+        ...ORDER_SOURCES.map((c) => ({ value: c, label: ORDER_SOURCE_LABEL[c] })),
+        { value: UNTAGGED, label: NO_SOURCE_LABEL },
         // An abandoned checkout is a different conversation from a placed
-        // order, so it's worth being able to call just those.
+        // order, so it's worth being able to call just those. It's a
+        // WooCommerce state rather than a channel, but "where did this come
+        // from" is one question to the person making the calls.
         { value: DRAFT, label: "Abandoned checkout" },
       ],
-      match: (l, v) =>
-        v === DRAFT ? l.wooStatus === "checkout-draft" : l.source === v,
+      match: (l, v) => {
+        if (v === DRAFT) return l.wooStatus === "checkout-draft";
+        if (v === UNTAGGED) return !l.channel;
+        return l.channel === v;
+      },
     },
     {
       key: "customer",
@@ -231,11 +261,19 @@ export function LeadManager({
   async function onAdd(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setAddSaving(true);
-    const res = await createLead(slug, new FormData(e.currentTarget));
+    const fd = new FormData(e.currentTarget);
+    // The rows are the form's real state; itemsText is what the server stores.
+    fd.set("itemsText", rowsToItemsText(itemRows));
+    fd.set("channel", channel === UNTAGGED ? "" : channel);
+    const res = await createLead(slug, fd);
     setAddSaving(false);
     if (!res.ok) return toast.error(res.error);
     toast.success("Order added");
     setAddOpen(false);
+    setItemRows([newItemRow()]);
+    setTotal("0");
+    setTotalTouched(false);
+    setChannel(UNTAGGED);
     router.refresh();
   }
 
@@ -304,6 +342,20 @@ export function LeadManager({
       ),
     },
     {
+      key: "channel",
+      header: "Channel",
+      hideable: true,
+      sortValue: (l) => l.channel ?? "",
+      cell: (l) => (
+        <LeadChannelCell
+          slug={slug}
+          leadId={l.id}
+          value={l.channel}
+          canEdit={perms.canAdd}
+        />
+      ),
+    },
+    {
       key: "customer",
       header: "Customer",
       cardTitle: true,
@@ -341,9 +393,21 @@ export function LeadManager({
       key: "items",
       header: "Items",
       wrap: true,
-      cell: (l) => (
-        <span className="max-w-72 whitespace-normal text-sm">{l.itemsText || "—"}</span>
-      ),
+      // One line per item: a website order with five products in a single
+      // run-on string is unreadable at a glance.
+      cell: (l) => {
+        const items = splitLeadItems(l.itemsText);
+        if (items.length === 0) return <span className="text-sm">—</span>;
+        return (
+          <span className="block max-w-72 space-y-0.5 text-sm">
+            {items.map((it, i) => (
+              <span key={i} className="block whitespace-normal">
+                {it}
+              </span>
+            ))}
+          </span>
+        );
+      },
     },
     {
       key: "total",
@@ -494,21 +558,61 @@ export function LeadManager({
                 </div>
               </div>
               <div className="grid gap-1.5">
+                <Label htmlFor="lead-channel">Where from</Label>
+                <Select
+                  value={channel}
+                  onValueChange={(v) => setChannel(v ?? UNTAGGED)}
+                  items={[
+                    { value: UNTAGGED, label: NO_SOURCE_LABEL },
+                    ...ORDER_SOURCES.map((c) => ({ value: c, label: ORDER_SOURCE_LABEL[c] })),
+                  ]}
+                >
+                  <SelectTrigger id="lead-channel" className="w-full">
+                    <span data-slot="select-value">
+                      {channel === UNTAGGED ? NO_SOURCE_LABEL : ORDER_SOURCE_LABEL[channel]}
+                    </span>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={UNTAGGED}>{NO_SOURCE_LABEL}</SelectItem>
+                    {ORDER_SOURCES.map((c) => (
+                      <SelectItem key={c} value={c}>
+                        {ORDER_SOURCE_LABEL[c]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-1.5">
                 <Label htmlFor="address">Address</Label>
                 <Textarea id="address" name="address" rows={2} maxLength={500} />
               </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="itemsText">Items</Label>
-                <Input
-                  id="itemsText"
-                  name="itemsText"
-                  maxLength={1000}
-                  placeholder="Robotic Aeroplane (Blue) x2"
-                />
-              </div>
+              <LeadItemsEditor slug={slug} rows={itemRows} onChange={setItemRows} />
               <div className="grid gap-1.5">
                 <Label htmlFor="total">Total</Label>
-                <Input id="total" name="total" type="number" step="0.01" min="0" defaultValue={0} />
+                <Input
+                  id="total"
+                  name="total"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={effectiveTotal}
+                  onChange={(e) => {
+                    setTotalTouched(true);
+                    setTotal(e.target.value);
+                  }}
+                />
+                {suggestedTotal !== null && Number(effectiveTotal) !== suggestedTotal && (
+                  <button
+                    type="button"
+                    className="justify-self-start text-xs text-muted-foreground underline"
+                    onClick={() => {
+                      setTotalTouched(true);
+                      setTotal(String(suggestedTotal));
+                    }}
+                  >
+                    Use {suggestedTotal.toFixed(2)} from the items
+                  </button>
+                )}
               </div>
             </div>
             <DialogFooter>

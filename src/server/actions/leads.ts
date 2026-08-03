@@ -9,6 +9,7 @@ import { requireAccess } from "@/lib/authz";
 import { requireUser } from "@/lib/session";
 import { createCustomer, findCustomerByPhone } from "@/server/actions/customers";
 import { syncWooOrders, wooConfigured } from "@/lib/woo";
+import { isOrderSource } from "@/lib/order-source";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -35,6 +36,9 @@ const LeadSchema = z.object({
   itemsText: z.string().trim().max(1000).optional().or(z.literal("")),
   orderNo: z.string().trim().max(40).optional().or(z.literal("")),
   total: z.coerce.number().min(0).max(99_999_999).default(0),
+  // Same vocabulary as an order's source, so a lead and the order it becomes
+  // describe the channel the same way. Blank stays blank.
+  channel: z.string().trim().optional().or(z.literal("")),
 });
 
 /** Manual entry, so the list is usable before the WooCommerce webhook exists. */
@@ -50,6 +54,7 @@ export async function createLead(slug: string, formData: FormData): Promise<Acti
     itemsText: formData.get("itemsText") ?? undefined,
     orderNo: formData.get("orderNo") ?? undefined,
     total: formData.get("total") ?? 0,
+    channel: formData.get("channel") ?? undefined,
   });
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
@@ -70,6 +75,7 @@ export async function createLead(slug: string, formData: FormData): Promise<Acti
       address: clean(d.address),
       itemsText: d.itemsText?.trim() ?? "",
       total: d.total,
+      channel: isOrderSource(d.channel) ? d.channel : null,
     },
   });
 
@@ -105,6 +111,33 @@ export async function setLeadStatus(
           calledByName: user.name ?? user.email ?? null,
         }
       : { callStatus: next },
+  });
+  if (res.count === 0) return { ok: false, error: "Lead not found" };
+
+  revalidatePath(`/${slug}/leads`);
+  return { ok: true };
+}
+
+/**
+ * Tag which channel a lead came through, from the list rather than a form —
+ * the ones already in the table predate the field and would otherwise stay
+ * blank forever.
+ */
+export async function setLeadChannel(
+  slug: string,
+  id: string,
+  channel: string | null,
+): Promise<ActionResult> {
+  const gate = await requireAccess(slug, MODULE, "add");
+  if (!gate.ok) return gate;
+
+  if (channel !== null && !isOrderSource(channel)) {
+    return { ok: false, error: "Unknown channel" };
+  }
+
+  const res = await prisma.orderLead.updateMany({
+    where: { id, workspaceId: gate.access.workspaceId },
+    data: { channel },
   });
   if (res.count === 0) return { ok: false, error: "Lead not found" };
 

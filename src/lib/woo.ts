@@ -115,7 +115,16 @@ export async function upsertLeadFromWooOrder(
         externalId: String(order.id),
       },
     },
-    create: { workspaceId, source: WOO_SOURCE, externalId: String(order.id), ...fields },
+    // `channel` is set on create only. `update` runs on every webhook and on
+    // every page-open pull, so including it there would wipe out a channel
+    // someone had corrected by hand each time the order was touched.
+    create: {
+      workspaceId,
+      source: WOO_SOURCE,
+      externalId: String(order.id),
+      channel: "WEBSITE",
+      ...fields,
+    },
     update: fields,
   });
 }

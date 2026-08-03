@@ -762,7 +762,16 @@ model OrderLead {
 
   // Kept as a plain string rather than an enum so a second channel (Facebook,
   // phone order) doesn't need an enum migration on a live table later.
+  //
+  // NOTE: this is how the row ARRIVED (WOOCOMMERCE / MANUAL), not where the
+  // customer came from — and it is half of the unique key below, so webhook
+  // retries depend on it never changing. The marketing channel is `channel`.
   source     String  @default("WOOCOMMERCE")
+  // Which channel the customer came through — the same vocabulary orders use
+  // (ORDER_SOURCES in lib/order-source). Null until somebody says; shown as
+  // "Not set" rather than guessed, because a wrong channel is worse for
+  // judging ad spend than an admitted blank.
+  channel    String?
   externalId String // WooCommerce order id
   orderNo    String? // the #1234 shown in the Telegram message
   // WooCommerce's own status. "checkout-draft" means the customer filled the
