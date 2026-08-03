@@ -36,6 +36,7 @@ import {
 import { EmptyState } from "@/components/ui/empty-state";
 import { ProductImportDialog } from "@/components/products/product-import-dialog";
 import { SkuBuilder } from "@/components/products/sku-builder";
+import { useFilterBar, type FilterDef } from "@/components/ui/filter-bar";
 import { formatStock } from "@/lib/units";
 import { Package } from "lucide-react";
 
@@ -200,7 +201,86 @@ export function ProductManager({
   const [newCategoryName, setNewCategoryName] = useState("");
   const [categorySaving, setCategorySaving] = useState(false);
 
-  const shown = products.filter((p) => {
+  // Stock and price live on the variants, so a product's figure is the sum
+  // (stock) or the cheapest (price) across them — what a person means when
+  // they ask "which products are under 200".
+  const stockOf = (p: Product) => p.variants.reduce((s, v) => s + v.stock, 0);
+  const priceOf = (p: Product) => {
+    const prices = p.variants.map((v) => v.salePrice).filter((x): x is number => x != null);
+    return prices.length ? Math.min(...prices) : 0;
+  };
+
+  const filters: FilterDef<Product>[] = [
+    {
+      key: "category",
+      label: "All categories",
+      kind: "select",
+      primary: true,
+      options: categories.map((c) => ({ value: c, label: c })),
+      match: (p, v) => p.category === v,
+    },
+    {
+      key: "stock",
+      label: "Stock level",
+      kind: "select",
+      options: [
+        { value: "out", label: "Out of stock" },
+        { value: "low", label: "At or below threshold" },
+        { value: "in", label: "In stock" },
+      ],
+      match: (p, v) => {
+        const n = stockOf(p);
+        if (v === "out") return n <= 0;
+        if (v === "low") return n > 0 && n <= p.lowStockThreshold;
+        return n > 0;
+      },
+    },
+    {
+      key: "shape",
+      label: "Product shape",
+      kind: "select",
+      options: [
+        { value: "variants", label: "Has variants" },
+        { value: "single", label: "Single variant" },
+        { value: "pack", label: "Sold in packs" },
+        { value: "expiry", label: "Expiry tracked" },
+      ],
+      match: (p, v) => {
+        if (v === "variants") return p.attributeNames.length > 0;
+        if (v === "single") return p.attributeNames.length === 0;
+        if (v === "pack") return !!p.unitsPerPack;
+        return p.expiryTracked;
+      },
+    },
+    {
+      key: "sku",
+      label: "SKU",
+      kind: "select",
+      options: [
+        { value: "yes", label: "Has a SKU" },
+        { value: "no", label: "Missing a SKU" },
+      ],
+      match: (p, v) => (v === "yes" ? !!p.sku : !p.sku),
+    },
+    { key: "qty", label: "Stock on hand", kind: "numberRange", step: "1", value: stockOf },
+    { key: "price", label: "Sale price", kind: "numberRange", value: priceOf },
+  ];
+
+  const { rows: byFilters, bar, active } = useFilterBar(products, filters, {
+    summary: (rows) => (
+      <span className="text-muted-foreground">
+        Stock{" "}
+        <span className="font-semibold text-foreground tabular-nums">
+          {rows.reduce((s, p) => s + stockOf(p), 0)}
+        </span>{" "}
+        pieces
+      </span>
+    ),
+  });
+
+  // Search stays its own box: it is typed constantly, the filters are set
+  // occasionally, and folding one into the other would hide the common case.
+  const shown = byFilters.filter((p) => {
     const q = query.toLowerCase();
     return (
       p.name.toLowerCase().includes(q) ||
@@ -421,13 +501,16 @@ export function ProductManager({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <Input
-          placeholder="Search products…"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          className="max-w-xs"
-        />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <Input
+            placeholder="Search products…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            className="max-w-xs"
+          />
+          {bar}
+        </div>
         {perms.canAdd && (
           <div className="flex items-center gap-2">
             <ProductImportDialog slug={slug} />
@@ -441,8 +524,12 @@ export function ProductManager({
       {shown.length === 0 ? (
         <EmptyState
           icon={Package}
-          title="No products found"
-          description={perms.canAdd ? "Add your first product to start tracking stock." : undefined}
+          title={active > 0 ? "No products match these filters" : "No products found"}
+          description={
+            active === 0 && perms.canAdd
+              ? "Add your first product to start tracking stock."
+              : undefined
+          }
         />
       ) : (
         <div className="space-y-3">

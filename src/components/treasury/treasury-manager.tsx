@@ -30,6 +30,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { DataTable, type Column } from "@/components/ui/data-table";
+import { useFilterBar, type FilterDef } from "@/components/ui/filter-bar";
 import { Wallet } from "lucide-react";
 
 type Entry = {
@@ -76,7 +77,6 @@ type NotDeposited = {
   heldByName: string | null;
   isCourierCollection: boolean;
 };
-const ALL = "__all__";
 const NONE = "__none__";
 
 export function TreasuryManager({
@@ -178,17 +178,77 @@ export function TreasuryManager({
   const [partnerId, setPartnerId] = useState(NONE);
   const [loading, setLoading] = useState(false);
 
-  // Filters
-  const [dirFilter, setDirFilter] = useState(ALL);
-  const [partnerFilter, setPartnerFilter] = useState(ALL);
+  const filters: FilterDef<Entry>[] = [
+    {
+      key: "direction",
+      label: "In and out",
+      kind: "select",
+      primary: true,
+      options: [
+        { value: "IN", label: "IN" },
+        { value: "OUT", label: "OUT" },
+      ],
+      match: (e, v) => e.type === v,
+    },
+    {
+      key: "partner",
+      label: "Partner",
+      kind: "select",
+      primary: true,
+      options: partnerOptions.map((p) => ({ value: p.id, label: p.label })),
+      // Entries carry the partner's name, not their id — match through the
+      // options list rather than denormalising the row.
+      match: (e, v) => e.partnerName === partnerOptions.find((p) => p.id === v)?.label,
+    },
+    {
+      key: "origin",
+      label: "Where it came from",
+      kind: "select",
+      options: [
+        { value: "manual", label: "Entered by hand" },
+        { value: "deposit", label: "Partner deposit" },
+        { value: "order", label: "Order cash" },
+        { value: "purchase", label: "Purchase" },
+        { value: "distribution", label: "Profit distribution" },
+        { value: "boost", label: "Boosting" },
+      ],
+      match: (e, v) => {
+        if (v === "manual") {
+          return !e.fromDeposit && !e.fromOrder && !e.fromPurchase && !e.fromDistribution && !e.fromBoost;
+        }
+        if (v === "deposit") return e.fromDeposit;
+        if (v === "order") return e.fromOrder;
+        if (v === "purchase") return e.fromPurchase;
+        if (v === "distribution") return e.fromDistribution;
+        return e.fromBoost;
+      },
+    },
+    { key: "date", label: "Date range", kind: "dateRange", value: (e) => e.date },
+    { key: "amount", label: "Amount", kind: "numberRange", value: (e) => e.amount },
+  ];
 
-  const filtered = entries.filter((e) => {
-    if (dirFilter !== ALL && e.type !== dirFilter) return false;
-    if (partnerFilter !== ALL) {
-      const match = partnerOptions.find((p) => p.id === partnerFilter);
-      if (!match || e.partnerName !== match.label) return false;
-    }
-    return true;
+  const { rows: filtered, bar, active } = useFilterBar(entries, filters, {
+    // Net is the number a treasury ledger is actually read for.
+    summary: (shown) => {
+      const inSum = shown.filter((e) => e.type === "IN").reduce((s, e) => s + e.amount, 0);
+      const outSum = shown.filter((e) => e.type === "OUT").reduce((s, e) => s + e.amount, 0);
+      return (
+        <>
+          <span className="text-muted-foreground">
+            In <span className="font-semibold text-foreground tabular-nums">{inSum.toFixed(2)}</span>
+          </span>
+          <span className="text-muted-foreground">
+            Out <span className="font-semibold text-foreground tabular-nums">{outSum.toFixed(2)}</span>
+          </span>
+          <span className="text-muted-foreground">
+            Net{" "}
+            <span className="font-semibold text-foreground tabular-nums">
+              {(inSum - outSum).toFixed(2)}
+            </span>
+          </span>
+        </>
+      );
+    },
   });
 
   const totalOverdue = overdue.reduce((s, o) => s + o.amount, 0);
@@ -610,38 +670,9 @@ export function TreasuryManager({
 
       {/* Ledger + filters */}
       <div>
-        <div className="mb-3 flex flex-wrap items-center gap-2">
-          <h2 className="mr-auto text-lg font-semibold">Ledger</h2>
-          <Select value={dirFilter} onValueChange={(v) => setDirFilter(v ?? ALL)}>
-            <SelectTrigger className="w-28">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL}>All</SelectItem>
-              <SelectItem value="IN">IN</SelectItem>
-              <SelectItem value="OUT">OUT</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select
-            value={partnerFilter}
-            onValueChange={(v) => setPartnerFilter(v ?? ALL)}
-            items={[
-              { value: ALL, label: "All partners" },
-              ...partnerOptions.map((p) => ({ value: p.id, label: p.label })),
-            ]}
-          >
-            <SelectTrigger className="w-44">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL}>All partners</SelectItem>
-              {partnerOptions.map((p) => (
-                <SelectItem key={p.id} value={p.id}>
-                  {p.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <div className="mb-3 space-y-2">
+          <h2 className="text-lg font-semibold">Ledger</h2>
+          {bar}
         </div>
         <DataTable
           rows={filtered}
@@ -650,7 +681,10 @@ export function TreasuryManager({
           colorToggleLabel="Color by date"
           searchText={(e) => `${e.source} ${e.partnerName ?? ""} ${e.note ?? ""}`}
           searchPlaceholder="Search source, partner, note…"
-          empty={{ icon: Wallet, title: "No entries" }}
+          empty={{
+            icon: Wallet,
+            title: active > 0 ? "No entries match these filters" : "No entries",
+          }}
           columns={
             [
               { key: "date", header: "Date", sortValue: (e) => e.date, cell: (e) => e.date },

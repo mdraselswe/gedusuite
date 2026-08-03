@@ -27,20 +27,38 @@ export const DERIVED_SELECT = {
 
 type DerivedFields = { [K in keyof typeof DERIVED_SELECT]: string | null };
 
+/** Stable value for filtering and comparison — the tag is display text. */
+export type DerivedKind = "distribution" | "boost" | "purchase" | "internalPurchase";
+
+export type DerivedSource = { kind: DerivedKind; tag: string; phrase: string };
+
 /**
- * What a ledger row was generated from — `tag` for the table cell, `phrase`
- * for the "you can't delete this" message — or null when someone typed it in.
- * A generated row is only editable through its source, which is the whole
- * point: two places to change one number is how the numbers drift apart.
+ * What a ledger row was generated from — `kind` to filter on, `tag` for the
+ * table cell, `phrase` for the "you can't delete this" message — or null when
+ * someone typed it in. A generated row is only editable through its source,
+ * which is the whole point: two places to change one number is how the
+ * numbers drift apart.
  */
-export function derivedSource(t: DerivedFields): { tag: string; phrase: string } | null {
-  if (t.distributionId) return { tag: "from distribution", phrase: "a profit distribution" };
-  if (t.boostSpendId) return { tag: "from boosting", phrase: "a partner-funded boost spend" };
+export function derivedSource(t: DerivedFields): DerivedSource | null {
+  if (t.distributionId) {
+    return { kind: "distribution", tag: "from distribution", phrase: "a profit distribution" };
+  }
+  if (t.boostSpendId) {
+    return { kind: "boost", tag: "from boosting", phrase: "a partner-funded boost spend" };
+  }
   if (t.purchaseId) {
-    return { tag: "from product purchase", phrase: "a partner-funded product purchase" };
+    return {
+      kind: "purchase",
+      tag: "from product purchase",
+      phrase: "a partner-funded product purchase",
+    };
   }
   if (t.internalPurchaseId) {
-    return { tag: "from internal purchase", phrase: "a partner-funded internal purchase" };
+    return {
+      kind: "internalPurchase",
+      tag: "from internal purchase",
+      phrase: "a partner-funded internal purchase",
+    };
   }
   return null;
 }

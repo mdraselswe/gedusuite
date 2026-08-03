@@ -31,6 +31,7 @@ import {
 import { type ComboOption } from "@/components/ui/async-combobox";
 import { SupplierPicker } from "@/components/products/supplier-picker";
 import { DataTable, type Column } from "@/components/ui/data-table";
+import { useFilterBar, type FilterDef } from "@/components/ui/filter-bar";
 import { Receipt } from "lucide-react";
 
 type Item = {
@@ -93,9 +94,61 @@ export function InternalPurchaseManager({
   const [fundingSource, setFundingSource] = useState<FundingSource>("NONE");
   const [paidByPartnerId, setPaidByPartnerId] = useState(NO_PARTNER);
   const [loading, setLoading] = useState(false);
-  const [catFilter, setCatFilter] = useState("__all__");
+  const filters: FilterDef<Item>[] = [
+    {
+      key: "category",
+      label: "All categories",
+      kind: "select",
+      primary: true,
+      options: CATEGORIES.map((c) => ({ value: c, label: LABEL[c] })),
+      match: (i, v) => i.category === v,
+    },
+    {
+      key: "funding",
+      label: "Paid with",
+      kind: "select",
+      options: [
+        { value: "PARTNER", label: "A partner's money" },
+        { value: "TREASURY", label: "Treasury" },
+        { value: "NONE", label: "Not recorded" },
+      ],
+      match: (i, v) => fundingSourceOf(i) === v,
+    },
+    {
+      key: "partner",
+      label: "Which partner",
+      kind: "select",
+      options: partnerOptions.map((p) => ({ value: p.id, label: p.label })),
+      match: (i, v) => i.paidByPartnerId === v,
+    },
+    {
+      key: "supplier",
+      label: "Supplier",
+      kind: "select",
+      options: [...new Map(
+        items.filter((i) => i.supplierId && i.supplierName).map((i) => [i.supplierId!, i.supplierName!]),
+      )].map(([value, label]) => ({ value, label })),
+      match: (i, v) => i.supplierId === v,
+    },
+    { key: "date", label: "Date range", kind: "dateRange", value: (i) => i.date },
+    {
+      key: "total",
+      label: "Total spent",
+      kind: "numberRange",
+      value: (i) => i.cost * i.quantity,
+    },
+  ];
 
-  const filtered = items.filter((i) => catFilter === "__all__" || i.category === catFilter);
+  const { rows: filtered, bar, active } = useFilterBar(items, filters, {
+    summary: (shown) => (
+      <span className="text-muted-foreground">
+        Spent{" "}
+        <span className="font-semibold text-foreground tabular-nums">
+          {shown.reduce((s, i) => s + i.cost * i.quantity, 0).toFixed(2)}
+        </span>
+      </span>
+    ),
+  });
 
   function openNew() {
     setEditing(null);
@@ -148,20 +201,8 @@ export function InternalPurchaseManager({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <Select value={catFilter} onValueChange={(v) => setCatFilter(v ?? "__all__")}>
-          <SelectTrigger className="w-52">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__all__">All categories</SelectItem>
-            {CATEGORIES.map((c) => (
-              <SelectItem key={c} value={c}>
-                {LABEL[c]}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">{bar}</div>
         {perms.canAdd && (
           <Button size="sm" onClick={openNew}>
             + Add entry
@@ -176,7 +217,10 @@ export function InternalPurchaseManager({
         colorToggleLabel="Color by date"
         searchText={(i) => `${i.itemName} ${i.description ?? ""} ${i.supplierName ?? ""} ${i.category}`}
         searchPlaceholder="Search item, supplier…"
-        empty={{ icon: Receipt, title: "No entries" }}
+        empty={{
+          icon: Receipt,
+          title: active > 0 ? "No entries match these filters" : "No entries",
+        }}
         columns={
           [
             { key: "date", header: "Date", cell: (i) => i.date, sortValue: (i) => i.date },

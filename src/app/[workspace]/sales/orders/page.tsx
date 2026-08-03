@@ -14,13 +14,25 @@ const PAGE_SIZE = 50;
 
 const ORDER_STATUSES = ["PENDING", "CONFIRMED", "SHIPPED", "DELIVERED", "CANCELLED"] as const;
 const PAY_STATUSES = ["PAID", "UNPAID", "PARTIAL"] as const;
+const DELIVERY_TYPES = ["SELF", "COURIER"] as const;
 
 export default async function OrdersPage({
   params,
   searchParams,
 }: {
   params: Promise<{ workspace: string }>;
-  searchParams: Promise<{ page?: string; q?: string; status?: string; pay?: string; sort?: string }>;
+  searchParams: Promise<{
+    page?: string;
+    q?: string;
+    status?: string;
+    pay?: string;
+    sort?: string;
+    from?: string;
+    to?: string;
+    source?: string;
+    held?: string;
+    delivery?: string;
+  }>;
 }) {
   const { workspace: slug } = await params;
   const sp = await searchParams;
@@ -29,6 +41,34 @@ export default async function OrdersPage({
   const statusFilter = ORDER_STATUSES.includes(sp.status as never) ? sp.status : "";
   const payFilter = PAY_STATUSES.includes(sp.pay as never) ? sp.pay : "";
   const sort = sp.sort === "date_asc" ? "date_asc" : "date_desc";
+  // Filters reach the database, not just the visible page — narrowing a
+  // paginated list client-side would hide matches on every other page.
+  const listFilters = {
+    from: (sp.from ?? "").trim(),
+    to: (sp.to ?? "").trim(),
+    source: (sp.source ?? "").trim(),
+    held: (sp.held ?? "").trim(),
+    // Validated against the enum: an unknown value must narrow to nothing
+    // rather than reach Prisma as a bare string.
+    delivery: DELIVERY_TYPES.includes(sp.delivery as never) ? (sp.delivery as string) : "",
+  };
+  // A date-only string is midnight UTC, so the "to" end has to cover the
+  // whole day or a same-day range would match nothing.
+  const dateWhere =
+    listFilters.from || listFilters.to
+      ? {
+          date: {
+            ...(listFilters.from ? { gte: new Date(listFilters.from) } : {}),
+            ...(listFilters.to ? { lte: new Date(`${listFilters.to}T23:59:59.999Z`) } : {}),
+          },
+        }
+      : {};
+  const heldWhere =
+    listFilters.held === "__none__"
+      ? { heldByMembershipId: null }
+      : listFilters.held
+        ? { heldByMembershipId: listFilters.held }
+        : {};
   const access = await workspaceAccess(slug);
   if (!access) redirect("/");
   if (!can(access.role, "sales", "view", access.permissions)) {
@@ -51,6 +91,12 @@ export default async function OrdersPage({
     workspaceId,
     ...(statusFilter ? { status: statusFilter as (typeof ORDER_STATUSES)[number] } : {}),
     ...(payFilter ? { paymentStatus: payFilter as (typeof PAY_STATUSES)[number] } : {}),
+    ...(listFilters.source ? { source: listFilters.source } : {}),
+    ...(listFilters.delivery
+      ? { deliveryType: listFilters.delivery as (typeof DELIVERY_TYPES)[number] }
+      : {}),
+    ...dateWhere,
+    ...heldWhere,
     ...(q
       ? {
           OR: [
@@ -61,13 +107,15 @@ export default async function OrdersPage({
       : {}),
   };
 
-  const [productCount, members, orderCount, orders] = await Promise.all([
+  const [productCount, members, orderCount, totalOrderCount, orders] = await Promise.all([
     prisma.productVariant.count({ where: { product: { workspaceId } } }),
     prisma.membership.findMany({
       where: { workspaceId, role: { in: ["OWNER", "PARTNER"] } },
       include: { user: { select: { name: true, email: true } } },
     }),
     prisma.order.count({ where }),
+    // Unfiltered, for the bar's "showing N of M".
+    prisma.order.count({ where: { workspaceId } }),
     prisma.order.findMany({
       where,
       orderBy: { date: sort === "date_asc" ? "asc" : "desc" },
@@ -143,6 +191,8 @@ export default async function OrdersPage({
         statusFilter={statusFilter ?? ""}
         payFilter={payFilter ?? ""}
         sort={sort}
+        listFilters={listFilters}
+        matchCount={{ shown: orderCount, total: totalOrderCount }}
       />
       <Pagination
         page={page}
@@ -153,6 +203,7 @@ export default async function OrdersPage({
           status: statusFilter || undefined,
           pay: payFilter || undefined,
           sort: sort !== "date_desc" ? sort : undefined,
+          ...Object.fromEntries(Object.entries(listFilters).filter(([, v]) => v)),
         }}
       />
     </div>

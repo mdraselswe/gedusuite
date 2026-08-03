@@ -28,13 +28,64 @@ export default async function PurchasesPage({
   searchParams,
 }: {
   params: Promise<{ workspace: string }>;
-  searchParams: Promise<{ page?: string; q?: string; sort?: string; supplier?: string }>;
+  searchParams: Promise<{
+    page?: string;
+    q?: string;
+    sort?: string;
+    supplier?: string;
+    from?: string;
+    to?: string;
+    min?: string;
+    max?: string;
+    funding?: string;
+    partner?: string;
+  }>;
 }) {
   const { workspace: slug } = await params;
   const sp = await searchParams;
   const page = parsePage(sp.page);
   const q = (sp.q ?? "").trim();
   const supplierFilter = (sp.supplier ?? "").trim();
+  // Filters reach the database rather than the current page: narrowing a
+  // paginated list client-side would silently hide matches on other pages.
+  const listFilters = {
+    from: (sp.from ?? "").trim(),
+    to: (sp.to ?? "").trim(),
+    min: (sp.min ?? "").trim(),
+    max: (sp.max ?? "").trim(),
+    funding: (sp.funding ?? "").trim(),
+    partner: (sp.partner ?? "").trim(),
+  };
+  const num = (v: string) => (v === "" || Number.isNaN(Number(v)) ? undefined : Number(v));
+  // A date-only string is midnight UTC; the "to" end has to cover the whole
+  // of that day or a same-day range would match nothing.
+  const endOfDay = (v: string) => (v ? new Date(`${v}T23:59:59.999Z`) : undefined);
+  const dateWhere =
+    listFilters.from || listFilters.to
+      ? {
+          date: {
+            ...(listFilters.from ? { gte: new Date(listFilters.from) } : {}),
+            ...(listFilters.to ? { lte: endOfDay(listFilters.to)! } : {}),
+          },
+        }
+      : {};
+  const costWhere =
+    num(listFilters.min) !== undefined || num(listFilters.max) !== undefined
+      ? {
+          unitCost: {
+            ...(num(listFilters.min) !== undefined ? { gte: num(listFilters.min) } : {}),
+            ...(num(listFilters.max) !== undefined ? { lte: num(listFilters.max) } : {}),
+          },
+        }
+      : {};
+  const fundingWhere =
+    listFilters.funding === "PARTNER"
+      ? { paidByPartnerId: { not: null } }
+      : listFilters.funding === "TREASURY"
+        ? { paidFromTreasury: true }
+        : listFilters.funding === "NONE"
+          ? { paidByPartnerId: null, paidFromTreasury: false }
+          : {};
   const sort: PurchaseSort = sp.sort && sp.sort in SORTS ? (sp.sort as PurchaseSort) : "date_desc";
   const access = await workspaceAccess(slug);
   if (!access) redirect("/");
@@ -52,6 +103,10 @@ export default async function PurchasesPage({
   const where = {
     workspaceId: access.workspaceId,
     ...(supplierFilter ? { supplierId: supplierFilter } : {}),
+    ...(listFilters.partner ? { paidByPartnerId: listFilters.partner } : {}),
+    ...dateWhere,
+    ...costWhere,
+    ...fundingWhere,
     ...(q
       ? {
           OR: [
@@ -108,6 +163,9 @@ export default async function PurchasesPage({
     ]);
 
   const totalSpend = allCostQuantities.reduce((s, r) => s + Number(r.unitCost) * r.quantity, 0);
+  // Filtered matches across all pages vs. every purchase in the workspace —
+  // the second comes free from the total-spend fetch above.
+  const matchCount = { shown: purchaseCount, total: allCostQuantities.length };
 
   const purchaseRows = purchases.map((pu) => ({
     id: pu.id,
@@ -158,6 +216,8 @@ export default async function PurchasesPage({
         query={q}
         sort={sort}
         supplierFilter={supplierFilter}
+        listFilters={listFilters}
+        matchCount={matchCount}
       />
       <Pagination
         page={page}
@@ -167,6 +227,9 @@ export default async function PurchasesPage({
           q: q || undefined,
           sort: sort !== "date_desc" ? sort : undefined,
           supplier: supplierFilter || undefined,
+          ...Object.fromEntries(
+            Object.entries(listFilters).filter(([, v]) => v),
+          ),
         }}
       />
     </div>

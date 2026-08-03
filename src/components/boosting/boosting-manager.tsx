@@ -25,6 +25,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { DataTable, type Column } from "@/components/ui/data-table";
+import { useFilterBar, type FilterDef } from "@/components/ui/filter-bar";
 import { BoostStatusBadge } from "@/components/boosting/boost-status-badge";
 
 type CampaignRow = {
@@ -41,7 +42,6 @@ type CampaignRow = {
 };
 
 const STATUSES = ["ACTIVE", "PAUSED", "COMPLETED", "CANCELLED"] as const;
-const ALL = "__all__";
 
 export function BoostingManager({
   slug,
@@ -58,11 +58,55 @@ export function BoostingManager({
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState<string>("ACTIVE");
   const [loading, setLoading] = useState(false);
-  const [statusFilter, setStatusFilter] = useState(ALL);
+  const filters: FilterDef<CampaignRow>[] = [
+    {
+      key: "status",
+      label: "All statuses",
+      kind: "select",
+      primary: true,
+      options: STATUSES.map((st) => ({ value: st, label: st })),
+      match: (c, v) => c.status === v,
+    },
+    {
+      key: "objective",
+      label: "Objective",
+      kind: "select",
+      options: [...new Set(campaigns.map((c) => c.objective).filter((o): o is string => !!o))].map(
+        (o) => ({ value: o, label: o }),
+      ),
+      match: (c, v) => c.objective === v,
+    },
+    {
+      key: "running",
+      label: "Ad sets",
+      kind: "select",
+      options: [
+        { value: "active", label: "Has active ad sets" },
+        { value: "idle", label: "Nothing running" },
+      ],
+      match: (c, v) => (v === "active" ? c.activeAdSets > 0 : c.activeAdSets === 0),
+    },
+    { key: "spend", label: "Total spent", kind: "numberRange", value: (c) => c.totalSpent },
+    {
+      key: "started",
+      label: "First started",
+      kind: "dateRange",
+      // Campaigns with no ad set yet have no start date; an unstarted
+      // campaign shouldn't survive a "started between" filter.
+      value: (c) => c.firstStart ?? "",
+    },
+  ];
 
-  const filtered = campaigns.filter(
-    (c) => statusFilter === ALL || c.status === statusFilter,
-  );
+  const { rows: filtered, bar } = useFilterBar(campaigns, filters, {
+    summary: (shown) => (
+      <span className="text-muted-foreground">
+        Spent{" "}
+        <span className="font-semibold text-foreground tabular-nums">
+          {shown.reduce((s, c) => s + c.totalSpent, 0).toFixed(2)}
+        </span>
+      </span>
+    ),
+  });
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -96,28 +140,9 @@ export function BoostingManager({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-start gap-2">
         <h2 className="mr-auto text-lg font-semibold">Campaigns</h2>
-        <Select
-          value={statusFilter}
-          onValueChange={(v) => setStatusFilter(v ?? ALL)}
-          items={[
-            { value: ALL, label: "All statuses" },
-            ...STATUSES.map((s) => ({ value: s, label: s })),
-          ]}
-        >
-          <SelectTrigger className="w-36">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL}>All statuses</SelectItem>
-            {STATUSES.map((s) => (
-              <SelectItem key={s} value={s}>
-                {s}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="min-w-0">{bar}</div>
         {canAdd && <Button onClick={() => setOpen(true)}>New campaign</Button>}
       </div>
 

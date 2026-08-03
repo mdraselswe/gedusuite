@@ -48,6 +48,8 @@ import {
   type VariantOption as SearchVariantOption,
 } from "@/server/actions/search";
 import { DataTable, type Column } from "@/components/ui/data-table";
+import { ANY_VALUE, UrlFilterBar, type FilterDef } from "@/components/ui/filter-bar";
+import { ORDER_SOURCES, ORDER_SOURCE_LABEL } from "@/lib/order-source";
 import { OrderSourceCell } from "@/components/sales/order-source-cell";
 import { Columns3, Plus, ShoppingCart, Trash2, MoreVertical, X } from "lucide-react";
 import { formatStock } from "@/lib/units";
@@ -242,6 +244,8 @@ export function OrderManager({
   statusFilter,
   payFilter,
   sort,
+  listFilters,
+  matchCount,
 }: {
   slug: string;
   hasProducts: boolean;
@@ -252,6 +256,9 @@ export function OrderManager({
   statusFilter: string;
   payFilter: string;
   sort: string;
+  listFilters: Record<string, string>;
+  /** Counted server-side across every page, not just the rows handed here. */
+  matchCount: { shown: number; total: number };
 }) {
   const router = useRouter();
 
@@ -308,7 +315,13 @@ export function OrderManager({
   const [visibleCols, setVisibleCols] = useState<Set<string>>(new Set(["profit"]));
   const searchDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  function pushListParams(next: { q?: string; status?: string; pay?: string; sort?: string }) {
+  function pushListParams(next: {
+    q?: string;
+    status?: string;
+    pay?: string;
+    sort?: string;
+    filters?: Record<string, string>;
+  }) {
     const params = new URLSearchParams();
     const qv = (next.q ?? search).trim();
     const sv = next.status ?? statusFilter;
@@ -318,7 +331,56 @@ export function OrderManager({
     if (sv) params.set("status", sv);
     if (pv) params.set("pay", pv);
     if (so !== "date_desc") params.set("sort", so);
+    for (const [k, v] of Object.entries(next.filters ?? listFilters)) if (v) params.set(k, v);
     router.replace(`/${slug}/sales/orders${params.size ? `?${params}` : ""}`);
+  }
+
+  // The bar names range endpoints "<key>:from"/"<key>:to"; the URL uses plain
+  // names, so the two are mapped rather than one leaking into the other.
+  const FILTER_DEFS: FilterDef<OrderRow>[] = [
+    {
+      key: "source",
+      label: "Where it came from",
+      kind: "select",
+      options: ORDER_SOURCES.map((o) => ({ value: o, label: ORDER_SOURCE_LABEL[o] ?? o })),
+    },
+    {
+      key: "delivery",
+      label: "Delivery",
+      kind: "select",
+      options: [
+        { value: "SELF", label: "Self delivery" },
+        { value: "COURIER", label: "Courier" },
+      ],
+    },
+    {
+      key: "held",
+      label: "Cash held by",
+      kind: "select",
+      options: [
+        { value: "__none__", label: "Nobody assigned" },
+        ...members.map((m) => ({ value: m.id, label: m.label })),
+      ],
+    },
+    { key: "date", label: "Order date", kind: "dateRange" },
+  ];
+  const BAR_TO_URL: Record<string, string> = {
+    source: "source",
+    delivery: "delivery",
+    held: "held",
+    "date:from": "from",
+    "date:to": "to",
+  };
+  const barState = Object.fromEntries(
+    Object.entries(BAR_TO_URL).map(([bar, url]) => [bar, listFilters[url] ?? ""]),
+  );
+  function onFiltersChange(nextBar: Record<string, string>) {
+    const filters: Record<string, string> = {};
+    for (const [bar, url] of Object.entries(BAR_TO_URL)) {
+      const v = nextBar[bar];
+      if (v && v !== ANY_VALUE) filters[url] = v;
+    }
+    pushListParams({ filters });
   }
   function onSearchChange(v: string) {
     setSearch(v);
@@ -612,6 +674,13 @@ export function OrderManager({
         )}
       </div>
 
+      <UrlFilterBar
+        defs={FILTER_DEFS}
+        state={barState}
+        onChange={onFiltersChange}
+        count={matchCount}
+      />
+
       <DataTable
         rows={shownOrders}
         rowKey={(o) => o.id}
@@ -619,7 +688,10 @@ export function OrderManager({
         colorToggleLabel="Color by date"
         empty={{
           icon: ShoppingCart,
-          title: query || statusFilter || payFilter ? "No orders match your filters" : "No orders found",
+          title:
+            query || statusFilter || payFilter || Object.values(listFilters).some(Boolean)
+              ? "No orders match your filters"
+              : "No orders found",
           description: perms.canAdd ? "Create an order to start selling." : undefined,
         }}
         columns={

@@ -35,6 +35,7 @@ import { AsyncCombobox, type ComboOption } from "@/components/ui/async-combobox"
 import { searchVariants, type VariantOption } from "@/server/actions/search";
 import { SupplierPicker } from "@/components/products/supplier-picker";
 import { DataTable, type Column } from "@/components/ui/data-table";
+import { ANY_VALUE, UrlFilterBar, type FilterDef } from "@/components/ui/filter-bar";
 import { formatStock } from "@/lib/units";
 import { Columns3, MoreVertical, PackageOpen, X } from "lucide-react";
 
@@ -107,6 +108,8 @@ export function PurchaseManager({
   query,
   sort,
   supplierFilter,
+  listFilters,
+  matchCount,
 }: {
   slug: string;
   hasProducts: boolean;
@@ -125,6 +128,9 @@ export function PurchaseManager({
   query: string;
   sort: string;
   supplierFilter: string;
+  listFilters: Record<string, string>;
+  /** Counted server-side across every page, not just the rows handed here. */
+  matchCount: { shown: number; total: number };
 }) {
   const router = useRouter();
 
@@ -133,13 +139,61 @@ export function PurchaseManager({
   const [visibleCols, setVisibleCols] = useState<Set<string>>(new Set(["salePrice"]));
   const searchDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  function pushListParams(nextQ: string, nextSort: string, nextSupplier = supplierFilter) {
+  function pushListParams(
+    nextQ: string,
+    nextSort: string,
+    nextSupplier = supplierFilter,
+    nextFilters: Record<string, string> = listFilters,
+  ) {
     const params = new URLSearchParams();
     if (nextQ.trim()) params.set("q", nextQ.trim());
     if (nextSort !== "date_desc") params.set("sort", nextSort);
     if (nextSupplier) params.set("supplier", nextSupplier);
+    for (const [k, v] of Object.entries(nextFilters)) if (v) params.set(k, v);
     // Search/sort/filter changes restart from page 1 (no page param).
     router.replace(`/${slug}/purchases${params.size ? `?${params}` : ""}`);
+  }
+
+  // The bar's range keys are "<key>:from"/"<key>:to"; the URL uses plain
+  // names, so the two are mapped rather than one leaking into the other.
+  const FILTER_DEFS: FilterDef<PurchaseRow>[] = [
+    {
+      key: "funding",
+      label: "Paid with",
+      kind: "select",
+      options: [
+        { value: "PARTNER", label: "A partner's money" },
+        { value: "TREASURY", label: "Treasury" },
+        { value: "NONE", label: "Not recorded" },
+      ],
+    },
+    {
+      key: "partner",
+      label: "Which partner",
+      kind: "select",
+      options: partnerOptions.map((p) => ({ value: p.id, label: p.label })),
+    },
+    { key: "date", label: "Purchase date", kind: "dateRange" },
+    { key: "cost", label: "Unit cost", kind: "numberRange" },
+  ];
+  const BAR_TO_URL: Record<string, string> = {
+    funding: "funding",
+    partner: "partner",
+    "date:from": "from",
+    "date:to": "to",
+    "cost:from": "min",
+    "cost:to": "max",
+  };
+  const barState = Object.fromEntries(
+    Object.entries(BAR_TO_URL).map(([bar, url]) => [bar, listFilters[url] ?? ""]),
+  );
+  function onFiltersChange(next: Record<string, string>) {
+    const urlFilters: Record<string, string> = {};
+    for (const [bar, url] of Object.entries(BAR_TO_URL)) {
+      const v = next[bar];
+      if (v && v !== ANY_VALUE) urlFilters[url] = v;
+    }
+    pushListParams(search, sort, supplierFilter, urlFilters);
   }
 
   function onSearchChange(v: string) {
@@ -546,6 +600,14 @@ export function PurchaseManager({
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
+        <div className="mb-3">
+          <UrlFilterBar
+            defs={FILTER_DEFS}
+            state={barState}
+            onChange={onFiltersChange}
+            count={matchCount}
+          />
+        </div>
         <DataTable
           rows={purchases}
           rowKey={(p) => p.id}
@@ -554,7 +616,10 @@ export function PurchaseManager({
           stickyHeader
           empty={{
             icon: PackageOpen,
-            title: query ? "No purchases match your search" : "No purchases recorded yet",
+            title:
+              query || Object.values(listFilters).some(Boolean)
+                ? "No purchases match your search"
+                : "No purchases recorded yet",
           }}
           columns={
             [

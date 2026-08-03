@@ -17,6 +17,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { DataTable, type Column } from "@/components/ui/data-table";
+import { useFilterBar, type FilterDef } from "@/components/ui/filter-bar";
+import type { DerivedKind } from "@/lib/partner-credit";
+import { MANUAL, SOURCE_OPTIONS, totalsByType } from "@/lib/partner-ledger-filters";
 import { ArrowLeftRight } from "lucide-react";
 
 type Txn = {
@@ -27,6 +30,8 @@ type Txn = {
   purpose: string | null;
   /** "from boosting", "from internal purchase", … — null when hand-entered. */
   derivedFrom: string | null;
+  /** Stable counterpart to derivedFrom, for filtering. Null when hand-entered. */
+  derivedKind: DerivedKind | null;
 };
 
 const TYPES = ["INVESTMENT", "EXPENSE", "WITHDRAWAL", "DEPOSIT_TO_TREASURY"];
@@ -36,6 +41,7 @@ const LABEL: Record<string, string> = {
   WITHDRAWAL: "Withdrawal",
   DEPOSIT_TO_TREASURY: "Deposit to treasury",
 };
+
 
 export function PartnerTxnManager({
   slug,
@@ -53,6 +59,38 @@ export function PartnerTxnManager({
   const router = useRouter();
   const [type, setType] = useState("INVESTMENT");
   const [loading, setLoading] = useState(false);
+  const filters: FilterDef<Txn>[] = [
+    {
+      key: "type",
+      label: "Any type",
+      kind: "select",
+      primary: true,
+      options: TYPES.map((t) => ({ value: t, label: LABEL[t] })),
+      match: (t, v) => t.type === v,
+    },
+    {
+      key: "source",
+      label: "Source",
+      kind: "select",
+      options: SOURCE_OPTIONS,
+      // "Hand-entered" is a real answer, not the absence of one.
+      match: (t, v) => (v === MANUAL ? t.derivedKind === null : t.derivedKind === v),
+    },
+    { key: "date", label: "Date range", kind: "dateRange", value: (t) => t.date },
+    { key: "amount", label: "Amount", kind: "numberRange", value: (t) => t.amount },
+  ];
+
+  const { rows, bar, active } = useFilterBar(txns, filters, {
+    // A ledger's filters only pay off if they answer "how much" — per type,
+    // because investments and withdrawals summed together mean nothing.
+    summary: (shown) =>
+      [...totalsByType(shown)].map(([type, total]) => (
+        <span key={type} className="text-muted-foreground">
+          {LABEL[type] ?? type}{" "}
+          <span className="font-semibold text-foreground tabular-nums">{total.toFixed(2)}</span>
+        </span>
+      )),
+  });
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -129,15 +167,22 @@ export function PartnerTxnManager({
       )}
 
       <div>
-        <h2 className="mb-3 text-lg font-semibold">Transaction log</h2>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold">Transaction log</h2>
+        </div>
+        <div className="mb-3">{bar}</div>
+
         <DataTable
-          rows={txns}
+          rows={rows}
           rowKey={(t) => t.id}
           colorGroupBy={(t) => t.date}
           colorToggleLabel="Color by date"
           searchText={(t) => `${t.type} ${t.purpose ?? ""}`}
           searchPlaceholder="Search type, purpose…"
-          empty={{ icon: ArrowLeftRight, title: "No transactions" }}
+          empty={{
+            icon: ArrowLeftRight,
+            title: active > 0 ? "No transactions match these filters" : "No transactions",
+          }}
           columns={
             [
               { key: "date", header: "Date", sortValue: (t) => t.date, cell: (t) => t.date },

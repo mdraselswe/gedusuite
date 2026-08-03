@@ -32,6 +32,7 @@ import {
   SelectTrigger,
 } from "@/components/ui/select";
 import { DataTable, type Column } from "@/components/ui/data-table";
+import { useFilterBar, type FilterDef } from "@/components/ui/filter-bar";
 import { cn } from "@/lib/utils";
 
 type Lead = {
@@ -92,7 +93,10 @@ const STATUS_TONE: Record<string, string> = {
   CANCELLED: "border-muted-foreground/40 text-muted-foreground line-through",
 };
 
-const ALL = "__all__";
+/** Sentinel for the "abandoned checkout" option, which is a wooStatus rather
+ *  than a source — the two live in one dropdown because "where did this come
+ *  from" is one question to the person making the calls. */
+const DRAFT = "__draft__";
 
 /** One-tap copy, so a detail can be pasted straight into the order form. */
 function CopyButton({ value, label }: { value: string; label: string }) {
@@ -129,7 +133,6 @@ export function LeadManager({
   perms: Perms;
 }) {
   const router = useRouter();
-  const [statusFilter, setStatusFilter] = useState<string>(ALL);
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const [addOpen, setAddOpen] = useState(false);
@@ -161,7 +164,60 @@ export function LeadManager({
     router.refresh();
   }
 
-  const filtered = statusFilter === ALL ? leads : leads.filter((l) => l.callStatus === statusFilter);
+  const filters: FilterDef<Lead>[] = [
+    {
+      key: "status",
+      label: "All statuses",
+      kind: "select",
+      primary: true,
+      options: STATUSES.map((s) => ({ value: s, label: STATUS_LABEL[s] })),
+      match: (l, v) => l.callStatus === v,
+    },
+    {
+      key: "source",
+      label: "Where it came from",
+      kind: "select",
+      options: [
+        { value: "WOOCOMMERCE", label: "From the website" },
+        { value: "MANUAL", label: "Added by hand" },
+        // An abandoned checkout is a different conversation from a placed
+        // order, so it's worth being able to call just those.
+        { value: DRAFT, label: "Abandoned checkout" },
+      ],
+      match: (l, v) =>
+        v === DRAFT ? l.wooStatus === "checkout-draft" : l.source === v,
+    },
+    {
+      key: "customer",
+      label: "Customer record",
+      kind: "select",
+      options: [
+        { value: "yes", label: "Already added" },
+        { value: "no", label: "Not added yet" },
+      ],
+      match: (l, v) => (v === "yes" ? !!l.convertedCustomerId : !l.convertedCustomerId),
+    },
+    { key: "date", label: "Order date", kind: "dateRange", value: (l) => l.date },
+    { key: "total", label: "Order total", kind: "numberRange", value: (l) => l.total },
+    {
+      key: "tries",
+      label: "Call attempts",
+      kind: "numberRange",
+      step: "1",
+      value: (l) => l.callAttempts,
+    },
+  ];
+
+  const { rows: filtered, bar, active } = useFilterBar(leads, filters, {
+    summary: (shown) => (
+      <span className="text-muted-foreground">
+        Total{" "}
+        <span className="font-semibold text-foreground tabular-nums">
+          {shown.reduce((s, l) => s + l.total, 0).toFixed(2)}
+        </span>
+      </span>
+    ),
+  });
 
   async function onStatusChange(lead: Lead, next: string) {
     setBusyId(lead.id);
@@ -383,22 +439,8 @@ export function LeadManager({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v ?? ALL)}>
-          <SelectTrigger className="h-9 w-44">
-            <span data-slot="select-value">
-              {statusFilter === ALL ? "All statuses" : STATUS_LABEL[statusFilter]}
-            </span>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL}>All statuses</SelectItem>
-            {STATUSES.map((s) => (
-              <SelectItem key={s} value={s}>
-                {STATUS_LABEL[s]}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      <div className="flex flex-wrap items-start gap-2">
+        <div className="min-w-0 flex-1">{bar}</div>
         {perms.canAdd && (
           <Button size="sm" onClick={() => setAddOpen(true)}>
             + Add order
@@ -424,7 +466,7 @@ export function LeadManager({
         empty={{
           icon: PhoneCall,
           title:
-            statusFilter === ALL ? "No online orders yet" : "No orders with this status",
+            active > 0 ? "No orders match these filters" : "No online orders yet",
         }}
         columns={columns}
       />

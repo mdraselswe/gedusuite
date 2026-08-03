@@ -20,6 +20,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { DataTable, type Column } from "@/components/ui/data-table";
+import { useFilterBar, type FilterDef } from "@/components/ui/filter-bar";
 import { Users, AlertTriangle } from "lucide-react";
 
 type Customer = {
@@ -59,12 +60,57 @@ export function CustomerManager({
     if (found && found.id !== editing?.id) setPhoneMatch(found);
   }
 
-  const filtered = customers.filter((c) => {
-    const matches =
-      c.name.toLowerCase().includes(query.toLowerCase()) ||
+  const filters: FilterDef<Customer>[] = [
+    {
+      key: "dues",
+      label: "Dues",
+      kind: "select",
+      options: [
+        { value: "owing", label: "Owes money" },
+        { value: "clear", label: "Nothing owing" },
+      ],
+      match: (c, v) => (v === "owing" ? c.outstanding > 0 : c.outstanding <= 0),
+    },
+    {
+      key: "ordered",
+      label: "Has ordered",
+      kind: "select",
+      options: [
+        { value: "yes", label: "Has ordered" },
+        { value: "no", label: "Never ordered" },
+      ],
+      match: (c, v) => (v === "yes" ? c.orderCount > 0 : c.orderCount === 0),
+    },
+    {
+      key: "outstanding",
+      label: "Outstanding amount",
+      kind: "numberRange",
+      value: (c) => c.outstanding,
+    },
+    { key: "orders", label: "Order count", kind: "numberRange", step: "1", value: (c) => c.orderCount },
+  ];
+
+  const { rows: byFilters, bar, active } = useFilterBar(customers, filters, {
+    summary: (shown) => (
+      <span className="text-muted-foreground">
+        Due{" "}
+        <span className="font-semibold text-foreground tabular-nums">
+          {shown.reduce((s, c) => s + c.outstanding, 0).toFixed(2)}
+        </span>
+      </span>
+    ),
+  });
+
+  // Search stays its own control: it is typed constantly, the filters are set
+  // occasionally, and pairing them in one panel would hide the common one.
+  const filtered = byFilters.filter((c) => {
+    if (duesOnly && c.outstanding <= 0) return false;
+    const q = query.toLowerCase();
+    return (
+      c.name.toLowerCase().includes(q) ||
       (c.phone ?? "").includes(query) ||
-      (c.altPhone ?? "").includes(query);
-    return matches && (!duesOnly || c.outstanding > 0);
+      (c.altPhone ?? "").includes(query)
+    );
   });
 
   const totalDue = customers.reduce((s, c) => s + c.outstanding, 0);
@@ -127,6 +173,7 @@ export function CustomerManager({
           <span className="text-sm text-muted-foreground">
             Total due: <span className="font-semibold">{totalDue.toFixed(2)}</span>
           </span>
+          {bar}
         </div>
         {perms.canAdd && (
           <Button
@@ -146,7 +193,7 @@ export function CustomerManager({
         rowKey={(c) => c.id}
         empty={{
           icon: Users,
-          title: "No customers",
+          title: active > 0 ? "No customers match these filters" : "No customers",
           description: perms.canAdd ? "Add a customer to track orders and dues." : undefined,
         }}
         columns={

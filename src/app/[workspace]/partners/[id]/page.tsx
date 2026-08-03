@@ -38,14 +38,18 @@ export default async function PartnerDetailPage({
     (access.role !== "PARTNER" || partner.userId === access.userId);
   const canDelete = can(access.role, "partners", "edit", access.permissions);
 
-  const txns = partner.txns.map((t) => ({
-    id: t.id,
-    date: t.date.toISOString().slice(0, 10),
-    type: t.type,
-    amount: Number(t.amount),
-    purpose: t.purpose,
-    derivedFrom: derivedSource(t)?.tag ?? null,
-  }));
+  const txns = partner.txns.map((t) => {
+    const from = derivedSource(t);
+    return {
+      id: t.id,
+      date: t.date.toISOString().slice(0, 10),
+      type: t.type,
+      amount: Number(t.amount),
+      purpose: t.purpose,
+      derivedFrom: from?.tag ?? null,
+      derivedKind: from?.kind ?? null,
+    };
+  });
 
   const cards: [string, number][] = [
     ["Invested", balances?.invested ?? 0],

@@ -23,6 +23,7 @@ import {
 import { AsyncCombobox } from "@/components/ui/async-combobox";
 import { searchVariants, type VariantOption } from "@/server/actions/search";
 import { DataTable, type Column } from "@/components/ui/data-table";
+import { useFilterBar, type FilterDef } from "@/components/ui/filter-bar";
 import { ClipboardList } from "lucide-react";
 
 type Adjustment = {
@@ -89,6 +90,47 @@ export function StockAdjustmentManager({
     toast.success("Deleted");
     router.refresh();
   }
+
+  const filters: FilterDef<Adjustment>[] = [
+    {
+      key: "type",
+      label: "Any reason",
+      kind: "select",
+      primary: true,
+      options: TYPES.map((t) => ({ value: t, label: t.charAt(0) + t.slice(1).toLowerCase() })),
+      match: (a, v) => a.type === v,
+    },
+    {
+      key: "direction",
+      label: "Added or removed",
+      kind: "select",
+      options: [
+        { value: "out", label: "Stock removed" },
+        { value: "in", label: "Stock added back" },
+      ],
+      match: (a, v) => (v === "out" ? a.delta < 0 : a.delta > 0),
+    },
+    { key: "date", label: "Date range", kind: "dateRange", value: (a) => a.date },
+    {
+      key: "qty",
+      label: "Pieces affected",
+      kind: "numberRange",
+      step: "1",
+      value: (a) => Math.abs(a.delta),
+    },
+  ];
+
+  const { rows: shown, bar } = useFilterBar(adjustments, filters, {
+    summary: (rows) => (
+      <span className="text-muted-foreground">
+        Net{" "}
+        <span className="font-semibold text-foreground tabular-nums">
+          {rows.reduce((s, a) => s + a.delta, 0)}
+        </span>{" "}
+        pieces
+      </span>
+    ),
+  });
 
   return (
     <div className="space-y-6">
@@ -173,9 +215,12 @@ export function StockAdjustmentManager({
       )}
 
       <div>
-        <h2 className="mb-3 text-lg font-semibold">Recent adjustments</h2>
+        <div className="mb-3 space-y-2">
+          <h2 className="text-lg font-semibold">Recent adjustments</h2>
+          {bar}
+        </div>
         <DataTable
-          rows={adjustments}
+          rows={shown}
           rowKey={(a) => a.id}
           colorGroupBy={(a) => a.date}
           colorToggleLabel="Color by date"
