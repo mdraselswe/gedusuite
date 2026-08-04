@@ -4,19 +4,12 @@ import { workspaceAccess } from "@/lib/authz";
 import { can } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
 import { LeadManager } from "@/components/leads/lead-manager";
+import { formatDhakaDate, formatDhakaTime, toDhakaInputValue } from "@/lib/dhaka-time";
 import { Pagination, parsePage } from "@/components/ui/pagination";
 import { PageHeader } from "@/components/ui/page-header";
 
 const PAGE_SIZE = 50;
 
-// The shop and everyone calling from it are in Bangladesh, but the server runs
-// in UTC — plain toISOString() would show a late-evening order as the day before.
-const dhakaDate = new Intl.DateTimeFormat("en-CA", {
-  timeZone: "Asia/Dhaka",
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-});
 
 /**
  * Call tracking for orders placed on the website. Read-only with respect to
@@ -63,7 +56,12 @@ export default async function LeadsPage({
     channel: l.channel,
     orderNo: l.orderNo,
     wooStatus: l.wooStatus,
-    date: dhakaDate.format(l.orderedAt),
+    // Date and time stay separate: `date` is also the colour-grouping key and
+    // what the date-range filter compares, and both need it date-only.
+    date: formatDhakaDate(l.orderedAt),
+    time: formatDhakaTime(l.orderedAt),
+    // What the edit form's datetime-local input needs, already in Dhaka time.
+    orderedAtInput: toDhakaInputValue(l.orderedAt),
     customerName: l.customerName,
     phone: l.phone,
     altPhone: l.altPhone,

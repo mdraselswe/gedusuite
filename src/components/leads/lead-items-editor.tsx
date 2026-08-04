@@ -1,13 +1,12 @@
 "use client";
 
-import { useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { AsyncCombobox } from "@/components/ui/async-combobox";
 import { searchVariants, type VariantOption } from "@/server/actions/search";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { formatLeadItems } from "@/lib/lead-items";
+import { formatLeadItems, parseLeadItem, splitLeadItems } from "@/lib/lead-items";
 import { formatStock } from "@/lib/units";
 
 /**
@@ -23,6 +22,10 @@ import { formatStock } from "@/lib/units";
 
 export type ItemRow = {
   id: number;
+  /** A typed name rather than a catalogue pick. Carried on the row itself so
+   *  an existing order can be loaded back into the form for editing — its
+   *  items are stored as text and which product they were isn't recoverable. */
+  free: boolean;
   /** Set when picked from the catalogue; null for a free-typed row. */
   option: VariantOption | null;
   /** Used only by free-typed rows. */
@@ -33,10 +36,20 @@ export type ItemRow = {
 let nextId = 1;
 export const newItemRow = (free = false): ItemRow => ({
   id: nextId++,
+  free,
   option: null,
-  text: free ? "" : "",
+  text: "",
   qty: "1",
 });
+
+/** Load a stored "Name x2, Other x1" string back into editable rows. */
+export function rowsFromItemsText(text: string): ItemRow[] {
+  const rows = splitLeadItems(text).map((entry) => {
+    const { name, qty } = parseLeadItem(entry);
+    return { id: nextId++, free: true, option: null, text: name, qty: String(qty) };
+  });
+  return rows.length ? rows : [newItemRow()];
+}
 
 /** What the rows add up to, when every picked product has a price. */
 export function itemsTotal(rows: ItemRow[]): number | null {
@@ -63,16 +76,10 @@ export function LeadItemsEditor({
   rows: ItemRow[];
   onChange: (rows: ItemRow[]) => void;
 }) {
-  const [freeRows, setFreeRows] = useState<Set<number>>(new Set());
-
   const patch = (id: number, next: Partial<ItemRow>) =>
     onChange(rows.map((r) => (r.id === id ? { ...r, ...next } : r)));
   const remove = (id: number) => onChange(rows.filter((r) => r.id !== id));
-  const add = (free: boolean) => {
-    const row = newItemRow(free);
-    if (free) setFreeRows((s) => new Set(s).add(row.id));
-    onChange([...rows, row]);
-  };
+  const add = (free: boolean) => onChange([...rows, newItemRow(free)]);
 
   return (
     <div className="grid gap-2">
@@ -81,7 +88,7 @@ export function LeadItemsEditor({
       {rows.map((row) => (
         <div key={row.id} className="flex items-start gap-2">
           <div className="min-w-0 flex-1">
-            {freeRows.has(row.id) ? (
+            {row.free ? (
               <Input
                 placeholder="Item name"
                 value={row.text}

@@ -10,6 +10,7 @@ import {
   updateLeadNotes,
   createCustomerFromLead,
   deleteLead,
+  updateLead,
   syncFromWebsite,
 } from "@/server/actions/leads";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
@@ -37,12 +38,14 @@ import {
   LeadItemsEditor,
   itemsTotal,
   newItemRow,
+  rowsFromItemsText,
   rowsToItemsText,
   type ItemRow,
 } from "@/components/leads/lead-items-editor";
 import { splitLeadItems } from "@/lib/lead-items";
 import { LeadChannelCell } from "@/components/leads/lead-channel-cell";
 import { ORDER_SOURCES, ORDER_SOURCE_LABEL, NO_SOURCE_LABEL } from "@/lib/order-source";
+import { toDhakaInputValue } from "@/lib/dhaka-time";
 import { cn } from "@/lib/utils";
 
 type Lead = {
@@ -53,6 +56,10 @@ type Lead = {
   orderNo: string | null;
   wooStatus: string | null;
   date: string;
+  /** Dhaka clock time, e.g. "9:30 PM". Separate from `date`, which groups. */
+  time: string;
+  /** "2026-08-04T21:30" — what the edit form's datetime input needs. */
+  orderedAtInput: string;
   customerName: string;
   phone: string;
   altPhone: string | null;
@@ -149,7 +156,8 @@ export function LeadManager({
   const router = useRouter();
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  const [addOpen, setAddOpen] = useState(false);
+  const [formOpen, setFormOpen] = useState(false);
+  const [editing, setEditing] = useState<Lead | null>(null);
   const [addSaving, setAddSaving] = useState(false);
   const [itemRows, setItemRows] = useState<ItemRow[]>([newItemRow()]);
   const [total, setTotal] = useState("0");
@@ -157,6 +165,7 @@ export function LeadManager({
   // person on the phone may have agreed a different figure.
   const [totalTouched, setTotalTouched] = useState(false);
   const [channel, setChannel] = useState<string>(UNTAGGED);
+  const [orderedAt, setOrderedAt] = useState("");
 
   // Only offered when every row is a catalogue product with a price — a
   // half-known total is worse than none.
@@ -258,22 +267,42 @@ export function LeadManager({
     router.refresh();
   }
 
-  async function onAdd(e: React.FormEvent<HTMLFormElement>) {
+  function openNew() {
+    setEditing(null);
+    setItemRows([newItemRow()]);
+    setTotal("0");
+    setTotalTouched(false);
+    setChannel(UNTAGGED);
+    setOrderedAt(toDhakaInputValue(new Date()));
+    setFormOpen(true);
+  }
+
+  function openEdit(l: Lead) {
+    setEditing(l);
+    setItemRows(rowsFromItemsText(l.itemsText));
+    setTotal(String(l.total));
+    // An existing order's total was already agreed; the items must not
+    // silently rewrite it just because they were loaded back in.
+    setTotalTouched(true);
+    setChannel(l.channel ?? UNTAGGED);
+    setOrderedAt(l.orderedAtInput);
+    setFormOpen(true);
+  }
+
+  async function onSubmitLead(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setAddSaving(true);
     const fd = new FormData(e.currentTarget);
     // The rows are the form's real state; itemsText is what the server stores.
     fd.set("itemsText", rowsToItemsText(itemRows));
     fd.set("channel", channel === UNTAGGED ? "" : channel);
-    const res = await createLead(slug, fd);
+    const res = editing
+      ? await updateLead(slug, editing.id, fd)
+      : await createLead(slug, fd);
     setAddSaving(false);
     if (!res.ok) return toast.error(res.error);
-    toast.success("Order added");
-    setAddOpen(false);
-    setItemRows([newItemRow()]);
-    setTotal("0");
-    setTotalTouched(false);
-    setChannel(UNTAGGED);
+    toast.success(editing ? "Order updated" : "Order added");
+    setFormOpen(false);
     router.refresh();
   }
 
@@ -337,7 +366,9 @@ export function LeadManager({
               </Badge>
             )}
           </span>
-          <span className="block text-xs font-normal text-muted-foreground">{l.date}</span>
+          <span className="block text-xs font-normal text-muted-foreground">
+            {l.date} · {l.time}
+          </span>
         </span>
       ),
     },
@@ -491,6 +522,11 @@ export function LeadManager({
                 Customer
               </Button>
             ))}
+          {perms.canAdd && (
+            <Button size="sm" variant="ghost" onClick={() => openEdit(l)}>
+              Edit
+            </Button>
+          )}
           {perms.canDelete && (
             <Button size="sm" variant="ghost" onClick={() => onDelete(l)}>
               Delete
@@ -506,7 +542,7 @@ export function LeadManager({
       <div className="flex flex-wrap items-start gap-2">
         <div className="min-w-0 flex-1">{bar}</div>
         {perms.canAdd && (
-          <Button size="sm" onClick={() => setAddOpen(true)}>
+          <Button size="sm" onClick={openNew}>
             + Add order
           </Button>
         )}
@@ -536,26 +572,63 @@ export function LeadManager({
       />
 
       {/* Manual entry — lets the list be used before the website is wired up. */}
-      <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent>
-          <form onSubmit={onAdd}>
+      <Dialog open={formOpen} onOpenChange={setFormOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
+          {/* Keyed so the uncontrolled fields pick up a different lead's
+              defaultValue instead of keeping the last one's. */}
+          <form onSubmit={onSubmitLead} key={editing?.id ?? "new"}>
             <DialogHeader>
-              <DialogTitle>Add an order to the call list</DialogTitle>
+              <DialogTitle>
+                {editing ? "Edit order" : "Add an order to the call list"}
+              </DialogTitle>
             </DialogHeader>
             <div className="grid gap-3 py-4">
               <div className="grid gap-1.5">
                 <Label htmlFor="customerName">Customer name</Label>
-                <Input id="customerName" name="customerName" required maxLength={120} />
+                <Input
+                  id="customerName"
+                  name="customerName"
+                  required
+                  maxLength={120}
+                  defaultValue={editing?.customerName ?? ""}
+                />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="grid gap-1.5">
                   <Label htmlFor="phone">Phone</Label>
-                  <Input id="phone" name="phone" required maxLength={40} inputMode="tel" />
+                  <Input
+                    id="phone"
+                    name="phone"
+                    required
+                    maxLength={40}
+                    inputMode="tel"
+                    defaultValue={editing?.phone ?? ""}
+                  />
                 </div>
                 <div className="grid gap-1.5">
                   <Label htmlFor="orderNo">Order no.</Label>
-                  <Input id="orderNo" name="orderNo" maxLength={40} placeholder="#1284" />
+                  <Input
+                    id="orderNo"
+                    name="orderNo"
+                    maxLength={40}
+                    placeholder="#1284"
+                    defaultValue={editing?.orderNo ?? ""}
+                  />
                 </div>
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="orderedAt">Order date &amp; time</Label>
+                <Input
+                  id="orderedAt"
+                  name="orderedAt"
+                  type="datetime-local"
+                  value={orderedAt}
+                  onChange={(e) => setOrderedAt(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Bangladesh time.
+                  {editing ? "" : " Defaults to now — change it for an order taken earlier."}
+                </p>
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="lead-channel">Where from</Label>
@@ -584,7 +657,13 @@ export function LeadManager({
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="address">Address</Label>
-                <Textarea id="address" name="address" rows={2} maxLength={500} />
+                <Textarea
+                  id="address"
+                  name="address"
+                  rows={2}
+                  maxLength={500}
+                  defaultValue={editing?.address ?? ""}
+                />
               </div>
               <LeadItemsEditor slug={slug} rows={itemRows} onChange={setItemRows} />
               <div className="grid gap-1.5">
@@ -617,7 +696,7 @@ export function LeadManager({
             </div>
             <DialogFooter>
               <Button type="submit" disabled={addSaving}>
-                {addSaving ? "Saving…" : "Add"}
+                {addSaving ? "Saving…" : editing ? "Save" : "Add"}
               </Button>
             </DialogFooter>
           </form>

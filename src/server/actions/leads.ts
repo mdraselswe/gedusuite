@@ -10,6 +10,7 @@ import { requireUser } from "@/lib/session";
 import { createCustomer, findCustomerByPhone } from "@/server/actions/customers";
 import { syncWooOrders, wooConfigured } from "@/lib/woo";
 import { isOrderSource } from "@/lib/order-source";
+import { dhakaInputToDate } from "@/lib/dhaka-time";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -39,14 +40,13 @@ const LeadSchema = z.object({
   // Same vocabulary as an order's source, so a lead and the order it becomes
   // describe the channel the same way. Blank stays blank.
   channel: z.string().trim().optional().or(z.literal("")),
+  // "2026-08-04T21:30" from a datetime-local input, read as Dhaka time.
+  orderedAt: z.string().trim().optional().or(z.literal("")),
 });
 
-/** Manual entry, so the list is usable before the WooCommerce webhook exists. */
-export async function createLead(slug: string, formData: FormData): Promise<ActionResult> {
-  const gate = await requireAccess(slug, MODULE, "add");
-  if (!gate.ok) return gate;
-
-  const parsed = LeadSchema.safeParse({
+/** One reader for both create and update, so the two can't drift apart. */
+function parseLead(formData: FormData) {
+  return LeadSchema.safeParse({
     customerName: formData.get("customerName"),
     phone: formData.get("phone"),
     altPhone: formData.get("altPhone") ?? undefined,
@@ -55,7 +55,16 @@ export async function createLead(slug: string, formData: FormData): Promise<Acti
     orderNo: formData.get("orderNo") ?? undefined,
     total: formData.get("total") ?? 0,
     channel: formData.get("channel") ?? undefined,
+    orderedAt: formData.get("orderedAt") ?? undefined,
   });
+}
+
+/** Manual entry, so the list is usable before the WooCommerce webhook exists. */
+export async function createLead(slug: string, formData: FormData): Promise<ActionResult> {
+  const gate = await requireAccess(slug, MODULE, "add");
+  if (!gate.ok) return gate;
+
+  const parsed = parseLead(formData);
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
@@ -76,8 +85,59 @@ export async function createLead(slug: string, formData: FormData): Promise<Acti
       itemsText: d.itemsText?.trim() ?? "",
       total: d.total,
       channel: isOrderSource(d.channel) ? d.channel : null,
+      // An order taken on the phone is often written up later, so when it was
+      // placed is a real answer — but an unparseable one falls through to the
+      // column default rather than being stored wrong.
+      ...(dhakaInputToDate(d.orderedAt) ? { orderedAt: dhakaInputToDate(d.orderedAt)! } : {}),
     },
   });
+
+  revalidatePath(`/${slug}/leads`);
+  return { ok: true };
+}
+
+/**
+ * Correct a lead's own details. Call tracking — status, attempts, who called,
+ * the notes — is untouched: editing what was ordered is not a call, and
+ * resetting that history because a phone number had a typo would lose the
+ * only record of the chasing already done.
+ *
+ * Website leads are editable too, but the WooCommerce sync writes its fields
+ * back on every pull, so a correction to one of those is temporary. Anything
+ * genuinely wrong should be fixed in WooCommerce.
+ */
+export async function updateLead(
+  slug: string,
+  id: string,
+  formData: FormData,
+): Promise<ActionResult> {
+  const gate = await requireAccess(slug, MODULE, "add");
+  if (!gate.ok) return gate;
+
+  const parsed = parseLead(formData);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  }
+  const d = parsed.data;
+  const orderedAt = dhakaInputToDate(d.orderedAt);
+
+  const res = await prisma.orderLead.updateMany({
+    where: { id, workspaceId: gate.access.workspaceId },
+    data: {
+      orderNo: clean(d.orderNo),
+      customerName: d.customerName,
+      phone: d.phone,
+      altPhone: clean(d.altPhone),
+      address: clean(d.address),
+      itemsText: d.itemsText?.trim() ?? "",
+      total: d.total,
+      channel: isOrderSource(d.channel) ? d.channel : null,
+      // Left alone when the field comes back unparseable, rather than
+      // overwriting a good timestamp with a guess.
+      ...(orderedAt ? { orderedAt } : {}),
+    },
+  });
+  if (res.count === 0) return { ok: false, error: "Lead not found" };
 
   revalidatePath(`/${slug}/leads`);
   return { ok: true };
