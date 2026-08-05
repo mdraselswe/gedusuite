@@ -6,8 +6,12 @@ import { serverT } from "@/lib/session";
 import { BoostingManager } from "@/components/boosting/boosting-manager";
 import { PageHeader } from "@/components/ui/page-header";
 import { Megaphone } from "lucide-react";
-import { computeOrderTotals } from "@/lib/orders";
-import { buildCampaignResult, campaignWindow, roasVerdict } from "@/lib/boost-results";
+import {
+  buildCampaignResult,
+  campaignWindow,
+  roasVerdict,
+  toAttributable,
+} from "@/lib/boost-results";
 
 export default async function BoostingPage({
   params,
@@ -56,11 +60,11 @@ export default async function BoostingPage({
     ? await prisma.order.findMany({
         where: {
           workspaceId,
-          status: { not: "CANCELLED" },
           OR: [{ date: { gte: earliestStart } }, { boostCampaignId: { not: null } }],
         },
         select: {
           date: true,
+          status: true,
           source: true,
           boostCampaignId: true,
           discount: true,
@@ -80,16 +84,7 @@ export default async function BoostingPage({
         },
       })
     : [];
-  const attributable = orderRows.map((o) => {
-    const t = computeOrderTotals(o);
-    return {
-      date: o.date,
-      source: o.source,
-      boostCampaignId: o.boostCampaignId,
-      netRevenue: t.netRevenue,
-      netProfit: t.netProfit,
-    };
-  });
+  const attributable = orderRows.map(toAttributable);
 
   let totalSpendAll = 0;
   let monthSpend = 0;

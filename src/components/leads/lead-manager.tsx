@@ -13,6 +13,10 @@ import {
   updateLead,
   syncFromWebsite,
   nextManualOrderNo,
+  findOrdersForLead,
+  linkLeadToOrder,
+  unlinkLeadOrder,
+  type LinkCandidate,
 } from "@/server/actions/leads";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { Badge } from "@/components/ui/badge";
@@ -47,6 +51,12 @@ import { splitLeadItems } from "@/lib/lead-items";
 import { LeadChannelCell } from "@/components/leads/lead-channel-cell";
 import { ORDER_SOURCES, ORDER_SOURCE_LABEL, NO_SOURCE_LABEL } from "@/lib/order-source";
 import { toDhakaInputValue } from "@/lib/dhaka-time";
+import {
+  LEAD_FULFILMENTS,
+  LEAD_FULFILMENT_LABEL,
+  LEAD_FULFILMENT_TONE,
+  type LeadFulfilment,
+} from "@/lib/lead-fulfilment";
 import { cn } from "@/lib/utils";
 
 type Lead = {
@@ -73,9 +83,16 @@ type Lead = {
   customerAdvice: string | null;
   internalNote: string | null;
   convertedCustomerId: string | null;
+  /** The real order this lead became, once one was entered. */
+  orderId: string | null;
+  /** Derived from that order — never stored on the lead. */
+  fulfilment: LeadFulfilment;
 };
 type Perms = { canAdd: boolean; canDelete: boolean; canAddCustomer: boolean };
 
+// How the CALL went — where the parcel got to is the Order column, read off
+// the linked order. DELIVERED used to sit in this list, which made "called 3
+// times" and "arrived" the same kind of fact.
 const STATUSES = [
   "NOT_CALLED",
   "NO_ANSWER",
@@ -83,7 +100,6 @@ const STATUSES = [
   "WRONG_NUMBER",
   "CALL_LATER",
   "CONFIRMED",
-  "DELIVERED",
   "CANCELLED",
 ] as const;
 
@@ -94,8 +110,9 @@ const STATUS_LABEL: Record<string, string> = {
   WRONG_NUMBER: "Wrong number",
   CALL_LATER: "Call later",
   CONFIRMED: "Confirmed",
-  DELIVERED: "Delivered",
-  CANCELLED: "Cancelled",
+  // Named for who did it: the customer said no on the phone. An order
+  // cancelled later is the order's own status, in the next column.
+  CANCELLED: "Customer said no",
 };
 
 // Tints the status trigger so the list is scannable without reading every row.
@@ -106,10 +123,6 @@ const STATUS_TONE: Record<string, string> = {
   WRONG_NUMBER: "border-red-500/60 text-red-700 dark:text-red-400",
   CALL_LATER: "border-sky-500/60 text-sky-700 dark:text-sky-400",
   CONFIRMED: "border-emerald-500/60 text-emerald-700 dark:text-emerald-400",
-  // Same happy path as Confirmed but the end of it — filled rather than a
-  // second emerald outline, so the two aren't a coin-flip at a glance.
-  DELIVERED:
-    "border-emerald-600/70 bg-emerald-500/10 font-semibold text-emerald-700 dark:text-emerald-300",
   CANCELLED: "border-muted-foreground/40 text-muted-foreground line-through",
 };
 
@@ -181,6 +194,11 @@ export function LeadManager({
   // half-known total is worse than none.
   const suggestedTotal = itemsTotal(itemRows);
   const effectiveTotal = !totalTouched && suggestedTotal !== null ? String(suggestedTotal) : total;
+  // Matching an old lead to an order entered before the two were ever linked.
+  const [linkingFor, setLinkingFor] = useState<Lead | null>(null);
+  const [linkQuery, setLinkQuery] = useState("");
+  const [linkResults, setLinkResults] = useState<LinkCandidate[] | null>(null);
+  const [linkBusy, setLinkBusy] = useState(false);
   const [notesFor, setNotesFor] = useState<Lead | null>(null);
   const [notesSaving, setNotesSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -245,6 +263,13 @@ export function LeadManager({
         { value: "no", label: "Not added yet" },
       ],
       match: (l, v) => (v === "yes" ? !!l.convertedCustomerId : !l.convertedCustomerId),
+    },
+    {
+      key: "fulfilment",
+      label: "Order status",
+      kind: "select",
+      options: LEAD_FULFILMENTS.map((f) => ({ value: f, label: LEAD_FULFILMENT_LABEL[f] })),
+      match: (l, v) => l.fulfilment === v,
     },
     { key: "date", label: "Order date", kind: "dateRange", value: (l) => l.date },
     { key: "total", label: "Order total", kind: "numberRange", value: (l) => l.total },
@@ -346,6 +371,15 @@ export function LeadManager({
   }
 
   async function onCreateCustomer(lead: Lead) {
+    // Creating a customer isn't destructive, but it's a row somebody then has
+    // to find and delete — and this button sits in a dense table of dropdowns
+    // that get clicked all day, so a slip is easy.
+    const ok = await confirmDialog({
+      title: "Add this person as a customer?",
+      description: `"${lead.customerName}" (${lead.phone}) will be added to the customer list. An existing customer with this number is linked instead of duplicated.`,
+      confirmText: "Add customer",
+    });
+    if (!ok) return;
     setBusyId(lead.id);
     const res = await createCustomerFromLead(slug, lead.id);
     setBusyId(null);
@@ -353,6 +387,71 @@ export function LeadManager({
     toast.success(
       `"${res.customerName}" added — now search this name on the sales page`,
     );
+    router.refresh();
+  }
+
+  /**
+   * Take a confirmed call through to a real order in one go: make sure the
+   * customer exists, then hand the sales page everything it needs to open its
+   * order form already filled in. The order it creates links itself back, so
+   * the Order column below starts tracking this lead's parcel by itself.
+   */
+  async function onCreateOrder(lead: Lead) {
+    setBusyId(lead.id);
+    // Reuses the existing conversion: it matches on phone first, so a repeat
+    // buyer doesn't become a second customer row.
+    let customerId = lead.convertedCustomerId;
+    if (!customerId) {
+      const res = await createCustomerFromLead(slug, lead.id);
+      if (!res.ok) {
+        setBusyId(null);
+        return toast.error(res.error);
+      }
+      customerId = res.customerId ?? null;
+    }
+    setBusyId(null);
+    const params = new URLSearchParams({ fromLead: lead.id });
+    if (customerId) params.set("customerId", customerId);
+    router.push(`/${slug}/sales/orders?${params}`);
+  }
+
+  function openLink(lead: Lead) {
+    setLinkingFor(lead);
+    setLinkQuery("");
+    setLinkResults(null);
+    void loadLinkResults(lead, "");
+  }
+
+  async function loadLinkResults(lead: Lead, q: string) {
+    setLinkBusy(true);
+    const res = await findOrdersForLead(slug, lead.id, q);
+    setLinkBusy(false);
+    if (!res.ok) return toast.error(res.error);
+    setLinkResults(res.orders);
+  }
+
+  async function onPickOrder(orderId: string) {
+    if (!linkingFor) return;
+    setLinkBusy(true);
+    const res = await linkLeadToOrder(slug, linkingFor.id, orderId);
+    setLinkBusy(false);
+    if (!res.ok) return toast.error(res.error);
+    toast.success("Linked — this row now follows that order");
+    setLinkingFor(null);
+    router.refresh();
+  }
+
+  async function onUnlink(lead: Lead) {
+    const ok = await confirmDialog({
+      title: "Unlink this order?",
+      description:
+        "The call-list row stops following that order and reads \"Not entered\" again. The order itself is untouched.",
+      confirmText: "Unlink",
+    });
+    if (!ok) return;
+    const res = await unlinkLeadOrder(slug, lead.id);
+    if (!res.ok) return toast.error(res.error);
+    toast.success("Unlinked");
     router.refresh();
   }
 
@@ -498,6 +597,78 @@ export function LeadManager({
             ))}
           </SelectContent>
         </Select>
+      ),
+    },
+    {
+      key: "fulfilment",
+      header: "Order",
+      label: "Order",
+      sortValue: (l) => l.fulfilment,
+      // Read off the linked order, so it can't be edited here — the sales page
+      // is where an order's status changes, and one place to change it is the
+      // whole point of the split.
+      cell: (l) => (
+        <span className="inline-flex items-center gap-1.5">
+          {/* outline rather than the default variant: the default paints a
+              solid primary background the tone would have to fight. */}
+          <Badge
+            variant="outline"
+            className={cn("h-6 px-2 font-normal", LEAD_FULFILMENT_TONE[l.fulfilment])}
+          >
+            {LEAD_FULFILMENT_LABEL[l.fulfilment]}
+          </Badge>
+          {l.orderId ? (
+            <span className="inline-flex items-center gap-1">
+              <a
+                href={`/${slug}/sales/orders?q=${encodeURIComponent(l.customerName)}`}
+                className="text-xs text-muted-foreground underline-offset-2 hover:underline"
+              >
+                open
+              </a>
+              {perms.canAdd && (
+                <span aria-hidden className="text-muted-foreground/40">
+                  ·
+                </span>
+              )}
+              {perms.canAdd && (
+                <button
+                  type="button"
+                  onClick={() => onUnlink(l)}
+                  className="text-xs text-muted-foreground underline-offset-2 hover:underline"
+                  title="Stop following this order"
+                >
+                  unlink
+                </button>
+              )}
+            </span>
+          ) : (
+            perms.canAdd && (
+              <span className="inline-flex items-center gap-1">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 px-1.5 text-xs"
+                  disabled={busyId === l.id}
+                  onClick={() => onCreateOrder(l)}
+                  title="Create the real order from this lead — the sales form opens filled in"
+                >
+                  + Order
+                </Button>
+                {/* For the backlog: orders entered before the two lists were
+                    linked at all. New ones link themselves. */}
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 px-1.5 text-xs text-muted-foreground"
+                  onClick={() => openLink(l)}
+                  title="This order was already entered — point this row at it"
+                >
+                  link
+                </Button>
+              </span>
+            )
+          )}
+        </span>
       ),
     },
     {
@@ -745,6 +916,87 @@ export function LeadManager({
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Matching the backlog by hand. Orders created from a lead link
+          themselves, so this is only for the ones entered before that
+          existed — it can go once the old rows are matched up. */}
+      <Dialog open={!!linkingFor} onOpenChange={(o) => !o && setLinkingFor(null)}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Which order is this?</DialogTitle>
+          </DialogHeader>
+          {linkingFor && (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                {linkingFor.customerName} · {linkingFor.phone} · {linkingFor.itemsText || "no items"}
+              </p>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void loadLinkResults(linkingFor, linkQuery);
+                }}
+                className="flex gap-2"
+              >
+                <Input
+                  value={linkQuery}
+                  onChange={(e) => setLinkQuery(e.target.value)}
+                  placeholder="Search by customer name, phone or tracking ID"
+                />
+                <Button type="submit" variant="outline" disabled={linkBusy}>
+                  Search
+                </Button>
+              </form>
+
+              {linkResults === null ? (
+                <p className="py-6 text-center text-sm text-muted-foreground">Looking…</p>
+              ) : linkResults.length === 0 ? (
+                <p className="py-6 text-center text-sm text-muted-foreground">
+                  No orders matched. Try the customer&apos;s name, or use + Order to enter it.
+                </p>
+              ) : (
+                <ul className="divide-y rounded-md border">
+                  {linkResults.map((o) => (
+                    <li key={o.id}>
+                      <button
+                        type="button"
+                        disabled={linkBusy}
+                        onClick={() => onPickOrder(o.id)}
+                        className="flex w-full items-start justify-between gap-3 px-3 py-2 text-left hover:bg-muted disabled:opacity-60"
+                      >
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-medium">
+                            {o.customerName}
+                            {o.phone && (
+                              <span className="font-normal text-muted-foreground"> · {o.phone}</span>
+                            )}
+                          </span>
+                          <span className="block text-xs text-muted-foreground">
+                            {o.date} · {o.status}
+                          </span>
+                          {o.takenBy && (
+                            <span className="block text-xs text-amber-700 dark:text-amber-400">
+                              Already linked to {o.takenBy}&apos;s row
+                            </span>
+                          )}
+                        </span>
+                        <span className="shrink-0 text-sm font-medium tabular-nums">
+                          {o.total.toFixed(2)}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {!linkQuery && linkResults && linkResults.length > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Suggestions: same customer or phone number, plus orders placed within a
+                  week of this call. Search above if it isn&apos;t here.
+                </p>
+              )}
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 

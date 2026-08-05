@@ -5,8 +5,11 @@ export const EXPIRY_WINDOW_DAYS = 30;
 
 // Orders in these statuses have consumed their stock. PENDING/CANCELLED have not,
 // so cancelling an order automatically restores stock (no column mutation needed).
+// PACKED sits between CONFIRMED and SHIPPED: the goods are in the box, so they
+// are as gone from the shelf as a shipped order's.
 export const STOCK_CONSUMING_STATUSES = [
   "CONFIRMED",
+  "PACKED",
   "SHIPPED",
   "DELIVERED",
 ] as const;

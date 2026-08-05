@@ -5,6 +5,7 @@ import { can } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
 import { LeadManager } from "@/components/leads/lead-manager";
 import { formatDhakaDate, formatDhakaTime, toDhakaInputValue } from "@/lib/dhaka-time";
+import { leadFulfilment } from "@/lib/lead-fulfilment";
 import { Pagination, parsePage } from "@/components/ui/pagination";
 import { PageHeader } from "@/components/ui/page-header";
 
@@ -50,6 +51,23 @@ export default async function LeadsPage({
     }),
   ]);
 
+  // Fulfilment is read off the linked orders rather than stored on the lead —
+  // one query for this page's rows, not one per lead. OrderLead.orderId has no
+  // foreign key, so an order deleted since linking simply isn't found, and the
+  // lead reads as "Not entered" again.
+  const linkedIds = leads.map((l) => l.orderId).filter((id): id is string => !!id);
+  const linkedOrders = linkedIds.length
+    ? await prisma.order.findMany({
+        where: { id: { in: linkedIds }, workspaceId: access.workspaceId },
+        select: {
+          id: true,
+          status: true,
+          items: { select: { quantity: true, returns: { select: { quantity: true } } } },
+        },
+      })
+    : [];
+  const orderById = new Map(linkedOrders.map((o) => [o.id, o]));
+
   const rows = leads.map((l) => ({
     id: l.id,
     source: l.source,
@@ -74,6 +92,8 @@ export default async function LeadsPage({
     customerAdvice: l.customerAdvice,
     internalNote: l.internalNote,
     convertedCustomerId: l.convertedCustomerId,
+    orderId: l.orderId,
+    fulfilment: leadFulfilment(l.orderId ? orderById.get(l.orderId) : null),
   }));
 
   return (

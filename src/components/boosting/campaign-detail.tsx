@@ -191,6 +191,21 @@ function ResultsCard({
       value: money(result.profit),
       hint: "What the orders themselves made",
     },
+    {
+      label: "Cancelled",
+      value:
+        result.cancelledOrders === 0
+          ? "—"
+          : `${result.cancelledOrders} · ${((result.cancelRate ?? 0) * 100).toFixed(0)}%`,
+      hint: "Attributed orders that came back, and their share of everything this campaign produced",
+      note:
+        result.cancelledOrders === 0
+          ? undefined
+          : `${money(result.cancelledCost)} lost, already in the profit`,
+      // The ads were paid for whether or not the order stuck, so a campaign
+      // that produces returns is worse than its revenue makes it look.
+      tone: (result.cancelRate ?? 0) >= 0.2 ? "bad" : undefined,
+    },
   ];
 
   return (
@@ -260,7 +275,7 @@ function ResultsCard({
           </div>
         </div>
 
-        <div className="grid gap-x-6 gap-y-3 border-t pt-3 sm:grid-cols-4">
+        <div className="grid gap-x-6 gap-y-3 border-t pt-3 sm:grid-cols-5">
           {stats.map((s) => (
             <div key={s.label}>
               <div className="text-xs text-muted-foreground" title={s.hint}>

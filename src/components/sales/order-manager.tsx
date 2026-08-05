@@ -13,7 +13,9 @@ import {
   updateCourierTrackingId,
   createReturn,
   deleteOrder,
+  setOrderSource,
 } from "@/server/actions/orders";
+import { linkLeadToOrder } from "@/server/actions/leads";
 import { createCustomer } from "@/server/actions/customers";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -76,6 +78,8 @@ type OrderRow = {
   paymentMethod: string;
   source: string | null;
   boostCampaignId: string | null;
+  /** True once this PAID order's cash was marked deposited in the treasury. */
+  cashInTreasury: boolean;
   deliveryCharge: number;
   deliveryCost: number | null;
   packagingCost: number;
@@ -88,6 +92,18 @@ type OrderRow = {
   items: OrderItem[];
 };
 type Perms = { canAdd: boolean; canEdit: boolean; canViewProfit: boolean };
+/** A call-list row the sales page was sent here to turn into an order. */
+export type FromLead = {
+  leadId: string;
+  customerId: string | null;
+  customerName: string;
+  /** What the caller wrote down — free text, so it's shown, not auto-added. */
+  itemsText: string;
+  /** The lead's channel, prefilled onto the order's "came from". */
+  channel: string | null;
+  address: string | null;
+  total: number;
+};
 type ItemDraft = {
   variant: SearchVariantOption | null;
   unitPrice: string;
@@ -118,7 +134,7 @@ const OPTIONAL_COLUMNS = [
   { key: "profit", label: "Profit" },
 ] as const;
 
-const STATUSES = ["PENDING", "CONFIRMED", "SHIPPED", "DELIVERED", "CANCELLED"];
+const STATUSES = ["PENDING", "CONFIRMED", "PACKED", "SHIPPED", "DELIVERED", "CANCELLED"];
 const DELIVERY = ["SELF", "COURIER"];
 const METHODS = ["CASH", "BKASH", "NAGAD", "COURIER_COLLECTION", "OTHER"];
 const PAY_STATUS = ["UNPAID", "PAID", "PARTIAL"];
@@ -241,6 +257,7 @@ export function OrderManager({
   hasProducts,
   members,
   campaigns,
+  fromLead,
   orders,
   perms,
   query,
@@ -255,6 +272,11 @@ export function OrderManager({
   members: { id: string; label: string }[];
   /** Campaigns worth tagging an order to — empty when boosting isn't used. */
   campaigns: CampaignOption[];
+  /**
+   * Set when the sales page was opened from a call-list row ("+ Order"): the
+   * form opens filled in, and the order it creates links back to that lead.
+   */
+  fromLead: FromLead | null;
   orders: OrderRow[];
   perms: Perms;
   query: string;
@@ -270,6 +292,9 @@ export function OrderManager({
   // ── New-order dialog state ──
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  // The order awaiting a "what did this cancellation cost?" answer.
+  const [cancelling, setCancelling] = useState<OrderRow | null>(null);
+  const [cancelSaving, setCancelSaving] = useState(false);
   const [items, setItems] = useState<ItemDraft[]>([emptyItem()]);
   const [gifts, setGifts] = useState<GiftDraft[]>([]);
   const [customer, setCustomer] = useState<ComboOption | null>(null);
@@ -408,6 +433,23 @@ export function OrderManager({
   }
   const shownOrders = orders;
 
+  // Arriving from a call-list row opens the order form already pointed at that
+  // customer. Runs once: reopening the dialog after a save would be a trap,
+  // and the URL still carries ?fromLead until the next navigation.
+  const leadPrefilled = useRef(false);
+  useEffect(() => {
+    if (!fromLead || leadPrefilled.current || !perms.canAdd) return;
+    leadPrefilled.current = true;
+    if (fromLead.customerId) {
+      setCustomer({ value: fromLead.customerId, label: fromLead.customerName });
+    }
+    // The call taker already agreed a price with the customer; the items are
+    // free text and can't be matched to catalogue variants reliably, so the
+    // total is offered and the lines are shown for the person to pick.
+    setDeliveryType("COURIER");
+    setOpen(true);
+  }, [fromLead, perms.canAdd]);
+
   function resetForm() {
     setItems([emptyItem()]);
     setGifts([]);
@@ -501,16 +543,59 @@ export function OrderManager({
     const res = await createOrder(slug, fd);
     setLoading(false);
     if (!res.ok) return toast.error(res.error);
-    toast.success("Order created");
+    // Point the call-list row at the order it just became, so that list can
+    // show where the parcel got to without anyone re-typing it. A failure here
+    // costs the link, not the order — say so rather than implying both failed.
+    if (fromLead && res.id) {
+      const linked = await linkLeadToOrder(slug, fromLead.leadId, res.id);
+      // The lead already knows which channel the customer came through, and
+      // the order form has no field for it — carry it across rather than
+      // leaving one more order tagged "Not set".
+      if (fromLead.channel) await setOrderSource(slug, res.id, fromLead.channel);
+      if (!linked.ok) {
+        toast.error(`Order created, but linking it to the call list failed: ${linked.error}`);
+      } else {
+        toast.success("Order created and linked to the call list");
+      }
+    } else {
+      toast.success("Order created");
+    }
     setOpen(false);
     resetForm();
     router.refresh();
   }
 
   async function onStatusChange(orderId: string, newStatus: string) {
+    // Cancelling asks what it cost before it happens: once the row says
+    // CANCELLED nobody goes back to record the courier's return charge, and
+    // an uncosted cancellation reads as free in every report.
+    if (newStatus === "CANCELLED") {
+      const order = orders.find((o) => o.id === orderId);
+      if (order && order.status !== "CANCELLED") {
+        setCancelling(order);
+        return;
+      }
+    }
     const res = await updateOrderStatus(slug, orderId, newStatus);
     if (!res.ok) return toast.error(res.error);
     toast.success(`Order → ${newStatus}`);
+    router.refresh();
+  }
+
+  async function onConfirmCancel(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!cancelling) return;
+    const fd = new FormData(e.currentTarget);
+    setCancelSaving(true);
+    const res = await updateOrderStatus(slug, cancelling.id, "CANCELLED", {
+      packagingCost: String(fd.get("packagingCost") ?? "0"),
+      giftCost: String(fd.get("giftCost") ?? "0"),
+      deliveryCost: String(fd.get("deliveryCost") ?? "0"),
+    });
+    setCancelSaving(false);
+    if (!res.ok) return toast.error(res.error);
+    toast.success("Order cancelled");
+    setCancelling(null);
     router.refresh();
   }
 
@@ -895,10 +980,27 @@ export function OrderManager({
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="flex max-h-[92dvh] max-w-[min(96vw,980px)] flex-col overflow-hidden p-0 sm:max-w-[min(96vw,980px)]">
           <DialogHeader className="shrink-0 border-b bg-muted/30 px-4 py-4 pr-14 sm:px-5">
-            <DialogTitle className="text-lg">New order</DialogTitle>
+            <DialogTitle className="text-lg">
+              {fromLead ? `New order for ${fromLead.customerName}` : "New order"}
+            </DialogTitle>
             <p className="text-sm text-muted-foreground">
               Add products first, then payment and delivery details.
             </p>
+            {/* What the caller wrote down, shown rather than auto-added: lead
+                items are free text and a wrong catalogue match would put the
+                wrong cost on the order and take the wrong item out of stock. */}
+            {fromLead && (
+              <div className="rounded-md border border-sky-500/40 bg-sky-500/10 px-3 py-2 text-sm">
+                <div className="font-medium">From the call list</div>
+                <div className="text-muted-foreground">
+                  {fromLead.itemsText || "No items were written down"}
+                  {fromLead.total > 0 && ` · agreed total ${fromLead.total.toFixed(2)}`}
+                </div>
+                {fromLead.address && (
+                  <div className="text-muted-foreground">{fromLead.address}</div>
+                )}
+              </div>
+            )}
           </DialogHeader>
           {!hasProducts ? (
             <p className="px-5 pb-5 text-sm text-muted-foreground">
@@ -1506,6 +1608,93 @@ export function OrderManager({
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Cancellation — what it cost, asked once, while it's still known. */}
+      <Dialog open={!!cancelling} onOpenChange={(o) => !o && setCancelling(null)}>
+        {/* Three money fields side by side need the room — at sm:max-w-sm the
+            labels wrap onto two lines and the row reads as six controls. */}
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Cancel this order?</DialogTitle>
+          </DialogHeader>
+          {cancelling && (
+            <form key={cancelling.id} onSubmit={onConfirmCancel} className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                {cancelling.customerName}&apos;s order goes back into stock and stops
+                counting as a sale. Anything it already cost is recorded below and
+                comes off profit — leave a field at 0 if it never happened.
+              </p>
+
+              {/* Only a PAID order that reached the treasury needs this: the
+                  money is sitting in the box against a sale that no longer
+                  exists, and nothing here can guess whether it was refunded. */}
+              {cancelling.cashInTreasury && (
+                <p className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-sm text-amber-700 dark:text-amber-300">
+                  This order&apos;s cash is marked deposited in the treasury. If you
+                  refund the customer, undo &quot;cash deposited&quot; on this order too
+                  — cancelling here does not touch the treasury.
+                </p>
+              )}
+
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="space-y-2">
+                  <Label htmlFor="cx-delivery">Courier return charge</Label>
+                  <Input
+                    id="cx-delivery"
+                    name="deliveryCost"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    defaultValue={cancelling.deliveryCost ?? 0}
+                    autoFocus
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    What the courier charged to bring it back.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="cx-packaging">Packaging cost</Label>
+                  <Input
+                    id="cx-packaging"
+                    name="packagingCost"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    defaultValue={cancelling.packagingCost}
+                  />
+                  <p className="text-xs text-muted-foreground">0 if never packed.</p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="cx-gift">Gift cost</Label>
+                  <Input
+                    id="cx-gift"
+                    name="giftCost"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    defaultValue={cancelling.giftCost}
+                  />
+                  <p className="text-xs text-muted-foreground">0 if it came back.</p>
+                </div>
+              </div>
+
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setCancelling(null)}
+                  disabled={cancelSaving}
+                >
+                  Keep the order
+                </Button>
+                <Button type="submit" variant="destructive" disabled={cancelSaving}>
+                  {cancelSaving ? "Cancelling…" : "Cancel the order"}
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
         </DialogContent>
       </Dialog>
 

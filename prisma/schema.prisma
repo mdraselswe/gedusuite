@@ -288,6 +288,9 @@ model Notification {
 enum OrderStatus {
   PENDING
   CONFIRMED
+  // Picked, packed and waiting for the courier. Consumes stock like CONFIRMED
+  // does — the goods are physically committed to this order by now.
+  PACKED
   SHIPPED
   DELIVERED
   CANCELLED
@@ -759,6 +762,18 @@ model BoostDailySpend {
 // transaction, and a Restrict FK from here would make every backup restore
 // fail. Plain strings keep this table invisible to that code path.
 
+/**
+ * How the phone call went — and nothing else.
+ *
+ * DELIVERED used to live here, which forced isCallOutcome() to special-case
+ * it out of the attempt counter: a parcel arriving is not a call. Where the
+ * parcel got to is now read off the linked Order instead (see
+ * OrderLead.orderId), so neither column has to answer the other's question.
+ *
+ * CANCELLED means the customer said no on the phone. An order cancelled after
+ * it was entered is the Order's own CANCELLED status, which is a different
+ * event with different costs attached.
+ */
 enum CallStatus {
   NOT_CALLED
   NO_ANSWER
@@ -766,7 +781,6 @@ enum CallStatus {
   WRONG_NUMBER
   CALL_LATER
   CONFIRMED
-  DELIVERED
   CANCELLED
 }
 
@@ -810,6 +824,12 @@ model OrderLead {
   internalNote   String?
 
   convertedCustomerId String? // set once "Create customer" is used; plain id, no relation
+  // The real Order this lead became, once one was entered. Plain id with no
+  // relation for the same reason as convertedCustomerId above: restoreSnapshot
+  // deletes orders inside one transaction, and an FK from here would make
+  // every backup restore fail. Where the parcel got to is read off this order
+  // rather than typed again on the lead, so the two can never disagree.
+  orderId             String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -20,6 +20,8 @@
  * can say so instead of quietly double-counting.
  */
 
+import { cancelledOrderCost, computeOrderTotals, type OrderWithTotals } from "@/lib/orders";
+
 const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
 
 /** An order reduced to what attribution needs. Money is already netted. */
@@ -29,6 +31,14 @@ export type AttributableOrder = {
   boostCampaignId: string | null;
   netRevenue: number;
   netProfit: number;
+  /**
+   * A cancelled order: it sold nothing, but the ad that produced it was paid
+   * for and its packaging and courier return charge were too. `netRevenue` is
+   * 0 and `netProfit` is the negative cost, so the arithmetic below needs no
+   * special case — only the order COUNT does, since counting a cancellation
+   * as an order would flatter cost-per-order.
+   */
+  cancelled: boolean;
 };
 
 export type CampaignWindow = {
@@ -76,6 +86,11 @@ export type CampaignResult = {
   cpa: number | null;
   /** Profit the campaign is left with once its own spend is paid for. */
   profitAfterAds: number;
+  /** Attributed orders that were cancelled, and what they still cost. */
+  cancelledOrders: number;
+  cancelledCost: number;
+  /** Cancelled ÷ (sold + cancelled). Null when nothing was attributed. */
+  cancelRate: number | null;
   /** How many orders carry the tag, whatever the basis ended up being. */
   taggedOrders: number;
   /** Untagged orders inside the window (and channel), whatever the basis. */
@@ -83,6 +98,38 @@ export type CampaignResult = {
   /** Composition of the headline set, biggest revenue first. */
   byChannel: ChannelSplit[];
 };
+
+/**
+ * Reduce a fetched order to what attribution needs.
+ *
+ * A cancelled order is kept rather than filtered out: the ad that produced it
+ * was paid for either way, and dropping it would let a campaign whose orders
+ * mostly come back look identical to one whose orders stick.
+ */
+export function toAttributable(
+  order: OrderWithTotals & {
+    date: Date;
+    status: string;
+    source: string | null;
+    boostCampaignId: string | null;
+  },
+): AttributableOrder {
+  const common = {
+    date: order.date,
+    source: order.source,
+    boostCampaignId: order.boostCampaignId,
+  };
+  if (order.status === "CANCELLED") {
+    return {
+      ...common,
+      netRevenue: 0,
+      netProfit: -cancelledOrderCost(order).total,
+      cancelled: true,
+    };
+  }
+  const t = computeOrderTotals(order);
+  return { ...common, netRevenue: t.netRevenue, netProfit: t.netProfit, cancelled: false };
+}
 
 type AdSetDates = { startDate: Date; endDate: Date | null };
 
@@ -120,11 +167,23 @@ function inWindow(date: Date, window: CampaignWindow, now: Date): boolean {
 function summarise(orders: AttributableOrder[]) {
   let revenue = 0;
   let profit = 0;
+  let cancelledOrders = 0;
+  let cancelledCost = 0;
   for (const o of orders) {
     revenue += o.netRevenue;
     profit += o.netProfit;
+    if (o.cancelled) {
+      cancelledOrders += 1;
+      cancelledCost += -o.netProfit;
+    }
   }
-  return { orders: orders.length, revenue: round2(revenue), profit: round2(profit) };
+  return {
+    orders: orders.filter((o) => !o.cancelled).length,
+    revenue: round2(revenue),
+    profit: round2(profit),
+    cancelledOrders,
+    cancelledCost: round2(cancelledCost),
+  };
 }
 
 function splitByChannel(orders: AttributableOrder[]): ChannelSplit[] {
@@ -186,9 +245,13 @@ export function buildCampaignResult(
     breakEvenRoas: margin !== null && margin > 0 ? round2(1 / margin) : null,
     cpa: totals.orders > 0 ? round2(spend / totals.orders) : null,
     profitAfterAds: round2(totals.profit - spend),
+    cancelRate:
+      totals.orders + totals.cancelledOrders > 0
+        ? totals.cancelledOrders / (totals.orders + totals.cancelledOrders)
+        : null,
     taggedOrders: tagged.length,
     estimatedOrders: estimated.length,
-    byChannel: splitByChannel(headline),
+    byChannel: splitByChannel(headline.filter((o) => !o.cancelled)),
   };
 }
 

@@ -7,11 +7,11 @@ import { CampaignDetail } from "@/components/boosting/campaign-detail";
 import { PageHeader } from "@/components/ui/page-header";
 import { buttonVariants } from "@/components/ui/button";
 import { ArrowLeft, Megaphone } from "lucide-react";
-import { computeOrderTotals } from "@/lib/orders";
 import {
   buildCampaignResult,
   campaignWindow,
   overlappingCampaigns,
+  toAttributable,
 } from "@/lib/boost-results";
 
 /** Ad set dates are date-only, so a window's last day counts in full. */
@@ -116,7 +116,6 @@ export default async function BoostCampaignPage({
   const orderRows = await prisma.order.findMany({
     where: {
       workspaceId: access.workspaceId,
-      status: { not: "CANCELLED" },
       OR: [
         { boostCampaignId: id },
         ...(window
@@ -126,6 +125,7 @@ export default async function BoostCampaignPage({
     },
     select: {
       date: true,
+      status: true,
       source: true,
       boostCampaignId: true,
       discount: true,
@@ -147,16 +147,7 @@ export default async function BoostCampaignPage({
 
   const result = buildCampaignResult(
     { id, name: campaign.name, channel: campaign.channel, window },
-    orderRows.map((o) => {
-      const t = computeOrderTotals(o);
-      return {
-        date: o.date,
-        source: o.source,
-        boostCampaignId: o.boostCampaignId,
-        netRevenue: t.netRevenue,
-        netProfit: t.netProfit,
-      };
-    }),
+    orderRows.map(toAttributable),
     totalSpent,
   );
 

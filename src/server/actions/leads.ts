@@ -12,6 +12,7 @@ import { syncWooOrders, wooConfigured } from "@/lib/woo";
 import { isOrderSource } from "@/lib/order-source";
 import { nextOrderNo } from "@/lib/lead-order-no";
 import { dhakaInputToDate } from "@/lib/dhaka-time";
+import { computeOrderTotals } from "@/lib/orders";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -22,12 +23,14 @@ const MODULE = "sales" as const;
 const clean = (s?: string | null) => (s && s.trim() ? s.trim() : null);
 
 /**
- * Every status means someone actually dialled, except NOT_CALLED and
- * DELIVERED — the latter is recorded after the parcel arrives, so counting it
- * as a call would inflate "called 3 times" for every completed order.
+ * Every status here means somebody actually dialled, except NOT_CALLED.
+ *
+ * This used to carve out DELIVERED as well — a parcel arriving is not a call,
+ * but it lived in this enum anyway. Fulfilment moved to the linked order, so
+ * the exception went with it.
  */
 function isCallOutcome(status: CallStatus) {
-  return status !== CallStatus.NOT_CALLED && status !== CallStatus.DELIVERED;
+  return status !== CallStatus.NOT_CALLED;
 }
 
 const LeadSchema = z.object({
@@ -318,6 +321,157 @@ export async function createCustomerFromLead(
 
   revalidatePath(`/${slug}/leads`);
   return { ok: true, customerId: created.id, customerName: created.name };
+}
+
+/**
+ * Point a lead at the real order it became.
+ *
+ * Set by the sales page right after an order is created from a lead, so the
+ * call list can read fulfilment off the order instead of asking anyone to
+ * type it a second time. Idempotent and re-pointable: an order entered
+ * against the wrong lead is fixed by linking the right one.
+ */
+export async function linkLeadToOrder(
+  slug: string,
+  leadId: string,
+  orderId: string,
+): Promise<ActionResult> {
+  const gate = await requireAccess(slug, MODULE, "add");
+  if (!gate.ok) return gate;
+  const workspaceId = gate.access.workspaceId;
+
+  // Both ends checked against this workspace: OrderLead.orderId is a plain
+  // string with no foreign key (see the schema note about backup restores),
+  // so nothing at the database level would catch an id from elsewhere.
+  const order = await prisma.order.findFirst({
+    where: { id: orderId, workspaceId },
+    select: { id: true },
+  });
+  if (!order) return { ok: false, error: "Order not found" };
+
+  const res = await prisma.orderLead.updateMany({
+    where: { id: leadId, workspaceId },
+    data: { orderId },
+  });
+  if (res.count === 0) return { ok: false, error: "Lead not found" };
+
+  revalidatePath(`/${slug}/leads`);
+  return { ok: true };
+}
+
+export type LinkCandidate = {
+  id: string;
+  date: string;
+  customerName: string;
+  phone: string | null;
+  total: number;
+  status: string;
+  /** Set when another lead already points at this order. */
+  takenBy: string | null;
+};
+
+/**
+ * Orders this lead might be, for matching up the ones entered before the two
+ * lists were linked at all.
+ *
+ * A stop-gap by design: orders created from now on link themselves when the
+ * call list's "+ Order" button is used. This exists so the backlog isn't
+ * stuck reading "Not entered" forever.
+ *
+ * Suggestions come from the customer the lead was converted into, then that
+ * phone number, then orders placed within a few days of the call — in that
+ * order of confidence. Typing a name searches instead, because the guess is
+ * only ever a shortlist and the person looking knows which one it is.
+ */
+export async function findOrdersForLead(
+  slug: string,
+  leadId: string,
+  query = "",
+): Promise<{ ok: true; orders: LinkCandidate[] } | { ok: false; error: string }> {
+  const gate = await requireAccess(slug, MODULE, "add");
+  if (!gate.ok) return gate;
+  const workspaceId = gate.access.workspaceId;
+
+  const lead = await prisma.orderLead.findFirst({
+    where: { id: leadId, workspaceId },
+    select: { phone: true, customerName: true, convertedCustomerId: true, orderedAt: true },
+  });
+  if (!lead) return { ok: false, error: "Lead not found" };
+
+  const q = query.trim();
+  // A window rather than the exact day: an order taken on the phone at night
+  // is often entered the next morning, and one confirmed after a call-back
+  // can be days later.
+  const WINDOW_DAYS = 7;
+  const from = new Date(lead.orderedAt);
+  from.setDate(from.getDate() - WINDOW_DAYS);
+  const to = new Date(lead.orderedAt);
+  to.setDate(to.getDate() + WINDOW_DAYS);
+
+  const where = q
+    ? {
+        workspaceId,
+        OR: [
+          { customer: { name: { contains: q, mode: "insensitive" as const } } },
+          { customer: { phone: { contains: q } } },
+          { courierTrackingId: { contains: q, mode: "insensitive" as const } },
+        ],
+      }
+    : {
+        workspaceId,
+        OR: [
+          ...(lead.convertedCustomerId ? [{ customerId: lead.convertedCustomerId }] : []),
+          { customer: { phone: lead.phone } },
+          { date: { gte: from, lte: to } },
+        ],
+      };
+
+  const orders = await prisma.order.findMany({
+    where,
+    orderBy: { date: "desc" },
+    take: 25,
+    include: {
+      customer: { select: { name: true, phone: true } },
+      items: { include: { returns: true } },
+    },
+  });
+
+  // Which of these another lead has already claimed. Linking the same order
+  // twice isn't blocked — sometimes a lead really was entered twice — but it
+  // should never happen by accident, so it's shown before the click.
+  const taken = await prisma.orderLead.findMany({
+    where: { workspaceId, orderId: { in: orders.map((o) => o.id) }, id: { not: leadId } },
+    select: { orderId: true, customerName: true },
+  });
+  const takenBy = new Map(taken.map((t) => [t.orderId, t.customerName]));
+
+  return {
+    ok: true,
+    orders: orders.map((o) => ({
+      id: o.id,
+      date: o.date.toISOString().slice(0, 10),
+      customerName: o.customer?.name ?? "Walk-in",
+      phone: o.customer?.phone ?? null,
+      total: computeOrderTotals(o).customerTotal,
+      status: o.status,
+      takenBy: takenBy.get(o.id) ?? null,
+    })),
+  };
+}
+
+/** Undo a link — the wrong order was picked, or the order was a duplicate. */
+export async function unlinkLeadOrder(slug: string, leadId: string): Promise<ActionResult> {
+  const gate = await requireAccess(slug, MODULE, "add");
+  if (!gate.ok) return gate;
+
+  const res = await prisma.orderLead.updateMany({
+    where: { id: leadId, workspaceId: gate.access.workspaceId },
+    data: { orderId: null },
+  });
+  if (res.count === 0) return { ok: false, error: "Lead not found" };
+
+  revalidatePath(`/${slug}/leads`);
+  return { ok: true };
 }
 
 /** How long a pull is considered fresh enough to skip repeating. */

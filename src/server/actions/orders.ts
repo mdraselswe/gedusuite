@@ -39,7 +39,7 @@ const GiftSchema = z
 const OrderSchema = z.object({
   customerId: z.string().optional().or(z.literal("")),
   date: z.coerce.date(),
-  status: z.enum(["PENDING", "CONFIRMED", "SHIPPED", "DELIVERED", "CANCELLED"]),
+  status: z.enum(["PENDING", "CONFIRMED", "PACKED", "SHIPPED", "DELIVERED", "CANCELLED"]),
   deliveryType: z.enum(["SELF", "COURIER"]),
   deliveryCharge: z.coerce.number().nonnegative().default(0),
   // Blank/omitted = assume it exactly equals deliveryCharge (pass-through).
@@ -381,16 +381,30 @@ export async function updateOrderHeader(
   return { ok: true };
 }
 
+/**
+ * What a cancelled order still cost. All three are optional — an order
+ * cancelled before anyone packed it has none of them, and leaving a field out
+ * keeps whatever the order already had.
+ */
+const CancelCostSchema = z.object({
+  packagingCost: z.coerce.number().nonnegative().max(99_999_999).optional(),
+  giftCost: z.coerce.number().nonnegative().max(99_999_999).optional(),
+  /** What the courier charged to bring the parcel back. */
+  deliveryCost: z.coerce.number().nonnegative().max(99_999_999).optional(),
+});
+export type CancelCosts = z.input<typeof CancelCostSchema>;
+
 export async function updateOrderStatus(
   slug: string,
   orderId: string,
   status: string,
+  cancelCosts?: CancelCosts,
 ): Promise<ActionResult> {
   const gate = await requireAccess(slug, "sales", "edit");
   if (!gate.ok) return gate;
   const workspaceId = gate.access.workspaceId;
 
-  const valid = ["PENDING", "CONFIRMED", "SHIPPED", "DELIVERED", "CANCELLED"];
+  const valid = ["PENDING", "CONFIRMED", "PACKED", "SHIPPED", "DELIVERED", "CANCELLED"];
   if (!valid.includes(status)) return { ok: false, error: "Invalid status" };
 
   const order = await prisma.order.findFirst({
@@ -398,6 +412,18 @@ export async function updateOrderStatus(
     include: { items: true, gifts: true },
   });
   if (!order) return { ok: false, error: "Order not found" };
+
+  // What a cancellation actually cost, captured at the moment it's cancelled
+  // — the only moment anyone still knows whether the parcel was packed or
+  // what the courier charged to bring it back. Omitted fields are left alone.
+  let costs: { packagingCost?: number; giftCost?: number; deliveryCost?: number } = {};
+  if (status === "CANCELLED" && cancelCosts) {
+    const parsed = CancelCostSchema.safeParse(cancelCosts);
+    if (!parsed.success) {
+      return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid cancellation costs" };
+    }
+    costs = parsed.data;
+  }
 
   // Moving from non-consuming → consuming: verify stock is available.
   const wasConsuming = CONSUMING.includes(order.status);
@@ -422,11 +448,15 @@ export async function updateOrderStatus(
 
   await prisma.order.update({
     where: { id: orderId },
-    data: { status: status as OrderStatus },
+    data: { status: status as OrderStatus, ...costs },
   });
 
   revalidatePath(`/${slug}/sales/orders`);
   revalidatePath(`/${slug}/dashboard`);
+  // A cancellation moves profit (its packaging and courier charges) and the
+  // channel's cancel rate, both of which the reports and campaign pages show.
+  revalidatePath(`/${slug}/reports`);
+  revalidatePath(`/${slug}/boosting`);
   return { ok: true };
 }
 

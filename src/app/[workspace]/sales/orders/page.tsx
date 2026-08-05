@@ -12,7 +12,7 @@ import { Receipt } from "lucide-react";
 
 const PAGE_SIZE = 50;
 
-const ORDER_STATUSES = ["PENDING", "CONFIRMED", "SHIPPED", "DELIVERED", "CANCELLED"] as const;
+const ORDER_STATUSES = ["PENDING", "CONFIRMED", "PACKED", "SHIPPED", "DELIVERED", "CANCELLED"] as const;
 const PAY_STATUSES = ["PAID", "UNPAID", "PARTIAL"] as const;
 const DELIVERY_TYPES = ["SELF", "COURIER"] as const;
 
@@ -32,6 +32,8 @@ export default async function OrdersPage({
     source?: string;
     held?: string;
     delivery?: string;
+    /** Set by the call list's "+ Order" button. */
+    fromLead?: string;
   }>;
 }) {
   const { workspace: slug } = await params;
@@ -150,6 +152,35 @@ export default async function OrdersPage({
     label: `${m.user.name ?? m.user.email} (${m.role})`,
   }));
 
+  // Opened from a call-list row: hand the form what the caller already knows.
+  // Read here rather than passed through the URL so a hand-edited link can't
+  // put another workspace's lead — or made-up items — into the order form.
+  const leadRow = sp.fromLead
+    ? await prisma.orderLead.findFirst({
+        where: { id: sp.fromLead, workspaceId },
+        select: {
+          id: true,
+          customerName: true,
+          convertedCustomerId: true,
+          itemsText: true,
+          channel: true,
+          address: true,
+          total: true,
+        },
+      })
+    : null;
+  const fromLead = leadRow
+    ? {
+        leadId: leadRow.id,
+        customerId: leadRow.convertedCustomerId,
+        customerName: leadRow.customerName,
+        itemsText: leadRow.itemsText,
+        channel: leadRow.channel,
+        address: leadRow.address,
+        total: Number(leadRow.total),
+      }
+    : null;
+
   const orderRows = orders.map((o) => {
     const totals = computeOrderTotals(o);
     return {
@@ -164,6 +195,7 @@ export default async function OrdersPage({
       paymentMethod: o.paymentMethod,
       source: o.source,
       boostCampaignId: o.boostCampaignId,
+      cashInTreasury: o.cashInTreasury,
       deliveryCharge: Number(o.deliveryCharge),
       deliveryCost: o.deliveryCost !== null ? Number(o.deliveryCost) : null,
       packagingCost: Number(o.packagingCost),
@@ -195,6 +227,7 @@ export default async function OrdersPage({
         hasProducts={productCount > 0}
         members={memberOptions}
         campaigns={campaigns.map((c) => ({ id: c.id, label: c.name }))}
+        fromLead={fromLead}
         orders={orderRows}
         perms={perms}
         query={q}
