@@ -10,6 +10,7 @@ import { requireUser } from "@/lib/session";
 import { createCustomer, findCustomerByPhone } from "@/server/actions/customers";
 import { syncWooOrders, wooConfigured } from "@/lib/woo";
 import { isOrderSource } from "@/lib/order-source";
+import { nextOrderNo } from "@/lib/lead-order-no";
 import { dhakaInputToDate } from "@/lib/dhaka-time";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
@@ -57,6 +58,30 @@ function parseLead(formData: FormData) {
     channel: formData.get("channel") ?? undefined,
     orderedAt: formData.get("orderedAt") ?? undefined,
   });
+}
+
+/**
+ * The serial to offer for the next manual entry — "#0001", "#0002", …
+ *
+ * Asked for when the add form opens rather than worked out on the page: the
+ * list is paginated, so the rows the browser holds are only the newest 50 and
+ * the highest number in use may not be among them.
+ *
+ * Website rows are excluded; they carry WooCommerce's own numbering, which
+ * would drag the manual serial up to wherever the store happens to be.
+ */
+export async function nextManualOrderNo(
+  slug: string,
+): Promise<{ ok: true; orderNo: string } | { ok: false; error: string }> {
+  const gate = await requireAccess(slug, MODULE, "add");
+  if (!gate.ok) return gate;
+
+  const rows = await prisma.orderLead.findMany({
+    where: { workspaceId: gate.access.workspaceId, source: "MANUAL", orderNo: { not: null } },
+    select: { orderNo: true },
+  });
+
+  return { ok: true, orderNo: nextOrderNo(rows.map((r) => r.orderNo)) };
 }
 
 /** Manual entry, so the list is usable before the WooCommerce webhook exists. */

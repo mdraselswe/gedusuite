@@ -12,6 +12,7 @@ import {
   deleteLead,
   updateLead,
   syncFromWebsite,
+  nextManualOrderNo,
 } from "@/server/actions/leads";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { Badge } from "@/components/ui/badge";
@@ -166,6 +167,15 @@ export function LeadManager({
   const [totalTouched, setTotalTouched] = useState(false);
   const [channel, setChannel] = useState<string>(UNTAGGED);
   const [orderedAt, setOrderedAt] = useState("");
+  const [orderNo, setOrderNo] = useState("");
+  // Whether what's in the box is the app's guess rather than something typed —
+  // drives the hint under the field, and nothing else.
+  const [orderNoSuggested, setOrderNoSuggested] = useState(false);
+  // A number already being typed must not be overwritten when the suggestion
+  // comes back, and a suggestion asked for by one open dialog must not land in
+  // the next one.
+  const orderNoTouched = useRef(false);
+  const suggestToken = useRef(0);
 
   // Only offered when every row is a catalogue product with a price — a
   // half-known total is worse than none.
@@ -274,11 +284,28 @@ export function LeadManager({
     setTotalTouched(false);
     setChannel(UNTAGGED);
     setOrderedAt(toDhakaInputValue(new Date()));
+    // Asked for fresh each time the form opens, so two people adding orders in
+    // the same minute don't both work from a number cached at page load.
+    setOrderNo("");
+    setOrderNoSuggested(false);
+    orderNoTouched.current = false;
+    const token = ++suggestToken.current;
+    nextManualOrderNo(slug).then((res) => {
+      if (!res.ok || token !== suggestToken.current || orderNoTouched.current) return;
+      setOrderNo(res.orderNo);
+      setOrderNoSuggested(true);
+    });
     setFormOpen(true);
   }
 
   function openEdit(l: Lead) {
     setEditing(l);
+    // An order that already has a number keeps it — nothing is suggested over
+    // the top of it, so a pending request from a previous open is dropped.
+    suggestToken.current++;
+    setOrderNo(l.orderNo ?? "");
+    setOrderNoSuggested(false);
+    orderNoTouched.current = true;
     setItemRows(rowsFromItemsText(l.itemsText));
     setTotal(String(l.total));
     // An existing order's total was already agreed; the items must not
@@ -573,7 +600,7 @@ export function LeadManager({
 
       {/* Manual entry — lets the list be used before the website is wired up. */}
       <Dialog open={formOpen} onOpenChange={setFormOpen}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
           {/* Keyed so the uncontrolled fields pick up a different lead's
               defaultValue instead of keeping the last one's. */}
           <form onSubmit={onSubmitLead} key={editing?.id ?? "new"}>
@@ -582,8 +609,14 @@ export function LeadManager({
                 {editing ? "Edit order" : "Add an order to the call list"}
               </DialogTitle>
             </DialogHeader>
-            <div className="grid gap-3 py-4">
-              <div className="grid gap-1.5">
+            {/* Two columns once there's room for them — the form is filled in
+                while someone is on the phone, and pairing the short fields
+                keeps the whole thing on screen without scrolling. Each cell
+                starts at the top of its row, so the labels line up even when a
+                hint makes one side taller. Single column below `sm`, in the
+                same order. */}
+            <div className="grid items-start gap-x-4 gap-y-3 py-4 sm:grid-cols-2">
+              <div className="grid content-start gap-1.5">
                 <Label htmlFor="customerName">Customer name</Label>
                 <Input
                   id="customerName"
@@ -593,30 +626,38 @@ export function LeadManager({
                   defaultValue={editing?.customerName ?? ""}
                 />
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="grid gap-1.5">
-                  <Label htmlFor="phone">Phone</Label>
-                  <Input
-                    id="phone"
-                    name="phone"
-                    required
-                    maxLength={40}
-                    inputMode="tel"
-                    defaultValue={editing?.phone ?? ""}
-                  />
-                </div>
-                <div className="grid gap-1.5">
-                  <Label htmlFor="orderNo">Order no.</Label>
-                  <Input
-                    id="orderNo"
-                    name="orderNo"
-                    maxLength={40}
-                    placeholder="#1284"
-                    defaultValue={editing?.orderNo ?? ""}
-                  />
-                </div>
+              <div className="grid content-start gap-1.5">
+                <Label htmlFor="phone">Phone</Label>
+                <Input
+                  id="phone"
+                  name="phone"
+                  required
+                  maxLength={40}
+                  inputMode="tel"
+                  defaultValue={editing?.phone ?? ""}
+                />
               </div>
-              <div className="grid gap-1.5">
+              <div className="grid content-start gap-1.5">
+                <Label htmlFor="orderNo">Order no.</Label>
+                <Input
+                  id="orderNo"
+                  name="orderNo"
+                  maxLength={40}
+                  placeholder="#0001"
+                  value={orderNo}
+                  onChange={(e) => {
+                    orderNoTouched.current = true;
+                    setOrderNoSuggested(false);
+                    setOrderNo(e.target.value);
+                  }}
+                />
+                {orderNoSuggested && (
+                  <p className="text-xs text-muted-foreground">
+                    Next in the series — type your own if this order has one.
+                  </p>
+                )}
+              </div>
+              <div className="grid content-start gap-1.5">
                 <Label htmlFor="orderedAt">Order date &amp; time</Label>
                 <Input
                   id="orderedAt"
@@ -630,7 +671,7 @@ export function LeadManager({
                   {editing ? "" : " Defaults to now — change it for an order taken earlier."}
                 </p>
               </div>
-              <div className="grid gap-1.5">
+              <div className="grid content-start gap-1.5">
                 <Label htmlFor="lead-channel">Where from</Label>
                 <Select
                   value={channel}
@@ -655,7 +696,7 @@ export function LeadManager({
                   </SelectContent>
                 </Select>
               </div>
-              <div className="grid gap-1.5">
+              <div className="grid content-start gap-1.5">
                 <Label htmlFor="address">Address</Label>
                 <Textarea
                   id="address"
@@ -665,8 +706,12 @@ export function LeadManager({
                   defaultValue={editing?.address ?? ""}
                 />
               </div>
-              <LeadItemsEditor slug={slug} rows={itemRows} onChange={setItemRows} />
-              <div className="grid gap-1.5">
+              {/* A product search, a quantity and a delete button per row —
+                  half a dialog isn't enough for that at any width. */}
+              <div className="sm:col-span-2">
+                <LeadItemsEditor slug={slug} rows={itemRows} onChange={setItemRows} />
+              </div>
+              <div className="grid content-start gap-1.5">
                 <Label htmlFor="total">Total</Label>
                 <Input
                   id="total"
