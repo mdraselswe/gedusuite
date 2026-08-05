@@ -582,5 +582,47 @@ export async function setOrderSource(
 
   revalidatePath(`/${slug}/sales/orders`);
   revalidatePath(`/${slug}/reports`);
+  // The channel is half of how an untagged order is attributed to a campaign,
+  // so a campaign's estimated result changes with it.
+  revalidatePath(`/${slug}/boosting`);
+  return { ok: true };
+}
+
+/**
+ * Say which boosting campaign brought an order in — the exact half of
+ * attribution, as against the window-and-channel estimate.
+ *
+ * Same shape as setOrderSource above, and for the same reason: tagging
+ * happens from the list, so orders placed before a campaign existed can still
+ * be attributed to it, and the order form stays untouched.
+ */
+export async function setOrderCampaign(
+  slug: string,
+  id: string,
+  boostCampaignId: string | null,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const gate = await requireAccess(slug, "sales", "edit");
+  if (!gate.ok) return gate;
+  const workspaceId = gate.access.workspaceId;
+
+  // A campaign id from another workspace would otherwise be accepted by the
+  // foreign key and leak one workspace's numbers into another's report.
+  if (boostCampaignId !== null) {
+    const campaign = await prisma.boostCampaign.findFirst({
+      where: { id: boostCampaignId, workspaceId },
+      select: { id: true },
+    });
+    if (!campaign) return { ok: false, error: "Campaign not found" };
+  }
+
+  const res = await prisma.order.updateMany({
+    where: { id, workspaceId },
+    data: { boostCampaignId },
+  });
+  if (res.count === 0) return { ok: false, error: "Order not found" };
+
+  revalidatePath(`/${slug}/sales/orders`);
+  revalidatePath(`/${slug}/boosting`);
+  if (boostCampaignId) revalidatePath(`/${slug}/boosting/${boostCampaignId}`);
   return { ok: true };
 }

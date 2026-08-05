@@ -33,6 +33,9 @@ import {
 } from "@/components/ui/select";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { BoostStatusBadge } from "@/components/boosting/boost-status-badge";
+import { ORDER_SOURCES, ORDER_SOURCE_LABEL, orderSourceLabel } from "@/lib/order-source";
+import { cn } from "@/lib/utils";
+import { roasVerdict, type CampaignResult } from "@/lib/boost-results";
 
 type Spend = {
   id: string;
@@ -57,6 +60,7 @@ type Campaign = {
   id: string;
   name: string;
   objective: string | null;
+  channel: string | null;
   status: string;
   notes: string | null;
   totalSpent: number;
@@ -65,6 +69,8 @@ type Campaign = {
 const STATUSES = ["ACTIVE", "PAUSED", "COMPLETED", "CANCELLED"] as const;
 const NONE = "__none__";
 const TREASURY = "__treasury__";
+/** "Any channel" in the campaign form — the estimate then doesn't narrow. */
+const ANY_CHANNEL = "__any__";
 
 /** Today's date in the user's local timezone as YYYY-MM-DD (toISOString would
  * shift to the previous day for +06:00 mornings). */
@@ -92,6 +98,244 @@ function StatusSelect({
         ))}
       </SelectContent>
     </Select>
+  );
+}
+
+function ChannelSelect({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const label = value === ANY_CHANNEL ? "Any channel" : orderSourceLabel(value);
+  return (
+    <Select
+      value={value}
+      onValueChange={(v) => onChange(v ?? ANY_CHANNEL)}
+      items={[
+        { value: ANY_CHANNEL, label: "Any channel" },
+        ...ORDER_SOURCES.map((s) => ({ value: s, label: ORDER_SOURCE_LABEL[s] })),
+      ]}
+    >
+      <SelectTrigger className="w-full">
+        <span data-slot="select-value">{label}</span>
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value={ANY_CHANNEL}>Any channel</SelectItem>
+        {ORDER_SOURCES.map((s) => (
+          <SelectItem key={s} value={s}>
+            {ORDER_SOURCE_LABEL[s]}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
+/**
+ * What the campaign earned against what it cost.
+ *
+ * The basis is stated in the open — a number computed from tagged orders and
+ * one guessed from a date window are not the same claim, and a ROAS that
+ * doesn't say which it is invites a decision it can't support.
+ */
+function ResultsCard({
+  result,
+  overlaps,
+  window,
+  channel,
+}: {
+  result: CampaignResult;
+  overlaps: string[];
+  window: { from: string; to: string | null } | null;
+  channel: string | null;
+}) {
+  const estimated = result.basis === "ESTIMATED";
+  const money = (v: number) => v.toFixed(2);
+  const verdict = roasVerdict(result);
+
+  // Everything except the headline. ROAS carries its own break-even line, so
+  // it isn't judged against 1.0× by a reader who doesn't know the margin.
+  const stats: {
+    label: string;
+    value: string;
+    hint?: string;
+    note?: string;
+    tone?: "good" | "bad";
+  }[] = [
+    {
+      label: "Margin",
+      value: result.margin === null ? "—" : `${(result.margin * 100).toFixed(1)}%`,
+      hint: "Profit ÷ revenue on these orders",
+    },
+    {
+      label: "ROAS",
+      value: result.roas === null ? "—" : `${result.roas.toFixed(2)}×`,
+      hint: "Revenue per taka of ad spend",
+      note:
+        result.roas === null
+          ? undefined
+          : result.breakEvenRoas === null
+            ? "these orders make no profit"
+            : `break-even ${result.breakEvenRoas.toFixed(2)}×`,
+      tone: verdict ?? undefined,
+    },
+    {
+      label: "Cost per order",
+      value: result.cpa === null ? "—" : money(result.cpa),
+      hint: "Ad spend ÷ orders",
+    },
+    {
+      label: "Profit before ads",
+      value: money(result.profit),
+      hint: "What the orders themselves made",
+    },
+  ];
+
+  return (
+    <Card>
+      <CardHeader className="space-y-1">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <CardTitle className="text-base">Results</CardTitle>
+          <span
+            className={cn(
+              "rounded-full px-2 py-0.5 text-xs font-medium",
+              result.basis === "TAGGED"
+                ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+                : estimated
+                  ? "bg-amber-500/15 text-amber-700 dark:text-amber-300"
+                  : "bg-muted text-muted-foreground",
+            )}
+          >
+            {result.basis === "TAGGED"
+              ? `Exact — ${result.taggedOrders} tagged order(s)`
+              : estimated
+                ? "Estimated"
+                : "No orders yet"}
+          </span>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {result.basis === "TAGGED" ? (
+            <>
+              From orders tagged to this campaign.
+              {result.estimatedOrders > 0 &&
+                ` ${result.estimatedOrders} more order(s) in the window are untagged and not counted — tag them on the sales page.`}
+            </>
+          ) : estimated ? (
+            <>
+              Nobody tagged an order to this campaign, so these are orders
+              placed inside its dates
+              {channel ? ` on ${orderSourceLabel(channel)}` : " on any channel"}
+              {window ? ` (${window.from} → ${window.to ?? "running"})` : ""}. Tag
+              orders on the sales page to make this exact.
+            </>
+          ) : (
+            "No orders tagged to this campaign, and none placed inside its dates."
+          )}
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* The one number the decision comes from, sized like it. Every other
+            figure here is working towards this one, so they sit below it at
+            label size rather than competing with it. */}
+        <div>
+          <div className="text-xs text-muted-foreground">
+            Profit after ads
+            <span className="ml-1 font-normal">— what's left once the boost is paid for</span>
+          </div>
+          <div
+            className={cn(
+              "text-3xl font-bold tabular-nums",
+              result.profitAfterAds >= 0
+                ? "text-emerald-600 dark:text-emerald-400"
+                : "text-destructive",
+            )}
+          >
+            {money(result.profitAfterAds)}
+          </div>
+          <div className="text-xs text-muted-foreground tabular-nums">
+            {result.orders} order(s) · {money(result.revenue)} revenue ·{" "}
+            {money(result.spend)} ad spend
+          </div>
+        </div>
+
+        <div className="grid gap-x-6 gap-y-3 border-t pt-3 sm:grid-cols-4">
+          {stats.map((s) => (
+            <div key={s.label}>
+              <div className="text-xs text-muted-foreground" title={s.hint}>
+                {s.label}
+              </div>
+              <div
+                className={cn(
+                  "text-lg font-bold tabular-nums",
+                  s.tone === "good" && "text-emerald-600 dark:text-emerald-400",
+                  s.tone === "bad" && "text-destructive",
+                )}
+              >
+                {s.value}
+              </div>
+              {s.note && (
+                <div className="text-xs text-muted-foreground tabular-nums">{s.note}</div>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {estimated && !channel && (
+          <p className="text-xs text-amber-700 dark:text-amber-400">
+            This campaign has no channel set, so every order in its dates is
+            counted — including walk-ins and referrals. Set the channel on Edit
+            for a sharper estimate.
+          </p>
+        )}
+        {estimated && overlaps.length > 0 && (
+          <p className="text-xs text-amber-700 dark:text-amber-400">
+            {overlaps.join(", ")} ran at the same time on the same channel — the
+            same orders are counted for {overlaps.length > 1 ? "those" : "that"}{" "}
+            campaign too. Tagging orders is the only way to split them.
+          </p>
+        )}
+
+        {result.byChannel.length > 0 && (
+          <div>
+            <div className="mb-1 text-xs text-muted-foreground">Which channel</div>
+            <DataTable
+              rows={result.byChannel}
+              rowKey={(c) => c.source ?? "__unset__"}
+              empty={{ title: "No orders attributed yet" }}
+              columns={
+                [
+                  {
+                    key: "source",
+                    header: "Channel",
+                    cardTitle: true,
+                    cell: (c) => (
+                      <span className={cn(!c.source && "text-amber-700 dark:text-amber-400")}>
+                        {orderSourceLabel(c.source)}
+                      </span>
+                    ),
+                  },
+                  { key: "orders", header: "Orders", align: "right", cell: (c) => c.orders },
+                  {
+                    key: "revenue",
+                    header: "Revenue",
+                    align: "right",
+                    cell: (c) => <span className="font-medium">{c.revenue.toFixed(2)}</span>,
+                  },
+                  {
+                    key: "profit",
+                    header: "Profit",
+                    align: "right",
+                    cell: (c) => c.profit.toFixed(2),
+                  },
+                ] as Column<CampaignResult["byChannel"][number]>[]
+              }
+            />
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -388,6 +632,9 @@ function AdSetCard({
 export function CampaignDetail({
   slug,
   campaign,
+  result,
+  overlaps,
+  window,
   adSets,
   partnerOptions,
   canAdd,
@@ -396,6 +643,11 @@ export function CampaignDetail({
 }: {
   slug: string;
   campaign: Campaign;
+  result: CampaignResult;
+  /** Campaigns whose estimate claims the same orders as this one's. */
+  overlaps: string[];
+  /** The dates the campaign ran, or null before it has any ad set. */
+  window: { from: string; to: string | null } | null;
   adSets: AdSet[];
   partnerOptions: PartnerOption[];
   canAdd: boolean;
@@ -405,6 +657,7 @@ export function CampaignDetail({
   const router = useRouter();
   const [editOpen, setEditOpen] = useState(false);
   const [editStatus, setEditStatus] = useState(campaign.status);
+  const [editChannel, setEditChannel] = useState(campaign.channel ?? ANY_CHANNEL);
   const [editLoading, setEditLoading] = useState(false);
 
   const [adSetOpen, setAdSetOpen] = useState(false);
@@ -417,6 +670,7 @@ export function CampaignDetail({
     setEditLoading(true);
     const fd = new FormData(e.currentTarget);
     fd.set("status", editStatus);
+    fd.set("channel", editChannel === ANY_CHANNEL ? "" : editChannel);
     const res = await updateCampaign(slug, campaign.id, fd);
     setEditLoading(false);
     if (!res.ok) return toast.error(res.error);
@@ -463,6 +717,7 @@ export function CampaignDetail({
               size="sm"
               onClick={() => {
                 setEditStatus(campaign.status);
+                setEditChannel(campaign.channel ?? ANY_CHANNEL);
                 setEditOpen(true);
               }}
             >
@@ -471,7 +726,7 @@ export function CampaignDetail({
           )}
         </CardHeader>
         <CardContent>
-          <div className="grid gap-x-8 gap-y-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-x-8 gap-y-2 text-sm sm:grid-cols-2 lg:grid-cols-5">
             <div>
               <div className="text-muted-foreground">Status</div>
               <BoostStatusBadge status={campaign.status} />
@@ -479,6 +734,12 @@ export function CampaignDetail({
             <div>
               <div className="text-muted-foreground">Objective</div>
               <div className="font-medium">{campaign.objective ?? "—"}</div>
+            </div>
+            <div>
+              <div className="text-muted-foreground">Channel</div>
+              <div className="font-medium">
+                {campaign.channel ? orderSourceLabel(campaign.channel) : "Any channel"}
+              </div>
             </div>
             <div>
               <div className="text-muted-foreground">Total spent</div>
@@ -491,6 +752,13 @@ export function CampaignDetail({
           </div>
         </CardContent>
       </Card>
+
+      <ResultsCard
+        result={result}
+        overlaps={overlaps}
+        window={window}
+        channel={campaign.channel}
+      />
 
       <div className="flex flex-wrap items-center gap-2">
         <h2 className="mr-auto text-lg font-semibold">Ad sets</h2>
@@ -533,6 +801,14 @@ export function CampaignDetail({
             <div className="space-y-2">
               <Label htmlFor="bc-objective">Objective (optional)</Label>
               <Input id="bc-objective" name="objective" defaultValue={campaign.objective ?? ""} />
+            </div>
+            <div className="space-y-2">
+              <Label>Channel</Label>
+              <ChannelSelect value={editChannel} onChange={setEditChannel} />
+              <p className="text-xs text-muted-foreground">
+                Where these ads run. Used to match orders nobody tagged — the
+                narrower it is, the better the estimate.
+              </p>
             </div>
             <div className="space-y-2">
               <Label>Status</Label>

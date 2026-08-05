@@ -107,11 +107,19 @@ export default async function OrdersPage({
       : {}),
   };
 
-  const [productCount, members, orderCount, totalOrderCount, orders] = await Promise.all([
+  const [productCount, members, campaigns, orderCount, totalOrderCount, orders] = await Promise.all([
     prisma.productVariant.count({ where: { product: { workspaceId } } }),
     prisma.membership.findMany({
       where: { workspaceId, role: { in: ["OWNER", "PARTNER"] } },
       include: { user: { select: { name: true, email: true } } },
+    }),
+    // Only campaigns still worth attributing to — a completed one's numbers
+    // shouldn't keep moving. An order already tagged to a finished campaign
+    // keeps its tag; the cell falls back to a plain label for those.
+    prisma.boostCampaign.findMany({
+      where: { workspaceId, status: { in: ["ACTIVE", "PAUSED"] } },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, name: true },
     }),
     prisma.order.count({ where }),
     // Unfiltered, for the bar's "showing N of M".
@@ -155,6 +163,7 @@ export default async function OrdersPage({
       paymentStatus: o.paymentStatus,
       paymentMethod: o.paymentMethod,
       source: o.source,
+      boostCampaignId: o.boostCampaignId,
       deliveryCharge: Number(o.deliveryCharge),
       deliveryCost: o.deliveryCost !== null ? Number(o.deliveryCost) : null,
       packagingCost: Number(o.packagingCost),
@@ -185,6 +194,7 @@ export default async function OrdersPage({
         slug={slug}
         hasProducts={productCount > 0}
         members={memberOptions}
+        campaigns={campaigns.map((c) => ({ id: c.id, label: c.name }))}
         orders={orderRows}
         perms={perms}
         query={q}

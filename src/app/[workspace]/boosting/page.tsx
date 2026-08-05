@@ -6,6 +6,8 @@ import { serverT } from "@/lib/session";
 import { BoostingManager } from "@/components/boosting/boosting-manager";
 import { PageHeader } from "@/components/ui/page-header";
 import { Megaphone } from "lucide-react";
+import { computeOrderTotals } from "@/lib/orders";
+import { buildCampaignResult, campaignWindow, roasVerdict } from "@/lib/boost-results";
 
 export default async function BoostingPage({
   params,
@@ -42,6 +44,53 @@ export default async function BoostingPage({
   const now = new Date();
   const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
 
+  // Orders are read once from the earliest campaign start onwards and then
+  // attributed to each campaign in memory — one query for the page rather than
+  // one per campaign, and nothing older than the oldest campaign is touched.
+  const windows = new Map(campaigns.map((c) => [c.id, campaignWindow(c.adSets)]));
+  const earliestStart = [...windows.values()].reduce<Date | null>(
+    (min, w) => (w && (min === null || w.from < min) ? w.from : min),
+    null,
+  );
+  const orderRows = earliestStart
+    ? await prisma.order.findMany({
+        where: {
+          workspaceId,
+          status: { not: "CANCELLED" },
+          OR: [{ date: { gte: earliestStart } }, { boostCampaignId: { not: null } }],
+        },
+        select: {
+          date: true,
+          source: true,
+          boostCampaignId: true,
+          discount: true,
+          deliveryCharge: true,
+          deliveryCost: true,
+          packagingCost: true,
+          giftCost: true,
+          items: {
+            select: {
+              unitPrice: true,
+              unitCost: true,
+              quantity: true,
+              discount: true,
+              returns: { select: { quantity: true, refundAmount: true } },
+            },
+          },
+        },
+      })
+    : [];
+  const attributable = orderRows.map((o) => {
+    const t = computeOrderTotals(o);
+    return {
+      date: o.date,
+      source: o.source,
+      boostCampaignId: o.boostCampaignId,
+      netRevenue: t.netRevenue,
+      netProfit: t.netProfit,
+    };
+  });
+
   let totalSpendAll = 0;
   let monthSpend = 0;
 
@@ -58,10 +107,17 @@ export default async function BoostingPage({
     const lastEnd = ends
       .filter((e): e is Date => e !== null)
       .sort((a, b) => +b - +a)[0];
+    const result = buildCampaignResult(
+      { id: c.id, name: c.name, channel: c.channel, window: windows.get(c.id) ?? null },
+      attributable,
+      totalSpent,
+      now,
+    );
     return {
       id: c.id,
       name: c.name,
       objective: c.objective,
+      channel: c.channel,
       status: c.status,
       adSetCount: c.adSets.length,
       activeAdSets: c.adSets.filter((a) => a.status === "ACTIVE").length,
@@ -69,6 +125,16 @@ export default async function BoostingPage({
       firstStart: starts[0] ? starts[0].toISOString().slice(0, 10) : null,
       lastEnd: openEnded ? null : lastEnd ? lastEnd.toISOString().slice(0, 10) : null,
       openEnded,
+      basis: result.basis,
+      orders: result.orders,
+      revenue: result.revenue,
+      profitAfterAds: result.profitAfterAds,
+      roas: result.roas,
+      margin: result.margin,
+      breakEvenRoas: result.breakEvenRoas,
+      // Judged here rather than in the table: whether a ROAS is good depends
+      // on this campaign's own margin, which the row alone doesn't carry.
+      roasTone: roasVerdict(result),
     };
   });
 

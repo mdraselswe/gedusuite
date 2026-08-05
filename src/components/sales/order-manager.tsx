@@ -51,6 +51,7 @@ import { DataTable, type Column } from "@/components/ui/data-table";
 import { ANY_VALUE, UrlFilterBar, type FilterDef } from "@/components/ui/filter-bar";
 import { ORDER_SOURCES, ORDER_SOURCE_LABEL } from "@/lib/order-source";
 import { OrderSourceCell } from "@/components/sales/order-source-cell";
+import { OrderCampaignCell, type CampaignOption } from "@/components/sales/order-campaign-cell";
 import { Columns3, Plus, ShoppingCart, Trash2, MoreVertical, X } from "lucide-react";
 import { formatStock } from "@/lib/units";
 
@@ -74,6 +75,7 @@ type OrderRow = {
   paymentStatus: string;
   paymentMethod: string;
   source: string | null;
+  boostCampaignId: string | null;
   deliveryCharge: number;
   deliveryCost: number | null;
   packagingCost: number;
@@ -238,6 +240,7 @@ export function OrderManager({
   slug,
   hasProducts,
   members,
+  campaigns,
   orders,
   perms,
   query,
@@ -250,6 +253,8 @@ export function OrderManager({
   slug: string;
   hasProducts: boolean;
   members: { id: string; label: string }[];
+  /** Campaigns worth tagging an order to — empty when boosting isn't used. */
+  campaigns: CampaignOption[];
   orders: OrderRow[];
   perms: Perms;
   query: string;
@@ -806,6 +811,27 @@ export function OrderManager({
                 />
               ),
             },
+            // Hidden by default: only shops that run ads care, and they can
+            // turn the column on from Columns.
+            ...(campaigns.length > 0
+              ? [
+                  {
+                    key: "campaign",
+                    header: "Campaign",
+                    hideable: true,
+                    defaultHidden: true,
+                    cell: (o: OrderRow) => (
+                      <OrderCampaignCell
+                        slug={slug}
+                        orderId={o.id}
+                        value={o.boostCampaignId}
+                        campaigns={campaigns}
+                        canEdit={perms.canEdit}
+                      />
+                    ),
+                  },
+                ]
+              : []),
             {
               key: "total",
               header: "Total",

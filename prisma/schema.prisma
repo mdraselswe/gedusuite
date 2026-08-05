@@ -349,6 +349,12 @@ model Order {
   // because every order predating this is genuinely unknown — see
   // ORDER_SOURCES in lib/order-source.
   source             String?
+  // Which boosting campaign brought this order in, when somebody knows. Set
+  // from the orders list, never guessed: an untagged order still counts
+  // towards a campaign's ESTIMATED result (its window and channel), but only
+  // a tag makes it exact. SetNull on delete — losing a campaign must not
+  // delete sales history.
+  boostCampaignId    String?
   heldByMembershipId String? // which partner/member currently holds this order's cash
   cashInTreasury     Boolean       @default(false) // true once this PAID order's cash is confirmed deposited into the shared treasury
   notes              String?
@@ -357,6 +363,7 @@ model Order {
   workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   customer      Customer?      @relation(fields: [customerId], references: [id], onDelete: SetNull)
   heldBy        Membership?    @relation("OrderHeldBy", fields: [heldByMembershipId], references: [id], onDelete: SetNull)
+  boostCampaign BoostCampaign? @relation(fields: [boostCampaignId], references: [id], onDelete: SetNull)
   items         OrderItem[]
   gifts         OrderGift[]
   treasuryEntry TreasuryEntry?
@@ -365,6 +372,7 @@ model Order {
   @@index([workspaceId, date])
   @@index([customerId])
   @@index([status])
+  @@index([boostCampaignId])
 }
 
 model OrderItem {
@@ -682,12 +690,18 @@ model BoostCampaign {
   workspaceId String
   name        String
   objective   String? // e.g. "Message", "Engagement", "Sales"
+  // Which channel this campaign runs on — one of ORDER_SOURCES, matched
+  // against Order.source when estimating results for orders nobody tagged.
+  // Null means "don't narrow by channel", which makes the estimate coarser,
+  // so the campaign page says so rather than pretending otherwise.
+  channel     String?
   status      BoostStatus @default(ACTIVE)
   notes       String?
   createdAt   DateTime    @default(now())
 
   workspace Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   adSets    BoostAdSet[]
+  orders    Order[] // orders tagged to this campaign by hand
 
   @@index([workspaceId])
 }

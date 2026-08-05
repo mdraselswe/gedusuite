@@ -27,11 +27,14 @@ import {
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { useFilterBar, type FilterDef } from "@/components/ui/filter-bar";
 import { BoostStatusBadge } from "@/components/boosting/boost-status-badge";
+import { ORDER_SOURCES, ORDER_SOURCE_LABEL, orderSourceLabel } from "@/lib/order-source";
+import { cn } from "@/lib/utils";
 
 type CampaignRow = {
   id: string;
   name: string;
   objective: string | null;
+  channel: string | null;
   status: string;
   adSetCount: number;
   activeAdSets: number;
@@ -39,9 +42,22 @@ type CampaignRow = {
   firstStart: string | null;
   lastEnd: string | null;
   openEnded: boolean;
+  /** Whether the numbers below came from tagged orders or a window guess. */
+  basis: "TAGGED" | "ESTIMATED" | "NONE";
+  orders: number;
+  revenue: number;
+  profitAfterAds: number;
+  roas: number | null;
+  /** Profit ÷ revenue on the attributed orders, 0–1. */
+  margin: number | null;
+  /** The ROAS this campaign's own margin needs just to pay for the ads. */
+  breakEvenRoas: number | null;
+  roasTone: "good" | "bad" | null;
 };
 
 const STATUSES = ["ACTIVE", "PAUSED", "COMPLETED", "CANCELLED"] as const;
+/** "Any channel" in the campaign form — the estimate then doesn't narrow. */
+const ANY_CHANNEL = "__any__";
 
 export function BoostingManager({
   slug,
@@ -57,6 +73,7 @@ export function BoostingManager({
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState<string>("ACTIVE");
+  const [channel, setChannel] = useState<string>(ANY_CHANNEL);
   const [loading, setLoading] = useState(false);
   const filters: FilterDef<CampaignRow>[] = [
     {
@@ -113,12 +130,14 @@ export function BoostingManager({
     setLoading(true);
     const fd = new FormData(e.currentTarget);
     fd.set("status", status);
+    fd.set("channel", channel === ANY_CHANNEL ? "" : channel);
     const res = await createCampaign(slug, fd);
     setLoading(false);
     if (!res.ok) return toast.error(res.error);
     toast.success("Campaign created");
     setOpen(false);
     setStatus("ACTIVE");
+    setChannel(ANY_CHANNEL);
     if (res.id) router.push(`/${slug}/boosting/${res.id}`);
     else router.refresh();
   }
@@ -180,6 +199,17 @@ export function BoostingManager({
               cell: (c) => c.objective ?? "—",
             },
             {
+              key: "channel",
+              header: "Channel",
+              hideable: true,
+              cell: (c) =>
+                c.channel ? (
+                  orderSourceLabel(c.channel)
+                ) : (
+                  <span className="text-muted-foreground">Any</span>
+                ),
+            },
+            {
               key: "status",
               header: "Status",
               cell: (c) => <BoostStatusBadge status={c.status} />,
@@ -206,6 +236,95 @@ export function BoostingManager({
               align: "right",
               sortValue: (c) => c.totalSpent,
               cell: (c) => <span className="font-medium">{c.totalSpent.toFixed(2)}</span>,
+            },
+            {
+              key: "orders",
+              header: "Orders",
+              align: "right",
+              hideable: true,
+              sortValue: (c) => c.orders,
+              cell: (c) => (c.basis === "NONE" ? "—" : c.orders),
+            },
+            {
+              key: "revenue",
+              header: "Revenue",
+              align: "right",
+              hideable: true,
+              sortValue: (c) => c.revenue,
+              cell: (c) => (c.basis === "NONE" ? "—" : c.revenue.toFixed(2)),
+            },
+            {
+              key: "margin",
+              header: "Margin",
+              align: "right",
+              hideable: true,
+              sortValue: (c) => c.margin ?? -1,
+              cell: (c) => (c.margin === null ? "—" : `${(c.margin * 100).toFixed(1)}%`),
+            },
+            {
+              key: "roas",
+              header: "ROAS",
+              align: "right",
+              // Sorted by how far above or below its own break-even a campaign
+              // is, not by raw ROAS: 2.45× on a thin margin is worse than
+              // 1.80× on a fat one, and the column would otherwise rank them
+              // the wrong way round.
+              sortValue: (c) =>
+                c.roas === null ? -1 : c.breakEvenRoas ? c.roas / c.breakEvenRoas : 0,
+              // An estimated figure is marked with ~ rather than given its own
+              // column: the number is the same kind of thing either way, it's
+              // just less certain, and a legend beats a second column here.
+              cell: (c) =>
+                c.roas === null ? (
+                  <span className="text-muted-foreground">—</span>
+                ) : (
+                  <span className="inline-flex flex-col items-end">
+                    <span
+                      className={cn(
+                        "font-medium tabular-nums",
+                        c.roasTone === "good" && "text-emerald-600 dark:text-emerald-400",
+                        c.roasTone === "bad" && "text-destructive",
+                      )}
+                      title={
+                        c.basis === "ESTIMATED"
+                          ? "Estimated from the campaign's dates and channel — no orders tagged to it"
+                          : "From orders tagged to this campaign"
+                      }
+                    >
+                      {c.basis === "ESTIMATED" && "~"}
+                      {c.roas.toFixed(2)}×
+                    </span>
+                    {/* Break-even rides along with the number, so nobody reads
+                        2.45× as a win on a 27% margin. */}
+                    <span className="text-xs text-muted-foreground tabular-nums">
+                      {c.breakEvenRoas === null
+                        ? "no profit"
+                        : `break-even ${c.breakEvenRoas.toFixed(2)}×`}
+                    </span>
+                  </span>
+                ),
+            },
+            {
+              key: "profitAfterAds",
+              header: "Profit after ads",
+              align: "right",
+              hideable: true,
+              sortValue: (c) => c.profitAfterAds,
+              cell: (c) =>
+                c.basis === "NONE" ? (
+                  "—"
+                ) : (
+                  <span
+                    className={cn(
+                      "font-medium tabular-nums",
+                      c.profitAfterAds >= 0
+                        ? "text-emerald-600 dark:text-emerald-400"
+                        : "text-destructive",
+                    )}
+                  >
+                    {c.profitAfterAds.toFixed(2)}
+                  </span>
+                ),
             },
             ...(canDelete
               ? [
@@ -238,6 +357,35 @@ export function BoostingManager({
             <div className="space-y-2">
               <Label htmlFor="bc-objective">Objective (optional)</Label>
               <Input id="bc-objective" name="objective" placeholder="Message, Engagement, Sales…" />
+            </div>
+            <div className="space-y-2">
+              <Label>Channel</Label>
+              <Select
+                value={channel}
+                onValueChange={(v) => setChannel(v ?? ANY_CHANNEL)}
+                items={[
+                  { value: ANY_CHANNEL, label: "Any channel" },
+                  ...ORDER_SOURCES.map((s) => ({ value: s, label: ORDER_SOURCE_LABEL[s] })),
+                ]}
+              >
+                <SelectTrigger className="w-full">
+                  <span data-slot="select-value">
+                    {channel === ANY_CHANNEL ? "Any channel" : orderSourceLabel(channel)}
+                  </span>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ANY_CHANNEL}>Any channel</SelectItem>
+                  {ORDER_SOURCES.map((s) => (
+                    <SelectItem key={s} value={s}>
+                      {ORDER_SOURCE_LABEL[s]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Where the ads run — used to work out which orders this campaign
+                brought in when nobody tagged them.
+              </p>
             </div>
             <div className="space-y-2">
               <Label>Status</Label>

@@ -5,6 +5,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAccess } from "@/lib/authz";
 import { treasuryBalance } from "@/lib/finance";
+import { isOrderSource } from "@/lib/order-source";
 
 export type ActionResult =
   | { ok: true; id?: string }
@@ -15,6 +16,10 @@ const BOOST_STATUSES = ["ACTIVE", "PAUSED", "COMPLETED", "CANCELLED"] as const;
 const CampaignSchema = z.object({
   name: z.string().trim().min(1, "Campaign name is required").max(120),
   objective: z.string().trim().max(120).optional().or(z.literal("")),
+  // Which channel the ads run on, from ORDER_SOURCES — it's what an untagged
+  // order is matched against when the campaign's result is estimated. Blank
+  // is allowed and means "any channel".
+  channel: z.string().trim().optional().or(z.literal("")),
   status: z.enum(BOOST_STATUSES),
   notes: z.string().trim().max(300).optional().or(z.literal("")),
 });
@@ -68,6 +73,7 @@ export async function createCampaign(
   const parsed = CampaignSchema.safeParse({
     name: formData.get("name"),
     objective: formData.get("objective") ?? undefined,
+    channel: formData.get("channel") ?? undefined,
     status: formData.get("status") ?? "ACTIVE",
     notes: formData.get("notes") ?? undefined,
   });
@@ -81,6 +87,7 @@ export async function createCampaign(
       workspaceId: gate.access.workspaceId,
       name: d.name,
       objective: d.objective?.trim() || null,
+      channel: isOrderSource(d.channel) ? d.channel : null,
       status: d.status,
       notes: d.notes?.trim() || null,
     },
@@ -107,6 +114,7 @@ export async function updateCampaign(
   const parsed = CampaignSchema.safeParse({
     name: formData.get("name"),
     objective: formData.get("objective") ?? undefined,
+    channel: formData.get("channel") ?? undefined,
     status: formData.get("status") ?? "ACTIVE",
     notes: formData.get("notes") ?? undefined,
   });
@@ -120,6 +128,7 @@ export async function updateCampaign(
     data: {
       name: d.name,
       objective: d.objective?.trim() || null,
+      channel: isOrderSource(d.channel) ? d.channel : null,
       status: d.status,
       notes: d.notes?.trim() || null,
     },
