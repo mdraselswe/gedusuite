@@ -5,6 +5,8 @@ import type { Prisma } from "@prisma/client";
 export type OrderWithTotals = {
   deliveryCharge: Prisma.Decimal | number;
   deliveryCost?: Prisma.Decimal | number | null;
+  /** The courier's percentage fee in taka. Absent on orders that predate it. */
+  codFeeCost?: Prisma.Decimal | number | null;
   packagingCost: Prisma.Decimal | number;
   giftCost: Prisma.Decimal | number;
   discount: Prisma.Decimal | number;
@@ -32,7 +34,8 @@ export type OrderTotals = {
   deliveryCharge: number;
   deliveryCost: number; // actual amount paid to the courier
   deliveryMargin: number; // deliveryCharge − deliveryCost; can be + or −
-  netProfit: number; // PRD: sale − cost − packaging − discount − gift, plus/minus delivery margin
+  codFeeCost: number; // the courier's percentage fee on the collected amount
+  netProfit: number; // PRD: sale − cost − packaging − discount − gift, plus/minus delivery margin, less the courier's COD fee
   customerTotal: number; // owed for kept goods incl. delivery
   returnedUnits: number;
 };
@@ -79,9 +82,13 @@ export function computeOrderTotals(order: OrderWithTotals): OrderTotals {
   const deliveryCharge = n(order.deliveryCharge);
   const deliveryCost = order.deliveryCost != null ? n(order.deliveryCost) : deliveryCharge;
   const deliveryMargin = deliveryCharge - deliveryCost;
+  // Kept out of deliveryCost so a report can tell a bad delivery rate from a
+  // bad COD rate — they're fixed by different decisions.
+  const codFeeCost = order.codFeeCost != null ? n(order.codFeeCost) : 0;
 
   const netRevenue = effectiveRevenue - itemDiscounts - orderDiscount;
-  const netProfit = netRevenue - cogs - packagingCost - giftCost + deliveryMargin;
+  const netProfit =
+    netRevenue - cogs - packagingCost - giftCost + deliveryMargin - codFeeCost;
   const customerTotal = netRevenue + deliveryCharge;
 
   return {
@@ -96,6 +103,7 @@ export function computeOrderTotals(order: OrderWithTotals): OrderTotals {
     deliveryCharge: round2(deliveryCharge),
     deliveryCost: round2(deliveryCost),
     deliveryMargin: round2(deliveryMargin),
+    codFeeCost: round2(codFeeCost),
     netProfit: round2(netProfit),
     customerTotal: round2(customerTotal),
     returnedUnits,
@@ -108,7 +116,9 @@ export type CancelledCost = {
   giftCost: number;
   /** What the courier charged for the failed trip. */
   deliveryCost: number;
-  /** The three added up — money spent with nothing sold. */
+  /** What the customer paid anyway — a partial delivery, usually the shipping. */
+  collected: number;
+  /** Costs less anything collected. Can be negative: a cancellation can end up ahead. */
   total: number;
 };
 
@@ -134,14 +144,20 @@ export function cancelledOrderCost(order: {
   packagingCost: Prisma.Decimal | number;
   giftCost: Prisma.Decimal | number;
   deliveryCost?: Prisma.Decimal | number | null;
+  cancelledCollected?: Prisma.Decimal | number | null;
 }): CancelledCost {
   const packagingCost = n(order.packagingCost);
   const giftCost = n(order.giftCost);
   const deliveryCost = order.deliveryCost != null ? n(order.deliveryCost) : 0;
+  // A partial delivery — the customer paid the shipping and sent the goods
+  // back — is not a total loss, and calling it one overstates the damage by
+  // whatever they handed over.
+  const collected = order.cancelledCollected != null ? n(order.cancelledCollected) : 0;
   return {
     packagingCost: round2(packagingCost),
     giftCost: round2(giftCost),
     deliveryCost: round2(deliveryCost),
-    total: round2(packagingCost + giftCost + deliveryCost),
+    collected: round2(collected),
+    total: round2(packagingCost + giftCost + deliveryCost - collected),
   };
 }

@@ -61,6 +61,11 @@ const ProductSchema = z.object({
     (v) => (v === "" || v == null ? undefined : v),
     z.coerce.number().int().min(2, "Units per pack must be at least 2").max(10000).optional(),
   ),
+  // Shipping weight of one piece, in grams — feeds the courier quote.
+  weightGrams: z.preprocess(
+    (v) => (v === "" || v == null ? undefined : v),
+    z.coerce.number().int().min(0).max(1_000_000).optional(),
+  ),
   // Ordered attribute names this product varies on, e.g. ["Size","Color"].
   attributeNames: z.array(z.string().trim().max(40)).max(20).optional().default([]),
   variants: z.array(VariantInput).max(200),
@@ -84,6 +89,7 @@ function parseProduct(formData: FormData) {
     expiryTracked: formData.get("expiryTracked") === "on" || formData.get("expiryTracked") === "true",
     lowStockThreshold: formData.get("lowStockThreshold") ?? 5,
     unitsPerPack: formData.get("unitsPerPack") ?? undefined,
+    weightGrams: formData.get("weightGrams") ?? undefined,
     attributeNames: parseJson(formData, "attributeNames"),
     variants: parseJson(formData, "variants"),
   });
@@ -147,6 +153,7 @@ export async function createProduct(
       expiryTracked: d.expiryTracked,
       lowStockThreshold: d.lowStockThreshold,
       unitsPerPack: d.unitsPerPack ?? null,
+      weightGrams: d.weightGrams ?? null,
       attributeNames: cleanNames(d.attributeNames),
       variants: { create: variantCreate },
     },
@@ -189,6 +196,7 @@ export async function updateProduct(
         expiryTracked: d.expiryTracked,
         lowStockThreshold: d.lowStockThreshold,
         unitsPerPack: d.unitsPerPack ?? null,
+        weightGrams: d.weightGrams ?? null,
         attributeNames: cleanNames(d.attributeNames),
       },
     });

@@ -66,6 +66,7 @@ export async function markCashDeposited(
 
   revalidatePath(`/${slug}/treasury`);
   revalidatePath(`/${slug}/sales/orders`);
+  revalidatePath(`/${slug}/couriers`);
   revalidatePath(`/${slug}/dashboard`);
   return { ok: true };
 }
@@ -93,6 +94,7 @@ export async function unmarkCashDeposited(
 
   revalidatePath(`/${slug}/treasury`);
   revalidatePath(`/${slug}/sales/orders`);
+  revalidatePath(`/${slug}/couriers`);
   revalidatePath(`/${slug}/dashboard`);
   return { ok: true };
 }

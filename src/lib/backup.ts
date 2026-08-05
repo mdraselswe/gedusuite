@@ -60,6 +60,8 @@ export async function buildSnapshot(workspaceId: string): Promise<Snapshot> {
     boostCampaigns,
     boostAdSets,
     boostDailySpends,
+    couriers,
+    courierZones,
   ] = await Promise.all([
     prisma.supplier.findMany({ where: { workspaceId } }),
     prisma.product.findMany({ where: { workspaceId } }),
@@ -79,6 +81,8 @@ export async function buildSnapshot(workspaceId: string): Promise<Snapshot> {
     prisma.boostCampaign.findMany({ where: { workspaceId } }),
     prisma.boostAdSet.findMany({ where: { workspaceId } }),
     prisma.boostDailySpend.findMany({ where: { workspaceId } }),
+    prisma.courier.findMany({ where: { workspaceId } }),
+    prisma.courierZone.findMany({ where: { workspaceId } }),
   ]);
   const stockAdjustments = await prisma.stockAdjustment.findMany({ where: { workspaceId } });
 
@@ -104,6 +108,8 @@ export async function buildSnapshot(workspaceId: string): Promise<Snapshot> {
     boostCampaigns,
     boostAdSets,
     boostDailySpends,
+    couriers,
+    courierZones,
   } as unknown as Snapshot["tables"];
 
   return {
@@ -271,6 +277,9 @@ export async function restoreSnapshot(
         await tx.boostDailySpend.deleteMany({ where: { workspaceId } });
         await tx.boostAdSet.deleteMany({ where: { workspaceId } });
         await tx.boostCampaign.deleteMany({ where: { workspaceId } });
+        // After orders, whose courierId/courierZoneId point here.
+        await tx.courierZone.deleteMany({ where: { workspaceId } });
+        await tx.courier.deleteMany({ where: { workspaceId } });
       }
 
       const skip = mode === "MERGE";
@@ -297,6 +306,9 @@ export async function restoreSnapshot(
       await insert("purchases", tx.purchase, purchases);
       await insert("partners", tx.partner, partners);
       await insert("profitDistributions", tx.profitDistribution, profitDistributions);
+      // Before orders: an order carries the courier and zone that priced it.
+      await insert("couriers", tx.courier, force(rows("couriers")));
+      await insert("courierZones", tx.courierZone, force(rows("courierZones")));
       await insert("boostCampaigns", tx.boostCampaign, boostCampaigns);
       await insert("boostAdSets", tx.boostAdSet, boostAdSets);
       await insert("boostDailySpends", tx.boostDailySpend, boostDailySpends);

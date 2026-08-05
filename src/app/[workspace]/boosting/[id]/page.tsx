@@ -133,6 +133,8 @@ export default async function BoostCampaignPage({
       deliveryCost: true,
       packagingCost: true,
       giftCost: true,
+      codFeeCost: true,
+      cancelledCollected: true,
       items: {
         select: {
           unitPrice: true,

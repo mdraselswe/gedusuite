@@ -65,6 +65,7 @@ type Product = {
   expiryTracked: boolean;
   lowStockThreshold: number;
   unitsPerPack: number | null;
+  weightGrams: number | null;
   attributeNames: string[];
   variants: Variant[];
 };
@@ -297,6 +298,7 @@ export function ProductManager({
   const [barcode, setBarcode] = useState("");
   const [threshold, setThreshold] = useState("5");
   const [unitsPerPack, setUnitsPerPack] = useState("");
+  const [weightGrams, setWeightGrams] = useState("");
   const [expiryTracked, setExpiryTracked] = useState(false);
   const [imageUrl, setImageUrl] = useState("");
   const [hasVariants, setHasVariants] = useState(false);
@@ -330,6 +332,7 @@ export function ProductManager({
     setBarcode(p.barcode ?? "");
     setThreshold(String(p.lowStockThreshold));
     setUnitsPerPack(p.unitsPerPack ? String(p.unitsPerPack) : "");
+    setWeightGrams(p.weightGrams != null ? String(p.weightGrams) : "");
     setExpiryTracked(p.expiryTracked);
     setImageUrl(p.imageUrl ?? "");
     const names = p.attributeNames ?? [];
@@ -433,6 +436,7 @@ export function ProductManager({
     fd.set("barcode", barcode);
     fd.set("lowStockThreshold", threshold);
     fd.set("unitsPerPack", unitsPerPack);
+    fd.set("weightGrams", weightGrams);
     fd.set("expiryTracked", expiryTracked ? "true" : "false");
     fd.set("imageUrl", imageUrl);
     fd.set("attributeNames", JSON.stringify(names));
@@ -711,6 +715,21 @@ export function ProductManager({
               <div className="space-y-2">
                 <Label htmlFor="p-barcode">Barcode</Label>
                 <Input id="p-barcode" value={barcode} onChange={(e) => setBarcode(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="p-weight">Shipping weight (grams)</Label>
+                <Input
+                  id="p-weight"
+                  type="number"
+                  min={0}
+                  placeholder="e.g. 450"
+                  value={weightGrams}
+                  onChange={(e) => setWeightGrams(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  One piece, packed. The order form totals these to weigh the parcel — and
+                  couriers charge for every kilo above their limit.
+                </p>
               </div>
               <div className="space-y-2 sm:col-span-2">
                 <Label htmlFor="p-upp">Units per pack</Label>

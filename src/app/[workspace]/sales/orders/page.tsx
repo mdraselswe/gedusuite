@@ -109,7 +109,8 @@ export default async function OrdersPage({
       : {}),
   };
 
-  const [productCount, members, campaigns, orderCount, totalOrderCount, orders] = await Promise.all([
+  const [productCount, members, campaigns, courierRows, orderCount, totalOrderCount, orders] =
+    await Promise.all([
     prisma.productVariant.count({ where: { product: { workspaceId } } }),
     prisma.membership.findMany({
       where: { workspaceId, role: { in: ["OWNER", "PARTNER"] } },
@@ -122,6 +123,13 @@ export default async function OrdersPage({
       where: { workspaceId, status: { in: ["ACTIVE", "PAUSED"] } },
       orderBy: { createdAt: "desc" },
       select: { id: true, name: true },
+    }),
+    // Rules the order form prices with. Inactive couriers are left out — the
+    // form offers what's in use, while old orders keep whatever carried them.
+    prisma.courier.findMany({
+      where: { workspaceId, isActive: true },
+      orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }],
+      include: { zones: { orderBy: { sortOrder: "asc" } } },
     }),
     prisma.order.count({ where }),
     // Unfiltered, for the bar's "showing N of M".
@@ -227,6 +235,18 @@ export default async function OrdersPage({
         hasProducts={productCount > 0}
         members={memberOptions}
         campaigns={campaigns.map((c) => ({ id: c.id, label: c.name }))}
+        couriers={courierRows.map((c) => ({
+          id: c.id,
+          name: c.name,
+          isDefault: c.isDefault,
+          baseWeightKg: Number(c.baseWeightKg),
+          extraKgRate: Number(c.extraKgRate),
+          codFeePercent: Number(c.codFeePercent),
+          codFeeBase: c.codFeeBase,
+          returnChargeType: c.returnChargeType,
+          returnChargeValue: Number(c.returnChargeValue),
+          zones: c.zones.map((z) => ({ id: z.id, name: z.name, rate: Number(z.rate) })),
+        }))}
         fromLead={fromLead}
         orders={orderRows}
         perms={perms}

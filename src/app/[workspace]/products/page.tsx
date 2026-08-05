@@ -72,6 +72,7 @@ export default async function ProductsPage({
     expiryTracked: p.expiryTracked,
     lowStockThreshold: p.lowStockThreshold,
     unitsPerPack: p.unitsPerPack,
+    weightGrams: p.weightGrams,
     attributeNames: Array.isArray(p.attributeNames)
       ? (p.attributeNames.filter((n): n is string => typeof n === "string"))
       : [],

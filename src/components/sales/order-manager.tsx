@@ -54,8 +54,10 @@ import { ANY_VALUE, UrlFilterBar, type FilterDef } from "@/components/ui/filter-
 import { ORDER_SOURCES, ORDER_SOURCE_LABEL } from "@/lib/order-source";
 import { OrderSourceCell } from "@/components/sales/order-source-cell";
 import { OrderCampaignCell, type CampaignOption } from "@/components/sales/order-campaign-cell";
+import { quoteCourier, breakEvenDeliveryCharge, type CourierRules } from "@/lib/courier";
 import { Columns3, Plus, ShoppingCart, Trash2, MoreVertical, X } from "lucide-react";
 import { formatStock } from "@/lib/units";
+import { cn } from "@/lib/utils";
 
 type VariantOption = { id: string; label: string; stock: number };
 type OrderItem = {
@@ -92,6 +94,13 @@ type OrderRow = {
   items: OrderItem[];
 };
 type Perms = { canAdd: boolean; canEdit: boolean; canViewProfit: boolean };
+/** A courier's rules plus its zones — everything quoteCourier needs. */
+export type CourierOption = CourierRules & {
+  id: string;
+  name: string;
+  isDefault: boolean;
+  zones: { id: string; name: string; rate: number }[];
+};
 /** A call-list row the sales page was sent here to turn into an order. */
 export type FromLead = {
   leadId: string;
@@ -257,6 +266,7 @@ export function OrderManager({
   hasProducts,
   members,
   campaigns,
+  couriers,
   fromLead,
   orders,
   perms,
@@ -272,6 +282,8 @@ export function OrderManager({
   members: { id: string; label: string }[];
   /** Campaigns worth tagging an order to — empty when boosting isn't used. */
   campaigns: CampaignOption[];
+  /** Courier rules, so the form can price a parcel as it's being written. */
+  couriers: CourierOption[];
   /**
    * Set when the sales page was opened from a call-list row ("+ Order"): the
    * form opens filled in, and the order it creates links back to that lead.
@@ -305,6 +317,11 @@ export function OrderManager({
   const [paymentStatus, setPaymentStatus] = useState("UNPAID");
   const [deliveryCharge, setDeliveryCharge] = useState("0");
   const [deliveryCost, setDeliveryCost] = useState("");
+  const [courierId, setCourierId] = useState<string>(
+    () => couriers.find((c) => c.isDefault)?.id ?? NONE,
+  );
+  const [courierZoneId, setCourierZoneId] = useState<string>(NONE);
+  const [weightKg, setWeightKg] = useState("");
   const [packagingCost, setPackagingCost] = useState("0");
   const [orderDiscount, setOrderDiscount] = useState("0");
 
@@ -461,9 +478,89 @@ export function OrderManager({
     setPaymentStatus("UNPAID");
     setDeliveryCharge("0");
     setDeliveryCost("");
+    setCourierId(couriers.find((c) => c.isDefault)?.id ?? NONE);
+    setCourierZoneId(NONE);
+    setWeightKg("");
     setPackagingCost("0");
     setOrderDiscount("0");
   }
+
+  const selectedCourier = couriers.find((c) => c.id === courierId) ?? null;
+
+  /** Switching courier drops the zone: zones belong to one courier. */
+  function onCourierChange(next: string) {
+    setCourierId(next);
+    setCourierZoneId(NONE);
+  }
+
+  // Weight from the items themselves, so nobody has to guess. Only offered
+  // when EVERY line knows its own weight — a partial sum would be confidently
+  // wrong and quietly under-quote the parcel.
+  const suggestedWeightKg = useMemo(() => {
+    const picked = items.filter((it) => it.variant);
+    if (picked.length === 0) return null;
+    let grams = 0;
+    for (const it of picked) {
+      const g = it.variant?.weightGrams;
+      if (g == null) return null;
+      grams += g * (parseInt(it.quantity) || 0);
+    }
+    return grams > 0 ? Math.round((grams / 1000) * 1000) / 1000 : null;
+  }, [items]);
+
+  // What the courier will actually keep, previewed while the charge is being
+  // set rather than discovered on a statement weeks later.
+  const courierQuote = useMemo(() => {
+    if (deliveryType !== "COURIER" || !selectedCourier) return null;
+    const zone = selectedCourier.zones.find((z) => z.id === courierZoneId);
+    if (!zone) return null;
+    const goods = items.reduce((s, it) => {
+      const price = parseFloat(it.unitPrice) || 0;
+      const qty = parseInt(it.quantity) || 0;
+      return s + price * qty - (parseFloat(it.discount) || 0);
+    }, 0);
+    // Only what the courier itself collects carries the fee — a bKash
+    // prepayment travels by courier too, but there's nothing to collect.
+    const codAmount =
+      paymentMethod === "COURIER_COLLECTION"
+        ? goods - (parseFloat(orderDiscount) || 0) + (parseFloat(deliveryCharge) || 0)
+        : 0;
+    return quoteCourier(selectedCourier, {
+      zoneRate: zone.rate,
+      weightKg: parseFloat(weightKg) || suggestedWeightKg,
+      codAmount,
+    });
+  }, [
+    deliveryType,
+    selectedCourier,
+    courierZoneId,
+    items,
+    orderDiscount,
+    deliveryCharge,
+    weightKg,
+    suggestedWeightKg,
+    paymentMethod,
+  ]);
+
+  const deliveryShortfall = courierQuote
+    ? Math.round((courierQuote.total - (parseFloat(deliveryCharge) || 0)) * 100) / 100
+    : 0;
+
+  const breakEven = useMemo(() => {
+    if (!courierQuote || !selectedCourier) return null;
+    const zone = selectedCourier.zones.find((z) => z.id === courierZoneId);
+    if (!zone) return null;
+    const goods = items.reduce((s, it) => {
+      const price = parseFloat(it.unitPrice) || 0;
+      const qty = parseInt(it.quantity) || 0;
+      return s + price * qty - (parseFloat(it.discount) || 0);
+    }, 0);
+    return breakEvenDeliveryCharge(selectedCourier, {
+      zoneRate: zone.rate,
+      weightKg: parseFloat(weightKg) || suggestedWeightKg,
+      goodsAmount: goods - (parseFloat(orderDiscount) || 0),
+    });
+  }, [courierQuote, selectedCourier, courierZoneId, items, orderDiscount, weightKg, suggestedWeightKg]);
 
   const preview = useMemo(() => {
     const itemsSubtotal = items.reduce((s, it) => {
@@ -591,6 +688,7 @@ export function OrderManager({
       packagingCost: String(fd.get("packagingCost") ?? "0"),
       giftCost: String(fd.get("giftCost") ?? "0"),
       deliveryCost: String(fd.get("deliveryCost") ?? "0"),
+      cancelledCollected: String(fd.get("cancelledCollected") ?? "0"),
     });
     setCancelSaving(false);
     if (!res.ok) return toast.error(res.error);
@@ -1439,7 +1537,160 @@ export function OrderManager({
                           onChange={(e) => setDeliveryCharge(e.target.value)}
                         />
                       </div>
-                      {deliveryType === "COURIER" && (
+                      {deliveryType === "COURIER" && couriers.length > 0 && (
+                        <>
+                          <div className="space-y-2">
+                            <Label>Courier</Label>
+                            <Select
+                              value={courierId}
+                              onValueChange={(v) => onCourierChange(v ?? NONE)}
+                              items={[
+                                { value: NONE, label: "Not set" },
+                                ...couriers.map((c) => ({ value: c.id, label: c.name })),
+                              ]}
+                            >
+                              <SelectTrigger className="h-10 w-full">
+                                <span data-slot="select-value">
+                                  {couriers.find((c) => c.id === courierId)?.name ?? "Not set"}
+                                </span>
+                              </SelectTrigger>
+                              <SelectContent align="start">
+                                <SelectItem value={NONE}>Not set</SelectItem>
+                                {couriers.map((c) => (
+                                  <SelectItem key={c.id} value={c.id}>
+                                    {c.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Zone</Label>
+                            <Select
+                              value={courierZoneId}
+                              onValueChange={(v) => setCourierZoneId(v ?? NONE)}
+                              items={[
+                                { value: NONE, label: "Not set" },
+                                ...(selectedCourier?.zones ?? []).map((z) => ({
+                                  value: z.id,
+                                  label: `${z.name} · ${z.rate.toFixed(0)}`,
+                                })),
+                              ]}
+                            >
+                              <SelectTrigger className="h-10 w-full">
+                                <span data-slot="select-value">
+                                  {selectedCourier?.zones.find((z) => z.id === courierZoneId)?.name ??
+                                    "Not set"}
+                                </span>
+                              </SelectTrigger>
+                              <SelectContent align="start">
+                                <SelectItem value={NONE}>Not set</SelectItem>
+                                {(selectedCourier?.zones ?? []).map((z) => (
+                                  <SelectItem key={z.id} value={z.id}>
+                                    {z.name} · {z.rate.toFixed(0)}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="o-weight">Weight (kg)</Label>
+                            <Input
+                              id="o-weight"
+                              name="weightKg"
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              inputMode="decimal"
+                              placeholder={suggestedWeightKg ? String(suggestedWeightKg) : "0.5"}
+                              value={weightKg}
+                              onChange={(e) => setWeightKg(e.target.value)}
+                            />
+                            {suggestedWeightKg !== null && !weightKg && (
+                              <p className="text-xs text-muted-foreground">
+                                ~{suggestedWeightKg}kg from the items&apos; own weights.
+                              </p>
+                            )}
+                          </div>
+                          <input type="hidden" name="courierId" value={courierId === NONE ? "" : courierId} />
+                          <input
+                            type="hidden"
+                            name="courierZoneId"
+                            value={courierZoneId === NONE ? "" : courierZoneId}
+                          />
+                          <div className="space-y-2">
+                            <Label htmlFor="o-delivery-cost">Actual courier cost</Label>
+                            <Input
+                              id="o-delivery-cost"
+                              name="deliveryCost"
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              inputMode="decimal"
+                              placeholder={
+                                courierQuote ? String(courierQuote.deliveryCharge) : "Same as charge"
+                              }
+                              value={deliveryCost}
+                              onChange={(e) => setDeliveryCost(e.target.value)}
+                            />
+                            <p className="text-xs text-muted-foreground">
+                              Blank uses the rate above. Type only for a one-off price.
+                            </p>
+                          </div>
+                          {/* The percentage fee is the part that gets forgotten, so
+                              the real cost is spelled out next to the charge being
+                              set — not discovered at the end of the month. */}
+                          {courierQuote && (
+                            <div className="sm:col-span-2">
+                              <p
+                                className={cn(
+                                  "rounded-md border p-3 text-sm",
+                                  deliveryShortfall > 0
+                                    ? "border-destructive/40 bg-destructive/5"
+                                    : "bg-muted/40",
+                                )}
+                              >
+                                Courier keeps{" "}
+                                <span className="font-medium tabular-nums">
+                                  {courierQuote.total.toFixed(2)}
+                                </span>{" "}
+                                — {courierQuote.deliveryCharge.toFixed(2)} delivery
+                                {courierQuote.weightCharge > 0 &&
+                                  ` (incl. ${courierQuote.weightCharge.toFixed(2)} weight)`}{" "}
+                                + {courierQuote.codFee.toFixed(2)} COD fee.
+                                {deliveryShortfall > 0 ? (
+                                  <>
+                                    {" "}
+                                    You&apos;re charging{" "}
+                                    <span className="font-medium tabular-nums">
+                                      {deliveryShortfall.toFixed(2)}
+                                    </span>{" "}
+                                    too little
+                                    {breakEven !== null && (
+                                      <> — {breakEven.toFixed(2)} breaks even</>
+                                    )}
+                                    .
+                                  </>
+                                ) : (
+                                  " Covered by what you're charging."
+                                )}
+                              </p>
+                            </div>
+                          )}
+                          <div className="space-y-2 sm:col-span-2">
+                            <Label htmlFor="o-courier-tracking">Courier order number</Label>
+                            <Input
+                              id="o-courier-tracking"
+                              name="courierTrackingId"
+                              placeholder="Leave blank if not known yet — add it later from the list"
+                            />
+                          </div>
+                        </>
+                      )}
+                      {/* No couriers set up yet: the old two-number form, plus a
+                          way out of it. Nothing breaks by ignoring the rules —
+                          the cost is just typed, as it always was. */}
+                      {deliveryType === "COURIER" && couriers.length === 0 && (
                         <>
                           <div className="space-y-2 sm:col-span-2">
                             <Label htmlFor="o-delivery-cost">Actual courier cost</Label>
@@ -1454,11 +1705,21 @@ export function OrderManager({
                               value={deliveryCost}
                               onChange={(e) => setDeliveryCost(e.target.value)}
                             />
+                            <p className="text-xs text-muted-foreground">
+                              <Link
+                                href={`/${slug}/settings/couriers`}
+                                className="underline underline-offset-2"
+                              >
+                                Set up your courier&apos;s rates
+                              </Link>{" "}
+                              and this fills itself in — including the COD fee, which this
+                              number leaves out.
+                            </p>
                           </div>
                           <div className="space-y-2 sm:col-span-2">
-                            <Label htmlFor="o-courier-tracking">Courier order number</Label>
+                            <Label htmlFor="o-courier-tracking2">Courier order number</Label>
                             <Input
-                              id="o-courier-tracking"
+                              id="o-courier-tracking2"
                               name="courierTrackingId"
                               placeholder="Leave blank if not known yet — add it later from the list"
                             />
@@ -1678,6 +1939,25 @@ export function OrderManager({
                   />
                   <p className="text-xs text-muted-foreground">0 if it came back.</p>
                 </div>
+              </div>
+
+              {/* A partial delivery still collects money — the customer keeps
+                  nothing but pays the shipping. Without this the cancellation
+                  reads as a total loss when it was nearly break-even. */}
+              <div className="space-y-2">
+                <Label htmlFor="cx-collected">Collected from the customer anyway</Label>
+                <Input
+                  id="cx-collected"
+                  name="cancelledCollected"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  defaultValue={0}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Partial delivery — they paid the delivery and sent the goods back. 0 if
+                  nothing was collected.
+                </p>
               </div>
 
               <DialogFooter>

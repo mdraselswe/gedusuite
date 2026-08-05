@@ -8,6 +8,7 @@ import { variantStockMap, STOCK_CONSUMING_STATUSES } from "@/lib/inventory";
 import { variantFullName } from "@/lib/variants";
 import { computeOrderTotals } from "@/lib/orders";
 import { isOrderSource } from "@/lib/order-source";
+import { quoteCourier } from "@/lib/courier";
 import type { OrderStatus, PaymentStatus } from "@prisma/client";
 
 export type ActionResult = { ok: true; id?: string } | { ok: false; error: string };
@@ -60,9 +61,80 @@ const OrderSchema = z.object({
   discount: z.coerce.number().nonnegative().default(0),
   heldByMembershipId: z.string().optional().or(z.literal("")),
   notes: z.string().trim().max(500).optional().or(z.literal("")),
+  // Which courier and zone carried it. Given these, the real cost — including
+  // the percentage fee nobody remembers — is worked out server-side rather
+  // than trusted from the form.
+  courierId: z.string().optional().or(z.literal("")),
+  courierZoneId: z.string().optional().or(z.literal("")),
+  weightKg: z.preprocess(
+    (v) => (v === "" || v == null ? undefined : v),
+    z.coerce.number().nonnegative().max(1000).optional(),
+  ),
   items: z.array(ItemSchema).min(1, "Add at least one item"),
   gifts: z.array(GiftSchema).default([]),
 });
+
+/**
+ * What the courier will keep for this parcel.
+ *
+ * Recomputed here rather than taken from the form: the browser's preview is a
+ * convenience, and a cost that decides profit has to come from the rules the
+ * server holds. A typed deliveryCost still wins — couriers give one-off
+ * discounts, and the person who paid the bill knows better than the table.
+ */
+async function quoteForOrder(
+  workspaceId: string,
+  input: {
+    courierId?: string;
+    courierZoneId?: string;
+    weightKg?: number;
+    deliveryCost?: number;
+    codAmount: number;
+    paymentMethod: string;
+  },
+): Promise<{ courierId: string | null; courierZoneId: string | null; deliveryCost: number | null; codFeeCost: number }> {
+  const fallback = {
+    courierId: null,
+    courierZoneId: null,
+    deliveryCost: input.deliveryCost ?? null,
+    codFeeCost: 0,
+  };
+  if (!input.courierId || !input.courierZoneId) return fallback;
+
+  const zone = await prisma.courierZone.findFirst({
+    where: { id: input.courierZoneId, courierId: input.courierId, workspaceId },
+    include: { courier: true },
+  });
+  if (!zone) return fallback;
+
+  const quote = quoteCourier(
+    {
+      baseWeightKg: Number(zone.courier.baseWeightKg),
+      extraKgRate: Number(zone.courier.extraKgRate),
+      codFeePercent: Number(zone.courier.codFeePercent),
+      codFeeBase: zone.courier.codFeeBase,
+      returnChargeType: zone.courier.returnChargeType,
+      returnChargeValue: Number(zone.courier.returnChargeValue),
+    },
+    {
+      zoneRate: Number(zone.rate),
+      weightKg: input.weightKg ?? null,
+      // The fee is charged on money the COURIER collects — so the test is how
+      // the customer pays, not whether the order has been settled yet. An
+      // order paid by bKash in advance still travels by courier, but there is
+      // nothing for it to collect and so no fee. (Payment status would be the
+      // wrong test: every COD order is UNPAID at the moment it's created.)
+      codAmount: input.paymentMethod === "COURIER_COLLECTION" ? input.codAmount : 0,
+    },
+  );
+
+  return {
+    courierId: zone.courierId,
+    courierZoneId: zone.id,
+    deliveryCost: input.deliveryCost ?? quote.deliveryCharge,
+    codFeeCost: quote.codFee,
+  };
+}
 
 /** Latest purchase unit cost per variant (server-side cost snapshot). */
 async function latestCosts(
@@ -125,6 +197,9 @@ export async function createOrder(
     discount: formData.get("discount") ?? 0,
     heldByMembershipId: formData.get("heldByMembershipId") ?? undefined,
     notes: formData.get("notes") ?? undefined,
+    courierId: formData.get("courierId") ?? undefined,
+    courierZoneId: formData.get("courierZoneId") ?? undefined,
+    weightKg: formData.get("weightKg") ?? undefined,
     items: itemsRaw,
     gifts: giftsRaw,
   });
@@ -234,6 +309,15 @@ export async function createOrder(
   const itemCount = d.items.reduce((s, it) => s + it.quantity, 0);
   const notifMessage = `New order — ${customer?.name ?? "Walk-in"} · ৳${customerTotal.toFixed(2)} (${itemCount} item${itemCount > 1 ? "s" : ""})`;
 
+  const courierQuote = await quoteForOrder(workspaceId, {
+    courierId: d.courierId || undefined,
+    courierZoneId: d.courierZoneId || undefined,
+    weightKg: d.weightKg,
+    deliveryCost: d.deliveryCost,
+    codAmount: customerTotal,
+    paymentMethod: d.paymentMethod,
+  });
+
   const order = await prisma.$transaction(async (tx) => {
     const created = await tx.order.create({
       data: {
@@ -243,7 +327,11 @@ export async function createOrder(
         status: d.status as OrderStatus,
         deliveryType: d.deliveryType,
         deliveryCharge: d.deliveryCharge,
-        deliveryCost: d.deliveryCost ?? null,
+        deliveryCost: courierQuote.deliveryCost,
+        courierId: courierQuote.courierId,
+        courierZoneId: courierQuote.courierZoneId,
+        weightKg: d.weightKg ?? null,
+        codFeeCost: courierQuote.codFeeCost,
         courierTrackingId: d.courierTrackingId?.trim() || null,
         paymentMethod: d.paymentMethod,
         paymentStatus: d.paymentStatus,
@@ -276,6 +364,7 @@ export async function createOrder(
   });
 
   revalidatePath(`/${slug}/sales/orders`);
+  revalidatePath(`/${slug}/couriers`);
   revalidatePath(`/${slug}/dashboard`);
   return { ok: true, id: order.id };
 }
@@ -376,6 +465,7 @@ export async function updateOrderHeader(
   });
 
   revalidatePath(`/${slug}/sales/orders`);
+  revalidatePath(`/${slug}/couriers`);
   revalidatePath(`/${slug}/treasury`);
   revalidatePath(`/${slug}/dashboard`);
   return { ok: true };
@@ -391,6 +481,8 @@ const CancelCostSchema = z.object({
   giftCost: z.coerce.number().nonnegative().max(99_999_999).optional(),
   /** What the courier charged to bring the parcel back. */
   deliveryCost: z.coerce.number().nonnegative().max(99_999_999).optional(),
+  /** What the customer paid anyway — a partial delivery, usually the shipping. */
+  cancelledCollected: z.coerce.number().nonnegative().max(99_999_999).optional(),
 });
 export type CancelCosts = z.input<typeof CancelCostSchema>;
 
@@ -416,7 +508,12 @@ export async function updateOrderStatus(
   // What a cancellation actually cost, captured at the moment it's cancelled
   // — the only moment anyone still knows whether the parcel was packed or
   // what the courier charged to bring it back. Omitted fields are left alone.
-  let costs: { packagingCost?: number; giftCost?: number; deliveryCost?: number } = {};
+  let costs: {
+    packagingCost?: number;
+    giftCost?: number;
+    deliveryCost?: number;
+    cancelledCollected?: number;
+  } = {};
   if (status === "CANCELLED" && cancelCosts) {
     const parsed = CancelCostSchema.safeParse(cancelCosts);
     if (!parsed.success) {
@@ -452,6 +549,7 @@ export async function updateOrderStatus(
   });
 
   revalidatePath(`/${slug}/sales/orders`);
+  revalidatePath(`/${slug}/couriers`);
   revalidatePath(`/${slug}/dashboard`);
   // A cancellation moves profit (its packaging and courier charges) and the
   // channel's cancel rate, both of which the reports and campaign pages show.
@@ -484,6 +582,7 @@ export async function updatePaymentStatus(
   if (res.count === 0) return { ok: false, error: "Order not found" };
 
   revalidatePath(`/${slug}/sales/orders`);
+  revalidatePath(`/${slug}/couriers`);
   revalidatePath(`/${slug}/dashboard`);
   revalidatePath(`/${slug}/treasury`);
   return { ok: true };
@@ -514,6 +613,7 @@ export async function updateCourierTrackingId(
   });
 
   revalidatePath(`/${slug}/sales/orders`);
+  revalidatePath(`/${slug}/couriers`);
   return { ok: true };
 }
 
@@ -565,6 +665,7 @@ export async function createReturn(
   });
 
   revalidatePath(`/${slug}/sales/orders`);
+  revalidatePath(`/${slug}/couriers`);
   revalidatePath(`/${slug}/dashboard`);
   return { ok: true };
 }
@@ -576,6 +677,7 @@ export async function deleteOrder(slug: string, id: string): Promise<ActionResul
     where: { id, workspaceId: gate.access.workspaceId },
   });
   revalidatePath(`/${slug}/sales/orders`);
+  revalidatePath(`/${slug}/couriers`);
   revalidatePath(`/${slug}/dashboard`);
   return { ok: true };
 }
@@ -611,6 +713,7 @@ export async function setOrderSource(
   if (res.count === 0) return { ok: false, error: "Order not found" };
 
   revalidatePath(`/${slug}/sales/orders`);
+  revalidatePath(`/${slug}/couriers`);
   revalidatePath(`/${slug}/reports`);
   // The channel is half of how an untagged order is attributed to a campaign,
   // so a campaign's estimated result changes with it.
@@ -652,6 +755,7 @@ export async function setOrderCampaign(
   if (res.count === 0) return { ok: false, error: "Order not found" };
 
   revalidatePath(`/${slug}/sales/orders`);
+  revalidatePath(`/${slug}/couriers`);
   revalidatePath(`/${slug}/boosting`);
   if (boostCampaignId) revalidatePath(`/${slug}/boosting/${boostCampaignId}`);
   return { ok: true };

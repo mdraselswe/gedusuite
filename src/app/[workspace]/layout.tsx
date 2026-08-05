@@ -9,6 +9,7 @@ import {
   Handshake,
   Wallet,
   Megaphone,
+  Truck,
   ClipboardList,
   BarChart3,
   UserCog,
@@ -110,6 +111,15 @@ async function WorkspaceChrome({
       label: "Call list",
       icon: <PhoneCall className="size-4" />,
       color: "sky",
+      show: can(role, "sales", "view"),
+    }),
+    navItem({
+      // Where courier money is reconciled — same gate as sales, since it's
+      // the delivered-but-unpaid half of the order list.
+      href: `/${slug}/couriers`,
+      label: "Courier",
+      icon: <Truck className="size-4" />,
+      color: "violet",
       show: can(role, "sales", "view"),
     }),
     navItem({

@@ -22,6 +22,9 @@ export type VariantOption = ComboOption & {
   salePrice: number | null;
   // >1 when the product is pack-based (enables Packet<->Piece form toggles).
   unitsPerPack: number | null;
+  // Shipping weight of one piece. Lets the order form total a parcel's weight
+  // instead of asking for it — null when the product hasn't been weighed.
+  weightGrams: number | null;
 };
 export type SearchResult<T> =
   | { ok: true; items: T[]; next: number | null }
@@ -61,7 +64,9 @@ export async function searchVariants(
       attributes: true,
       salePrice: true,
       unitCost: true,
-      product: { select: { name: true, expiryTracked: true, unitsPerPack: true } },
+      product: {
+        select: { name: true, expiryTracked: true, unitsPerPack: true, weightGrams: true },
+      },
     },
   });
 
@@ -98,6 +103,7 @@ export async function searchVariants(
       unitCost,
       salePrice,
       unitsPerPack: r.product.unitsPerPack,
+      weightGrams: r.product.weightGrams,
     };
   });
 
