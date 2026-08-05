@@ -46,6 +46,18 @@ function makeClient() {
   const adapter = new PrismaNeon({
     connectionString: driverUrl(process.env.DATABASE_URL),
     max: Number(process.env.PRISMA_CONNECTION_LIMIT ?? 10),
+    // Neon hangs up idle connections at its own pace — and suspends the
+    // compute entirely after a quiet spell — so a socket kept past that point
+    // fails on the NEXT query: "Connection terminated unexpectedly", landing
+    // on whatever the user happened to click. Retiring idle connections first
+    // means a query never inherits a dead one.
+    idleTimeoutMillis: 60_000,
+    // Generous on purpose. Waking a suspended Neon compute takes seconds
+    // (measured ~3.7s cold against ~0.3s warm), and a page that fans out
+    // several queries opens several handshakes at once — a tight limit here
+    // turns a slow wake-up into "timeout exceeded when trying to connect",
+    // which is a worse failure than waiting.
+    connectionTimeoutMillis: 30_000,
   });
 
   return new PrismaClient({
