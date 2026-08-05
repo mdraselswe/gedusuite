@@ -5,7 +5,7 @@ import { can } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
 import { computeInventoryAlerts } from "@/lib/inventory";
 import { overdueOrders, totalBusinessProfit, treasuryBalance } from "@/lib/finance";
-import { computeOrderTotals } from "@/lib/orders";
+import { cancelledOrderCost, computeOrderTotals } from "@/lib/orders";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PartnerShareTable } from "@/components/dashboard/partner-share-table";
 import { PageHeader } from "@/components/ui/page-header";
@@ -111,7 +111,10 @@ export default async function DashboardPage({
       }),
       canViewReports
         ? prisma.order.findMany({
-            where: { workspaceId, status: { not: "CANCELLED" }, date: { gte: monthStart } },
+            // Cancelled orders included on purpose: they sell nothing but
+            // their packaging and courier charges come off this month's
+            // profit, the same as on the reports page.
+            where: { workspaceId, date: { gte: monthStart } },
             include: { items: { include: { returns: true } } },
           })
         : Promise.resolve([]),
@@ -130,6 +133,10 @@ export default async function DashboardPage({
   let monthRevenue = 0;
   let monthProfit = 0;
   for (const o of monthOrders) {
+    if (o.status === "CANCELLED") {
+      monthProfit -= cancelledOrderCost(o).total;
+      continue;
+    }
     const totals = computeOrderTotals(o);
     monthRevenue += totals.netRevenue;
     monthProfit += totals.netProfit;

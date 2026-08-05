@@ -81,6 +81,8 @@ export function ReportView({
       ["Profit after ads", report.kpis.profitAfterAds],
       ["Orders", report.kpis.orders],
       ["Avg order value", report.kpis.avgOrder],
+      ["Cancelled orders", report.kpis.cancelledOrders],
+      ["Cancelled cost", report.kpis.cancelledCost],
     ]);
     XLSX.utils.book_append_sheet(wb, summary, "Summary");
     XLSX.utils.book_append_sheet(
@@ -116,6 +118,9 @@ export function ReportView({
             Orders: s.orders,
             Revenue: s.revenue,
             Profit: s.profit,
+            Cancelled: s.cancelledOrders,
+            "Cancel rate %": s.cancelRate === null ? "" : +(s.cancelRate * 100).toFixed(1),
+            "Cancelled cost": s.cancelledCost,
           })),
         ),
         "Order sources",
@@ -176,6 +181,8 @@ export function ReportView({
         ["Profit after ads", report.kpis.profitAfterAds.toFixed(2)],
         ["Orders", String(report.kpis.orders)],
         ["Avg order value", report.kpis.avgOrder.toFixed(2)],
+        ["Cancelled orders", String(report.kpis.cancelledOrders)],
+        ["Cancelled cost", report.kpis.cancelledCost.toFixed(2)],
       ],
     });
     autoTable(doc, {
@@ -199,12 +206,15 @@ export function ReportView({
     }
     if (report.bySource.length) {
       autoTable(doc, {
-        head: [["Came from", "Orders", "Revenue", "Profit"]],
+        head: [["Came from", "Orders", "Revenue", "Profit", "Cancelled"]],
         body: report.bySource.map((s) => [
           orderSourceLabel(s.source),
           String(s.orders),
           s.revenue.toFixed(2),
           s.profit.toFixed(2),
+          s.cancelledOrders === 0
+            ? "—"
+            : `${s.cancelledOrders} (${((s.cancelRate ?? 0) * 100).toFixed(0)}%)`,
         ]),
       });
     }
@@ -229,6 +239,20 @@ export function ReportView({
     ["Orders", report.kpis.orders],
     ["Avg order", report.kpis.avgOrder.toFixed(2)],
   ];
+
+  // Kept out of the KPI grid above: it's a loss, not a headline figure, and
+  // the count alone would read like an order count if it sat beside "Orders".
+  const cancelled = report.kpis.cancelledOrders > 0 && (
+    <p className="text-sm text-muted-foreground">
+      <span className="font-medium text-foreground">{report.kpis.cancelledOrders}</span>{" "}
+      cancelled order(s) in this period cost{" "}
+      <span className="font-medium text-destructive tabular-nums">
+        {report.kpis.cancelledCost.toFixed(2)}
+      </span>{" "}
+      in packaging, gifts and courier return charges — already subtracted from net
+      profit above. Nothing was sold, so revenue and the order count leave them out.
+    </p>
+  );
 
   return (
     <div className="space-y-6">
@@ -273,6 +297,8 @@ export function ReportView({
           </Card>
         ))}
       </div>
+
+      {cancelled}
 
       <Card>
         <CardHeader>
@@ -387,6 +413,29 @@ export function ReportView({
                   header: "Profit",
                   align: "right",
                   cell: (s) => s.profit.toFixed(2),
+                },
+                {
+                  key: "cancelRate",
+                  header: "Cancelled",
+                  align: "right",
+                  // A channel can look strong on revenue and still be the
+                  // worst one to spend on, if half of what it sends comes
+                  // back. Amber past a fifth — that's where the packaging and
+                  // courier charges start to matter more than the sales.
+                  cell: (s) =>
+                    s.cancelledOrders === 0 ? (
+                      <span className="text-muted-foreground">—</span>
+                    ) : (
+                      <span
+                        className={cn(
+                          "tabular-nums",
+                          (s.cancelRate ?? 0) >= 0.2 && "text-amber-700 dark:text-amber-400",
+                        )}
+                        title={`${s.cancelledCost.toFixed(2)} lost on packaging, gifts and courier returns`}
+                      >
+                        {s.cancelledOrders} · {((s.cancelRate ?? 0) * 100).toFixed(0)}%
+                      </span>
+                    ),
                 },
               ] as Column<Report["bySource"][number]>[]
             }

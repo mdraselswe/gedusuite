@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { computeOrderTotals } from "@/lib/orders";
+import { cancelledOrderCost, computeOrderTotals } from "@/lib/orders";
 
 const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
 
@@ -39,6 +39,11 @@ export type SourceTotal = {
   orders: number;
   revenue: number;
   profit: number;
+  /** Cancelled orders from this channel, and what they still cost. */
+  cancelledOrders: number;
+  cancelledCost: number;
+  /** Cancelled ÷ (sold + cancelled). Null when the channel has no orders. */
+  cancelRate: number | null;
 };
 
 export type Report = {
@@ -49,6 +54,9 @@ export type Report = {
     avgOrder: number;
     adSpend: number;
     profitAfterAds: number;
+    /** Cancelled orders in range, and the packaging/gift/courier they burned. */
+    cancelledOrders: number;
+    cancelledCost: number;
   };
   series: { date: string; sales: number; profit: number }[];
   products: ProductPerf[]; // all products, sorted by qty desc
@@ -66,10 +74,13 @@ export async function buildReport(
   workspaceId: string,
   range: DateRange | null,
 ): Promise<Report> {
-  const orders = await prisma.order.findMany({
+  // Cancelled orders are fetched too, then split out below. They sell nothing
+  // and their stock goes back, but the packaging, gift and courier return
+  // charge are real money — filtering them out at the query, as this used to,
+  // made that loss invisible rather than zero.
+  const allOrders = await prisma.order.findMany({
     where: {
       workspaceId,
-      status: { not: "CANCELLED" },
       ...(range ? { date: { gte: range.from, lte: range.to } } : {}),
     },
     include: {
@@ -83,12 +94,25 @@ export async function buildReport(
     orderBy: { date: "asc" },
   });
 
+  const orders = allOrders.filter((o) => o.status !== "CANCELLED");
+  const cancelled = allOrders.filter((o) => o.status === "CANCELLED");
+
   let revenue = 0;
   let profit = 0;
   const seriesMap = new Map<string, { sales: number; profit: number }>();
   const productMap = new Map<string, ProductPerf>();
   const methodMap = new Map<string, { amount: number; orders: number }>();
-  const sourceMap = new Map<string, { orders: number; revenue: number; profit: number }>();
+  const sourceMap = new Map<
+    string,
+    { orders: number; revenue: number; profit: number; cancelledOrders: number; cancelledCost: number }
+  >();
+  const blankSource = () => ({
+    orders: 0,
+    revenue: 0,
+    profit: 0,
+    cancelledOrders: 0,
+    cancelledCost: 0,
+  });
 
   for (const o of orders) {
     const t = computeOrderTotals(o);
@@ -102,7 +126,7 @@ export async function buildReport(
     seriesMap.set(day, s);
 
     const srcKey = o.source ?? "";
-    const src = sourceMap.get(srcKey) ?? { orders: 0, revenue: 0, profit: 0 };
+    const src = sourceMap.get(srcKey) ?? blankSource();
     src.orders += 1;
     src.revenue += t.netRevenue;
     src.profit += t.netProfit;
@@ -128,6 +152,28 @@ export async function buildReport(
       a.profit += (Number(it.unitPrice) - Number(it.unitCost)) * eq;
       productMap.set(pid, a);
     }
+  }
+
+  // A cancelled order costs money without selling anything, so it lands in
+  // profit and in its channel's row, but never in revenue, the order count or
+  // the product tables — nothing was sold and the stock went back.
+  let cancelledCost = 0;
+  for (const o of cancelled) {
+    const cost = cancelledOrderCost(o).total;
+    cancelledCost += cost;
+    profit -= cost;
+
+    const day = o.date.toISOString().slice(0, 10);
+    const s = seriesMap.get(day) ?? { sales: 0, profit: 0 };
+    s.profit -= cost;
+    seriesMap.set(day, s);
+
+    const srcKey = o.source ?? "";
+    const src = sourceMap.get(srcKey) ?? blankSource();
+    src.cancelledOrders += 1;
+    src.cancelledCost += cost;
+    src.profit -= cost;
+    sourceMap.set(srcKey, src);
   }
 
   // Include products with zero sales in range so slow-movers surface.
@@ -182,6 +228,8 @@ export async function buildReport(
       avgOrder: orders.length ? round2(revenue / orders.length) : 0,
       adSpend,
       profitAfterAds: round2(profit - adSpend),
+      cancelledOrders: cancelled.length,
+      cancelledCost: round2(cancelledCost),
     },
     series,
     products,
@@ -195,6 +243,14 @@ export async function buildReport(
         orders: v.orders,
         revenue: round2(v.revenue),
         profit: round2(v.profit),
+        cancelledOrders: v.cancelledOrders,
+        cancelledCost: round2(v.cancelledCost),
+        // Out of everything this channel produced, not just what stuck — a
+        // channel that sends 10 orders and loses 5 is 50%, not 100%.
+        cancelRate:
+          v.orders + v.cancelledOrders > 0
+            ? v.cancelledOrders / (v.orders + v.cancelledOrders)
+            : null,
       }))
       .sort((a, b) => {
         if (!a.source !== !b.source) return a.source ? -1 : 1;

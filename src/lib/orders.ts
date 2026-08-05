@@ -101,3 +101,47 @@ export function computeOrderTotals(order: OrderWithTotals): OrderTotals {
     returnedUnits,
   };
 }
+
+/** What a cancelled order still cost, broken down. */
+export type CancelledCost = {
+  packagingCost: number;
+  giftCost: number;
+  /** What the courier charged for the failed trip. */
+  deliveryCost: number;
+  /** The three added up — money spent with nothing sold. */
+  total: number;
+};
+
+/**
+ * A cancelled order sells nothing and its stock goes back on the shelf, so
+ * computeOrderTotals has nothing to say about it — but the packaging is used,
+ * the gift may be gone, and a parcel that reached the courier and came back
+ * is charged for. That money is real and was previously invisible: every
+ * report filters cancelled orders out entirely, so the loss simply vanished.
+ *
+ * Unlike computeOrderTotals, a null `deliveryCost` here means ZERO, not "same
+ * as the delivery charge". That assumption is right for a delivered order
+ * (pass-through) and completely wrong for a cancelled one — it would invent a
+ * courier bill that was never sent. What the courier actually charged is
+ * asked for when the order is cancelled.
+ *
+ * Nothing decides here whether the parcel was ever packed. An order cancelled
+ * before anyone touched it should carry zero packaging and gift cost, and the
+ * cancel dialog is where those get zeroed — a guess from the status would be
+ * wrong as often as it was right.
+ */
+export function cancelledOrderCost(order: {
+  packagingCost: Prisma.Decimal | number;
+  giftCost: Prisma.Decimal | number;
+  deliveryCost?: Prisma.Decimal | number | null;
+}): CancelledCost {
+  const packagingCost = n(order.packagingCost);
+  const giftCost = n(order.giftCost);
+  const deliveryCost = order.deliveryCost != null ? n(order.deliveryCost) : 0;
+  return {
+    packagingCost: round2(packagingCost),
+    giftCost: round2(giftCost),
+    deliveryCost: round2(deliveryCost),
+    total: round2(packagingCost + giftCost + deliveryCost),
+  };
+}

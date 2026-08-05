@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { computeOrderTotals } from "@/lib/orders";
+import { cancelledOrderCost, computeOrderTotals } from "@/lib/orders";
 
 export const OVERDUE_DAYS = 7;
 
@@ -189,13 +189,27 @@ export async function treasuryBalance(workspaceId: string): Promise<number> {
   return round2(bal);
 }
 
-/** Total business net profit across all non-cancelled orders (returns-aware). */
+/**
+ * Total business net profit (returns-aware), less what cancelled orders cost.
+ *
+ * Cancelled orders used to be filtered out at the query, which made their
+ * packaging, gifts and courier return charges free. This figure is what
+ * partner profit shares are calculated from, so an inflated one hands out
+ * money the business never made.
+ */
 export async function totalBusinessProfit(workspaceId: string): Promise<number> {
   const orders = await prisma.order.findMany({
-    where: { workspaceId, status: { not: "CANCELLED" } },
+    where: { workspaceId },
     include: { items: { include: { returns: true } } },
   });
-  const total = orders.reduce((s, o) => s + computeOrderTotals(o).netProfit, 0);
+  const total = orders.reduce(
+    (s, o) =>
+      s +
+      (o.status === "CANCELLED"
+        ? -cancelledOrderCost(o).total
+        : computeOrderTotals(o).netProfit),
+    0,
+  );
   return round2(total);
 }
 
