@@ -4,16 +4,25 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAccess } from "@/lib/authz";
-import { InsufficientTreasury, assertTreasuryCovers } from "@/lib/finance";
+import { InsufficientTreasury, assertTreasuryCovers, totalBusinessProfit } from "@/lib/finance";
 import { ConcurrentWrite, runSerializable } from "@/lib/tx";
 import { splitByShare } from "@/lib/profit-share";
 
-export type ActionResult = { ok: true } | { ok: false; error: string };
+const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
+
+export type ActionResult =
+  | { ok: true }
+  | { ok: false; error: string }
+  // Not a refusal: something the person should see before it happens. The UI
+  // puts it in front of them and re-submits with confirmBeyondProfit set.
+  | { ok: false; error: string; confirm: true };
 
 const DistributionSchema = z.object({
   amount: z.coerce.number().positive("Amount must be > 0"),
   note: z.string().trim().max(300).optional().or(z.literal("")),
   date: z.coerce.date(),
+  /** Set once the person has been told the amount exceeds profit. */
+  confirmBeyondProfit: z.coerce.boolean().default(false),
 });
 
 /**
@@ -35,6 +44,7 @@ export async function createDistribution(
     amount: formData.get("amount"),
     note: formData.get("note") ?? undefined,
     date: formData.get("date"),
+    confirmBeyondProfit: formData.get("confirmBeyondProfit") === "true",
   });
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
@@ -49,6 +59,28 @@ export async function createDistribution(
     return { ok: false, error: "No partners have a profit share set" };
   }
 
+  // Cash is not the same question as profit, and only cash was ever asked.
+  // A treasury holding sales takings will happily fund a "profit distribution"
+  // in a month that made no profit at all — the money is real, but what's being
+  // handed out is working capital, and the next restock is what pays for it.
+  // Not blocked: withdrawing capital is a decision partners are allowed to
+  // make. It just can't be made by accident any more.
+  const profit = await totalBusinessProfit(workspaceId);
+  const beyondProfit = round2(d.amount - Math.max(0, profit.netProfit));
+  if (beyondProfit > 0 && !d.confirmBeyondProfit) {
+    return {
+      ok: false,
+      confirm: true,
+      error:
+        profit.netProfit <= 0
+          ? `There is no distributable profit — the business is at ${profit.netProfit.toFixed(2)}. ` +
+            `All ${d.amount.toFixed(2)} of this would come out of capital and sales cash, ` +
+            `which is what pays for the next restock.`
+          : `Distributable profit is ${profit.netProfit.toFixed(2)}, so ${beyondProfit.toFixed(2)} ` +
+            `of this comes out of capital and sales cash rather than profit.`,
+    };
+  }
+
   // Normalization and the rounding remainder both live in splitByShare now —
   // the screens that tell a partner what their share is call the same function,
   // so what they read and what they're paid can't drift apart.
@@ -56,6 +88,15 @@ export async function createDistribution(
     partners.map((p) => ({ partnerId: p.id, percent: Number(p.profitSharePercent) })),
     d.amount,
   );
+
+  // Both rows say "Profit distribution". When it wasn't one, the note says so —
+  // otherwise the ledger records a withdrawal of capital under a name that
+  // claims the business earned it.
+  const capitalNote =
+    beyondProfit > 0
+      ? `${beyondProfit.toFixed(2)} of this was beyond distributable profit (capital / sales cash)`
+      : null;
+  const note = [d.note?.trim() || null, capitalNote].filter(Boolean).join(" — ") || null;
 
   try {
     await runSerializable(async (tx) => {
@@ -66,7 +107,7 @@ export async function createDistribution(
       data: {
         workspaceId,
         totalAmount: d.amount,
-        note: d.note?.trim() || null,
+        note,
         date: d.date,
       },
     });
@@ -76,7 +117,7 @@ export async function createDistribution(
         type: "OUT",
         amount: d.amount,
         source: "Profit distribution",
-        note: d.note?.trim() || null,
+        note,
         distributionId: distribution.id,
         date: d.date,
       },
@@ -89,7 +130,7 @@ export async function createDistribution(
           partnerId: cut.partnerId,
           type: "WITHDRAWAL",
           amount: cut.amount,
-          purpose: "Profit distribution",
+          purpose: beyondProfit > 0 ? "Distribution (beyond profit)" : "Profit distribution",
           distributionId: distribution.id,
           date: d.date,
         },

@@ -9,6 +9,7 @@ import {
   cashHeldByMember,
   totalDue,
   paidNotDeposited,
+  totalBusinessProfit,
 } from "@/lib/finance";
 import { serverT } from "@/lib/session";
 import { TreasuryManager } from "@/components/treasury/treasury-manager";
@@ -35,9 +36,12 @@ export default async function TreasuryPage({
   const workspaceId = access.workspaceId;
   const canManage = can(access.role, "treasury", "full", access.permissions);
 
-  const [balance, entryCount, entries, partners, allDue, heldCash, due, notDeposited, distributions] =
+  const [balance, profit, entryCount, entries, partners, allDue, heldCash, due, notDeposited, distributions] =
     await Promise.all([
       treasuryBalance(workspaceId),
+      // Shown beside the balance when distributing: the treasury says what
+      // cash is there, this says whether any of it was earned.
+      totalBusinessProfit(workspaceId),
       prisma.treasuryEntry.count({ where: { workspaceId } }),
       prisma.treasuryEntry.findMany({
         where: { workspaceId },
@@ -129,6 +133,7 @@ export default async function TreasuryPage({
         distributions={distributionRows}
         overdue={allDue}
         heldCash={heldCash}
+        distributableProfit={profit.netProfit}
         notDeposited={notDeposited}
         canManage={canManage}
       />

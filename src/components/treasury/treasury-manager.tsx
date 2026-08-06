@@ -10,6 +10,7 @@ import {
 } from "@/server/actions/treasury";
 import { markCashDeposited, unmarkCashDeposited } from "@/server/actions/cash-custody";
 import { createDistribution, deleteDistribution } from "@/server/actions/distributions";
+import { splitByShare } from "@/lib/profit-share";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -89,6 +90,7 @@ export function TreasuryManager({
   overdue,
   heldCash,
   notDeposited,
+  distributableProfit,
   canManage,
 }: {
   slug: string;
@@ -100,6 +102,8 @@ export function TreasuryManager({
   overdue: Overdue[];
   heldCash: HeldCash[];
   notDeposited: NotDeposited[];
+  /** What the business actually earned — the other half of "can we take money out?". */
+  distributableProfit: number;
   canManage: boolean;
 }) {
   const router = useRouter();
@@ -110,20 +114,33 @@ export function TreasuryManager({
 
   const totalPercent = sharePartners.reduce((s, p) => s + p.percent, 0);
   const distAmountNum = parseFloat(distAmount) || 0;
-  const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
-  const preview =
-    totalPercent > 0
-      ? sharePartners.map((p) => ({
-          ...p,
-          cut: round2((p.percent / totalPercent) * distAmountNum),
-        }))
-      : [];
+  // splitByShare, not a fourth copy of the same arithmetic — the preview has to
+  // be what actually gets paid, down to the rounding remainder.
+  const preview = splitByShare(sharePartners, distAmountNum);
+  // How much of this isn't profit. Cash and profit are different questions and
+  // only cash was ever asked; this is the other one, asked before it matters.
+  const beyondProfit = Math.round((distAmountNum - Math.max(0, distributableProfit)) * 100) / 100;
 
   async function onSubmitDistribution(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    setDistLoading(true);
     const fd = new FormData(e.currentTarget);
-    const res = await createDistribution(slug, fd);
+    setDistLoading(true);
+    let res = await createDistribution(slug, fd);
+    // The server asks rather than refuses when the amount goes past profit:
+    // taking capital out is a decision partners may make, just not by accident.
+    if (!res.ok && "confirm" in res) {
+      setDistLoading(false);
+      const ok = await confirmDialog({
+        title: "Take this out anyway?",
+        description: res.error,
+        confirmText: "Distribute anyway",
+        destructive: true,
+      });
+      if (!ok) return;
+      fd.set("confirmBeyondProfit", "true");
+      setDistLoading(true);
+      res = await createDistribution(slug, fd);
+    }
     setDistLoading(false);
     if (!res.ok) return toast.error(res.error);
     toast.success("Distributed to partners");
@@ -613,9 +630,26 @@ export function TreasuryManager({
             <DialogTitle>Distribute to partners</DialogTitle>
           </DialogHeader>
           <form onSubmit={onSubmitDistribution} className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              Treasury balance: <span className="font-medium text-foreground">{balance.toFixed(2)}</span>
-            </p>
+            <div className="space-y-1 text-sm text-muted-foreground">
+              <p>
+                Treasury balance:{" "}
+                <span className="font-medium text-foreground">{balance.toFixed(2)}</span>{" "}
+                <span className="text-xs">— the cash actually there</span>
+              </p>
+              <p>
+                Distributable profit:{" "}
+                <span
+                  className={
+                    distributableProfit < 0
+                      ? "font-medium text-destructive"
+                      : "font-medium text-emerald-600 dark:text-emerald-400"
+                  }
+                >
+                  {distributableProfit.toFixed(2)}
+                </span>{" "}
+                <span className="text-xs">— what the business actually earned</span>
+              </p>
+            </div>
             <div className="space-y-2">
               <Label htmlFor="dist-amount">Amount to distribute</Label>
               <Input
@@ -646,9 +680,9 @@ export function TreasuryManager({
                   {preview.map((p) => (
                     <div key={p.id} className="flex justify-between">
                       <span className="text-muted-foreground">
-                        {p.label} ({p.percent.toFixed(2)}%)
+                        {p.label} ({p.effectivePercent.toFixed(2)}%)
                       </span>
-                      <span className="font-medium">{p.cut.toFixed(2)}</span>
+                      <span className="font-medium">{p.amount.toFixed(2)}</span>
                     </div>
                   ))}
                 </div>
@@ -658,6 +692,19 @@ export function TreasuryManager({
               <p className="text-sm text-destructive">
                 Amount exceeds current treasury balance ({balance.toFixed(2)}).
               </p>
+            )}
+            {distAmountNum > 0 && distAmountNum <= balance && beyondProfit > 0 && (
+              <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+                <p className="font-medium text-amber-800 dark:text-amber-300">
+                  {beyondProfit.toFixed(2)} of this isn&apos;t profit
+                </p>
+                <p className="mt-1 text-muted-foreground">
+                  {distributableProfit <= 0
+                    ? "The business hasn't made a distributable profit, so all of this comes out of capital and sales cash — the money the next restock is paid from."
+                    : "The rest comes out of capital and sales cash rather than what the business earned."}{" "}
+                  You&apos;ll be asked to confirm.
+                </p>
+              </div>
             )}
             <DialogFooter>
               <Button type="submit" disabled={distLoading || distAmountNum <= 0 || distAmountNum > balance}>
