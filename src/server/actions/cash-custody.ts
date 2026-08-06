@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireAccess } from "@/lib/authz";
 import { computeOrderTotals } from "@/lib/orders";
+import { cashEntryNote, cashEntrySource } from "@/lib/order-cash";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -35,19 +36,23 @@ export async function markCashDeposited(
   if (order.paymentStatus !== "PAID") {
     return { ok: false, error: "Order isn't marked PAID yet" };
   }
+  // A cancelled order can still be PAID — the customer paid before refusing it.
+  // Depositing its full total would put a sale that didn't happen into the
+  // treasury; whatever they did hand over belongs on the cancellation instead.
+  if (order.status === "CANCELLED") {
+    return {
+      ok: false,
+      error: "This order is cancelled. Record what the customer paid anyway in the cancellation costs instead.",
+    };
+  }
   if (order.cashInTreasury) {
     return { ok: false, error: "Already marked as deposited" };
   }
 
-  const amount = computeOrderTotals(order).customerTotal;
-  const holderName = order.heldBy ? (order.heldBy.user.name ?? order.heldBy.user.email) : null;
-  const source = order.paymentMethod === "COURIER_COLLECTION" ? "Courier remittance" : "Sales collection";
-  const note = [
-    order.customer?.name ? `Order for ${order.customer.name}` : "Walk-in order",
-    holderName ? `collected by ${holderName}` : null,
-  ]
-    .filter(Boolean)
-    .join(", ");
+  const totals = computeOrderTotals(order);
+  const amount = totals.customerTotal;
+  const source = cashEntrySource(order.paymentMethod);
+  const note = cashEntryNote(order, totals.returnedUnits);
 
   await prisma.$transaction([
     prisma.order.update({ where: { id: orderId }, data: { cashInTreasury: true } }),

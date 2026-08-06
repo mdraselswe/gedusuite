@@ -53,6 +53,13 @@ export function ReportView({
   const [f, setF] = useState(from);
   const [t, setT] = useState(to);
 
+  // Do the partners' own percents already total 100? When they don't,
+  // splitByShare normalizes and the table says so rather than showing two
+  // unexplained percentages.
+  const sharesNormalized = report.partnerShares.every(
+    (p) => p.percent.toFixed(2) === p.effectivePercent.toFixed(2),
+  );
+
   const sold = report.products.filter((p) => p.qty > 0);
   const best = sold.slice(0, 5);
   const slow = [...report.products].sort((a, b) => a.qty - b.qty).slice(0, 5);
@@ -77,9 +84,13 @@ export function ReportView({
       [workspaceName, period],
       [],
       ["Revenue", report.kpis.revenue],
-      ["Net profit", report.kpis.profit],
+      ["Order profit", report.kpis.profit],
       ["Ad spend", report.kpis.adSpend],
-      ["Profit after ads", report.kpis.profitAfterAds],
+      ["Internal purchases", report.kpis.internalPurchaseSpend],
+      ["Other partner expenses", report.kpis.miscExpense],
+      ["Damaged / lost stock", report.kpis.stockLoss],
+      ["Operating expenses", report.kpis.operatingExpenses],
+      ["Net profit", report.kpis.netProfit],
       ["Orders", report.kpis.orders],
       ["Avg order value", report.kpis.avgOrder],
       ["Cancelled orders", report.kpis.cancelledOrders],
@@ -177,9 +188,13 @@ export function ReportView({
       head: [["Metric", "Value"]],
       body: [
         ["Revenue", report.kpis.revenue.toFixed(2)],
-        ["Net profit", report.kpis.profit.toFixed(2)],
+        ["Order profit", report.kpis.profit.toFixed(2)],
         ["Ad spend", report.kpis.adSpend.toFixed(2)],
-        ["Profit after ads", report.kpis.profitAfterAds.toFixed(2)],
+        ["Internal purchases", report.kpis.internalPurchaseSpend.toFixed(2)],
+        ["Other partner expenses", report.kpis.miscExpense.toFixed(2)],
+        ["Damaged / lost stock", report.kpis.stockLoss.toFixed(2)],
+        ["Operating expenses", report.kpis.operatingExpenses.toFixed(2)],
+        ["Net profit", report.kpis.netProfit.toFixed(2)],
         ["Orders", String(report.kpis.orders)],
         ["Avg order value", report.kpis.avgOrder.toFixed(2)],
         ["Cancelled orders", String(report.kpis.cancelledOrders)],
@@ -197,10 +212,11 @@ export function ReportView({
     });
     if (report.partnerShares.length) {
       autoTable(doc, {
-        head: [["Partner", "Share %", "Amount"]],
+        head: [["Partner", "Share %", "Effective %", "Amount"]],
         body: report.partnerShares.map((p) => [
           p.name,
           p.percent.toFixed(2),
+          p.effectivePercent.toFixed(2),
           p.amount.toFixed(2),
         ]),
       });
@@ -234,11 +250,21 @@ export function ReportView({
 
   const kpis: [string, string | number][] = [
     ["Revenue", report.kpis.revenue.toFixed(2)],
-    ["Net profit", report.kpis.profit.toFixed(2)],
-    ["Ad spend", report.kpis.adSpend.toFixed(2)],
-    ["Profit after ads", report.kpis.profitAfterAds.toFixed(2)],
+    ["Order profit", report.kpis.profit.toFixed(2)],
+    ["Operating expenses", report.kpis.operatingExpenses.toFixed(2)],
+    // Order profit less everything it took to run the shop over this range —
+    // the figure partner shares are paid on, so it leads rather than hides
+    // behind "profit after ads", which only ever covered one of the three.
+    ["Net profit", report.kpis.netProfit.toFixed(2)],
     ["Orders", report.kpis.orders],
     ["Avg order", report.kpis.avgOrder.toFixed(2)],
+  ];
+
+  const expenseLines: [string, number][] = [
+    ["Ad spend", report.kpis.adSpend],
+    ["Internal purchases", report.kpis.internalPurchaseSpend],
+    ["Other partner expenses", report.kpis.miscExpense],
+    ["Damaged / lost stock", report.kpis.stockLoss],
   ];
 
   // Kept out of the KPI grid above: it's a loss, not a headline figure, and
@@ -250,9 +276,53 @@ export function ReportView({
       <span className="font-medium text-destructive tabular-nums">
         {report.kpis.cancelledCost.toFixed(2)}
       </span>{" "}
-      in packaging, gifts and courier return charges — already subtracted from net
+      in packaging, gifts and courier return charges — already subtracted from order
       profit above. Nothing was sold, so revenue and the order count leave them out.
     </p>
+  );
+
+  // What the shop cost to run over this range. Broken out rather than left as
+  // one "operating expenses" figure: a partner asking why net profit is below
+  // order profit should be able to read the answer instead of asking.
+  const expenses = report.kpis.operatingExpenses !== 0 && (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base">Order profit to net profit</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-1 text-sm">
+        <div className="flex justify-between gap-3 border-b py-1.5">
+          <span>Order profit</span>
+          <span className="tabular-nums">{report.kpis.profit.toFixed(2)}</span>
+        </div>
+        {expenseLines
+          .filter(([, value]) => value !== 0)
+          .map(([label, value]) => (
+            <div key={label} className="flex justify-between gap-3 border-b py-1.5">
+              <span>{label}</span>
+              <span className="tabular-nums text-muted-foreground">
+                −{value.toFixed(2)}
+              </span>
+            </div>
+          ))}
+        <div className="flex justify-between gap-3 pt-1.5 font-semibold">
+          <span>Net profit</span>
+          <span
+            className={cn(
+              "tabular-nums",
+              report.kpis.netProfit < 0
+                ? "text-destructive"
+                : "text-emerald-600 dark:text-emerald-400",
+            )}
+          >
+            {report.kpis.netProfit.toFixed(2)}
+          </span>
+        </div>
+        <p className="pt-2 text-xs text-muted-foreground">
+          Every expense is charged to the period it was paid in — a year of hosting
+          and a box of polybags both come off in full, the same as a month of ads.
+        </p>
+      </CardContent>
+    </Card>
   );
 
   return (
@@ -300,6 +370,7 @@ export function ReportView({
       </div>
 
       {cancelled}
+      {expenses}
 
       <Card>
         <CardHeader>
@@ -366,6 +437,19 @@ export function ReportView({
                     align: "right",
                     cell: (p) => p.percent.toFixed(2),
                   },
+                  // Only when normalization actually moved it — otherwise the
+                  // column just repeats the one before it.
+                  ...(sharesNormalized
+                    ? []
+                    : [
+                        {
+                          key: "effective",
+                          header: "Effective %",
+                          align: "right" as const,
+                          cell: (p: Report["partnerShares"][number]) =>
+                            p.effectivePercent.toFixed(2),
+                        },
+                      ]),
                   {
                     key: "amount",
                     header: "Amount",
@@ -375,6 +459,12 @@ export function ReportView({
                 ] as Column<Report["partnerShares"][number]>[]
               }
             />
+            <p className="mt-3 text-xs text-muted-foreground">
+              Calculated on net profit — order profit less this period&apos;s ad spend,
+              internal purchases and other expenses.
+              {!sharesNormalized &&
+                " The shares don't total 100%, so each is paid their percent of the total in use."}
+            </p>
           </CardContent>
         </Card>
       )}

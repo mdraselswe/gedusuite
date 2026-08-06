@@ -5,6 +5,8 @@ import { can } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
 import { computeInventoryAlerts } from "@/lib/inventory";
 import { overdueOrders, totalBusinessProfit, treasuryBalance } from "@/lib/finance";
+import { splitByShare } from "@/lib/profit-share";
+import { dhakaDayStart, dhakaMonthStart } from "@/lib/dhaka-time";
 import { cancelledOrderCost, computeOrderTotals } from "@/lib/orders";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PartnerShareTable } from "@/components/dashboard/partner-share-table";
@@ -96,8 +98,9 @@ export default async function DashboardPage({
 
   // Read-only computes — the dashboard must not write to the DB on every view.
   // Notification reconciliation happens on mutations + the scheduled cron.
-  const now = new Date();
-  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  // The month starts at midnight in Dhaka, not in UTC — six hours earlier, and
+  // enough to push the first night's orders into the previous month.
+  const monthStart = dhakaDayStart(dhakaMonthStart());
   const [memberCount, alerts, overdue, profit, treasury, adSpendAgg, monthOrders, partners] =
     await Promise.all([
       prisma.membership.count({ where: { workspaceId } }),
@@ -156,14 +159,21 @@ export default async function DashboardPage({
       access?.role === "PARTNER"
         ? partners.filter((p) => p.userId === access.userId)
         : partners;
-    partnerShares = scoped.map((p) => {
-      const percent = Number(p.profitSharePercent);
-      return {
+    // Split across EVERY partner, then narrowed to the viewer: a plain PARTNER
+    // seeing only their own row must still be paid out of the same whole, or
+    // their share would be normalized against themselves and read as 100%.
+    const cuts = splitByShare(
+      partners.map((p) => ({
+        userId: p.userId,
         name: p.user.name ?? p.user.email,
-        percent,
-        amount: Math.round((percent / 100) * profit * 100) / 100,
-      };
-    });
+        percent: Number(p.profitSharePercent),
+      })),
+      profit.netProfit,
+    );
+    const visible = new Set(scoped.map((p) => p.userId));
+    partnerShares = cuts
+      .filter((c) => visible.has(c.userId))
+      .map((c) => ({ name: c.name, percent: c.effectivePercent, amount: c.amount }));
   }
 
   const quickActions = [
@@ -287,7 +297,7 @@ export default async function DashboardPage({
         <Card className="animate-in fade-in-0 slide-in-from-bottom-2 fill-mode-both duration-300 delay-300">
           <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
             <CardTitle className="text-base">
-              Partner profit share — total profit {profit.toFixed(2)}
+              Partner profit share — distributable profit {profit.netProfit.toFixed(2)}
             </CardTitle>
             <Link
               href={`/${slug}/partners`}

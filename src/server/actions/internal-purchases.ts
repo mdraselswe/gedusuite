@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAccess } from "@/lib/authz";
-import { treasuryBalance } from "@/lib/finance";
+import { InsufficientTreasury, assertTreasuryCovers } from "@/lib/finance";
+import { ConcurrentWrite, runSerializable } from "@/lib/tx";
 import { removePartnerCredit, syncPartnerCredit } from "@/lib/partner-credit";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
@@ -102,18 +103,13 @@ export async function createInternalPurchase(
   const supplier = await resolveSupplier(workspaceId, d.supplierId);
 
   const cost = round2(d.cost * d.quantity);
-  if (paidFromTreasury) {
-    const balance = await treasuryBalance(workspaceId);
-    if (balance < cost) {
-      return {
-        ok: false,
-        error: `Treasury balance is insufficient — available ${balance.toFixed(2)}, need ${cost.toFixed(2)}`,
-      };
-    }
-  }
 
-  await prisma.$transaction(async (tx) => {
-    const item = await tx.internalPurchase.create({
+  try {
+    await runSerializable(async (tx) => {
+      // Inside the transaction so two people saving at once can't both spend
+      // the same balance.
+      if (paidFromTreasury) await assertTreasuryCovers(tx, workspaceId, cost);
+      const item = await tx.internalPurchase.create({
       data: {
         workspaceId,
         itemName: d.itemName,
@@ -150,7 +146,13 @@ export async function createInternalPurchase(
         date: d.date,
       });
     }
-  });
+    });
+  } catch (e) {
+    if (e instanceof InsufficientTreasury || e instanceof ConcurrentWrite) {
+      return { ok: false, error: e.message };
+    }
+    throw e;
+  }
 
   revalidateAll(slug);
   return { ok: true };
@@ -195,23 +197,21 @@ export async function updateInternalPurchase(
   const wasTreasuryFunded = existing.paidFromTreasury;
   const oldEntryAmount = existing.treasuryEntry ? Number(existing.treasuryEntry.amount) : 0;
 
-  // Becoming treasury-funded, or staying treasury-funded with a changed cost —
-  // either way, check the balance can cover it. When it was already
-  // treasury-funded, add back the old entry's amount first: that money is
-  // being replaced, not spent a second time.
-  if (paidFromTreasury) {
-    const balance = await treasuryBalance(workspaceId);
-    const available = wasTreasuryFunded ? balance + oldEntryAmount : balance;
-    if (available < newCost) {
-      return {
-        ok: false,
-        error: `Treasury balance is insufficient — available ${available.toFixed(2)}, need ${newCost.toFixed(2)}`,
-      };
-    }
-  }
-
-  await prisma.$transaction(async (tx) => {
-    await tx.internalPurchase.update({
+  try {
+    await runSerializable(async (tx) => {
+      // Becoming treasury-funded, or staying so with a changed cost — either
+      // way the balance has to cover it. When it was already treasury-funded
+      // the old entry's amount is credited back: that money is being replaced,
+      // not spent a second time.
+      if (paidFromTreasury) {
+        await assertTreasuryCovers(
+          tx,
+          workspaceId,
+          newCost,
+          wasTreasuryFunded ? oldEntryAmount : 0,
+        );
+      }
+      await tx.internalPurchase.update({
       where: { id },
       data: {
         itemName: d.itemName,
@@ -260,7 +260,13 @@ export async function updateInternalPurchase(
       purpose: `Internal purchase: ${d.itemName}`,
       date: d.date,
     });
-  });
+    });
+  } catch (e) {
+    if (e instanceof InsufficientTreasury || e instanceof ConcurrentWrite) {
+      return { ok: false, error: e.message };
+    }
+    throw e;
+  }
 
   revalidateAll(slug);
   return { ok: true };

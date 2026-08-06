@@ -4,16 +4,23 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAccess } from "@/lib/authz";
-import { variantStockMap, STOCK_CONSUMING_STATUSES } from "@/lib/inventory";
+import { OutOfStock, variantStockMap, STOCK_CONSUMING_STATUSES } from "@/lib/inventory";
+import { ConcurrentWrite, runSerializable } from "@/lib/tx";
 import { variantFullName } from "@/lib/variants";
-import { computeOrderTotals } from "@/lib/orders";
+import { blockedByDepositedCash, syncOrderCashEntry } from "@/lib/order-cash";
 import { isOrderSource } from "@/lib/order-source";
 import { quoteCourier } from "@/lib/courier";
 import type { OrderStatus, PaymentStatus } from "@prisma/client";
 
-export type ActionResult = { ok: true; id?: string } | { ok: false; error: string };
+export type ActionResult =
+  // `warning` is for things worth saying that aren't worth refusing over —
+  // selling something with no cost on record, for one.
+  | { ok: true; id?: string; warning?: string }
+  | { ok: false; error: string };
 
 const CONSUMING: readonly string[] = STOCK_CONSUMING_STATUSES;
+
+const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
 
 const ItemSchema = z.object({
   productVariantId: z.string().min(1),
@@ -136,7 +143,20 @@ async function quoteForOrder(
   };
 }
 
-/** Latest purchase unit cost per variant (server-side cost snapshot). */
+/**
+ * What each variant cost, snapshotted onto the order line at sale time.
+ *
+ * The most recent purchase price wins — this is a latest-cost model, not FIFO
+ * or a weighted average. Buy at 100 and later at 120 and the older stock is
+ * costed at 120 too. For a shop this size that's a fair trade for being able
+ * to explain any line's cost from one visible record, but it is a choice, and
+ * margins move with the last price paid.
+ *
+ * When nothing was ever purchased the variant's own catalogue cost stands in.
+ * That fallback used to be a flat zero, which quietly reported the entire sale
+ * price as profit: import a product, sell it before entering a purchase, and
+ * the reports showed a 100% margin with nothing to suggest otherwise.
+ */
 async function latestCosts(
   workspaceId: string,
   variantIds: string[],
@@ -145,21 +165,50 @@ async function latestCosts(
   const map = new Map<string, number>();
   if (uniqueIds.length === 0) return map;
 
-  const purchases = await prisma.purchase.findMany({
-    where: { workspaceId, productVariantId: { in: uniqueIds } },
-    orderBy: [{ productVariantId: "asc" }, { date: "desc" }],
-    select: { productVariantId: true, unitCost: true },
-  });
+  const [purchases, variants] = await Promise.all([
+    prisma.purchase.findMany({
+      where: { workspaceId, productVariantId: { in: uniqueIds } },
+      orderBy: [{ productVariantId: "asc" }, { date: "desc" }],
+      select: { productVariantId: true, unitCost: true },
+    }),
+    prisma.productVariant.findMany({
+      where: { id: { in: uniqueIds } },
+      select: { id: true, unitCost: true },
+    }),
+  ]);
 
   for (const p of purchases) {
     if (!map.has(p.productVariantId)) {
       map.set(p.productVariantId, Number(p.unitCost));
     }
   }
+  // purchase -> catalogue cost -> 0, in that order.
+  for (const v of variants) {
+    if (!map.has(v.id) && v.unitCost != null) map.set(v.id, Number(v.unitCost));
+  }
   for (const vid of uniqueIds) {
     if (!map.has(vid)) map.set(vid, 0);
   }
   return map;
+}
+
+/**
+ * Which of these variants would be sold at zero cost — no purchase on record
+ * and no catalogue cost either. The order still goes through (refusing a sale
+ * because the paperwork is behind would be worse), but the seller is told,
+ * because the alternative is a report claiming a margin nobody earned.
+ */
+async function zeroCostLabels(
+  costs: Map<string, number>,
+  variantIds: string[],
+): Promise<string[]> {
+  const zero = [...new Set(variantIds)].filter((id) => (costs.get(id) ?? 0) === 0);
+  if (zero.length === 0) return [];
+  const rows = await prisma.productVariant.findMany({
+    where: { id: { in: zero } },
+    select: { id: true, attributes: true, product: { select: { name: true } } },
+  });
+  return rows.map((v) => variantFullName(v.product.name, v.attributes));
 }
 
 export async function createOrder(
@@ -251,6 +300,9 @@ export async function createOrder(
   // Never allow selling more than is currently in stock — server-side guard for
   // every order (not just consuming ones), with a clear, product-named error.
   // Product-linked gifts leave with the order too, so they count against stock.
+  const byLabel = new Map(
+    validVariants.map((v) => [v.id, variantFullName(v.product.name, v.attributes)]),
+  );
   const need = new Map<string, number>();
   for (const it of d.items) {
     need.set(it.productVariantId, (need.get(it.productVariantId) ?? 0) + it.quantity);
@@ -285,7 +337,6 @@ export async function createOrder(
   // gifts keep their manual cost. Order.giftCost stores the summed total so all
   // existing profit/report math keeps working. When no gift lines are given,
   // the raw giftCost input still works (legacy manual amount).
-  const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
   const variantById = new Map(validVariants.map((v) => [v.id, v]));
   const giftLines = d.gifts.map((g) => {
     const v = g.productVariantId ? variantById.get(g.productVariantId) : undefined;
@@ -318,7 +369,17 @@ export async function createOrder(
     paymentMethod: d.paymentMethod,
   });
 
-  const order = await prisma.$transaction(async (tx) => {
+  let order: { id: string };
+  try {
+    order = await runSerializable(async (tx) => {
+    // Re-checked under SERIALIZABLE. Stock is derived, so there is no column
+    // for a constraint to defend and no row to lock — only the isolation level
+    // stops two people selling the same last piece. The check above ran
+    // against a snapshot anyone could have moved since.
+    const fresh = await variantStockMap(workspaceId, [...need.keys()], tx);
+    for (const [vid, qty] of need) {
+      if ((fresh.get(vid) ?? 0) < qty) throw new OutOfStock(byLabel.get(vid) ?? "item");
+    }
     const created = await tx.order.create({
       data: {
         workspaceId,
@@ -361,12 +422,26 @@ export async function createOrder(
       },
     });
     return created;
-  });
+    });
+  } catch (e) {
+    if (e instanceof OutOfStock || e instanceof ConcurrentWrite) {
+      return { ok: false, error: e.message };
+    }
+    throw e;
+  }
 
   revalidatePath(`/${slug}/sales/orders`);
   revalidatePath(`/${slug}/couriers`);
   revalidatePath(`/${slug}/dashboard`);
-  return { ok: true, id: order.id };
+
+  const noCost = await zeroCostLabels(costs, variantIds);
+  return {
+    ok: true,
+    id: order.id,
+    warning: noCost.length
+      ? `Sold with no cost on record: ${noCost.join(", ")}. Their profit will read as the full sale price until a purchase is entered.`
+      : undefined,
+  };
 }
 
 // Header-only edit: the money/meta fields that commonly need correction after
@@ -383,6 +458,7 @@ const HeaderSchema = z.object({
   ),
   paymentMethod: z.enum(["CASH", "BKASH", "NAGAD", "COURIER_COLLECTION", "OTHER"]),
   packagingCost: z.coerce.number().nonnegative().default(0),
+  // Only used by an order with no gift lines — see the note where it's applied.
   giftCost: z.coerce.number().nonnegative().default(0),
   discount: z.coerce.number().nonnegative().default(0),
   notes: z.string().trim().max(500).optional().or(z.literal("")),
@@ -422,6 +498,7 @@ export async function updateOrderHeader(
       cashInTreasury: true,
       status: true,
       items: { select: { unitPrice: true, quantity: true, discount: true } },
+      gifts: { select: { quantity: true, unitCost: true } },
     },
   });
   if (!order) return { ok: false, error: "Order not found" };
@@ -470,6 +547,16 @@ export async function updateOrderHeader(
     heldByMembershipId = member.id;
   }
 
+  // Order.giftCost is a stored total of the gift lines, and creation derives
+  // it from them. Editing accepted a hand-typed number instead, so the order
+  // could claim one gift cost while its own gift list added up to another —
+  // and the breakdown page showed both. Derived here too; the typed value is
+  // only honoured on an order that has no gift lines at all (the legacy shape,
+  // where the amount is all there ever was).
+  const giftCost = order.gifts.length
+    ? round2(order.gifts.reduce((s, g) => s + Number(g.unitCost) * g.quantity, 0))
+    : d.giftCost;
+
   // Re-quoted on every save, because the fee follows the order's value: change
   // the delivery charge or a discount and the percentage the courier keeps
   // changes with it. A cancelled order collected nothing to be charged on.
@@ -505,27 +592,14 @@ export async function updateOrderHeader(
           : {}),
         paymentMethod: d.paymentMethod,
         packagingCost: d.packagingCost,
-        giftCost: d.giftCost,
+        giftCost,
         discount: d.discount,
         notes: d.notes?.trim() || null,
       },
     });
-    // If the cash was already confirmed into the treasury, that entry snapshot
-    // equals the customer total — a charge/discount change must resync it or
-    // the treasury balance silently drifts from reality.
-    if (order.cashInTreasury) {
-      const fresh = await tx.order.findUnique({
-        where: { id: orderId },
-        include: { items: { include: { returns: true } } },
-      });
-      if (fresh) {
-        const amount = computeOrderTotals(fresh).customerTotal;
-        await tx.treasuryEntry.updateMany({
-          where: { workspaceId, orderId },
-          data: { amount },
-        });
-      }
-    }
+    // A changed charge or discount moves what the customer owes, so the
+    // deposited-cash entry has to move with it.
+    await syncOrderCashEntry(tx, workspaceId, orderId);
   });
 
   revalidatePath(`/${slug}/sales/orders`);
@@ -586,33 +660,64 @@ export async function updateOrderStatus(
     costs = parsed.data;
   }
 
-  // Moving from non-consuming → consuming: verify stock is available.
+  // Moving from non-consuming → consuming: verify stock is available. Checked
+  // twice on purpose — here for a fast, friendly refusal before anything is
+  // written, and again inside the transaction below where it actually binds.
   const wasConsuming = CONSUMING.includes(order.status);
   const willConsume = CONSUMING.includes(status);
+  const needed = new Map<string, number>();
   if (!wasConsuming && willConsume) {
-    const stock = await variantStockMap(workspaceId);
-    const need = new Map<string, number>();
     for (const it of order.items) {
-      need.set(it.productVariantId, (need.get(it.productVariantId) ?? 0) + it.quantity);
+      needed.set(it.productVariantId, (needed.get(it.productVariantId) ?? 0) + it.quantity);
     }
     for (const g of order.gifts) {
       if (g.productVariantId) {
-        need.set(g.productVariantId, (need.get(g.productVariantId) ?? 0) + g.quantity);
+        needed.set(g.productVariantId, (needed.get(g.productVariantId) ?? 0) + g.quantity);
       }
     }
-    for (const [vid, qty] of need) {
+    const stock = await variantStockMap(workspaceId, [...needed.keys()]);
+    for (const [vid, qty] of needed) {
       if ((stock.get(vid) ?? 0) < qty) {
         return { ok: false, error: "Not enough stock to confirm this order" };
       }
     }
   }
+  const labelFor = new Map(
+    (
+      await prisma.productVariant.findMany({
+        where: { id: { in: [...needed.keys()] } },
+        select: { id: true, attributes: true, product: { select: { name: true } } },
+      })
+    ).map((v) => [v.id, variantFullName(v.product.name, v.attributes)]),
+  );
 
-  await prisma.order.update({
-    where: { id: orderId },
-    data: { status: status as OrderStatus, ...costs },
-  });
+  try {
+    await runSerializable(async (tx) => {
+      // Re-checked under SERIALIZABLE for the same reason as createOrder: the
+      // snapshot above is only as fresh as the moment it was read.
+      if (!wasConsuming && willConsume) {
+        const fresh = await variantStockMap(workspaceId, [...needed.keys()], tx);
+        for (const [vid, qty] of needed) {
+          if ((fresh.get(vid) ?? 0) < qty) throw new OutOfStock(labelFor.get(vid) ?? "item");
+        }
+      }
+      await tx.order.update({
+        where: { id: orderId },
+        data: { status: status as OrderStatus, ...costs },
+      });
+      // Cancelling sells nothing, so a deposited order's treasury entry drops
+      // to whatever the customer paid anyway — or goes entirely.
+      await syncOrderCashEntry(tx, workspaceId, orderId);
+    });
+  } catch (e) {
+    if (e instanceof OutOfStock || e instanceof ConcurrentWrite) {
+      return { ok: false, error: e.message };
+    }
+    throw e;
+  }
 
   revalidatePath(`/${slug}/sales/orders`);
+  revalidatePath(`/${slug}/treasury`);
   revalidatePath(`/${slug}/couriers`);
   revalidatePath(`/${slug}/dashboard`);
   // A cancellation moves profit (its packaging and courier charges) and the
@@ -639,11 +744,25 @@ export async function updatePaymentStatus(
   const valid = ["PAID", "UNPAID", "PARTIAL"];
   if (!valid.includes(paymentStatus)) return { ok: false, error: "Invalid payment status" };
 
-  const res = await prisma.order.updateMany({
+  const order = await prisma.order.findFirst({
     where: { id: orderId, workspaceId },
+    select: { id: true, cashInTreasury: true },
+  });
+  if (!order) return { ok: false, error: "Order not found" };
+
+  // Taking an order back off PAID says the money isn't collected after all,
+  // which can't be true while the treasury holds a confirmed deposit for it.
+  // Blocked rather than silently unwound: deleting a treasury entry is not
+  // something a payment dropdown should do behind someone's back.
+  if (paymentStatus !== "PAID") {
+    const blocked = blockedByDepositedCash(order, "unpay");
+    if (blocked) return { ok: false, error: blocked };
+  }
+
+  await prisma.order.update({
+    where: { id: orderId },
     data: { paymentStatus: paymentStatus as PaymentStatus },
   });
-  if (res.count === 0) return { ok: false, error: "Order not found" };
 
   revalidatePath(`/${slug}/sales/orders`);
   revalidatePath(`/${slug}/couriers`);
@@ -718,17 +837,25 @@ export async function createReturn(
     return { ok: false, error: "Return quantity exceeds remaining quantity" };
   }
 
-  await prisma.return.create({
-    data: {
-      workspaceId,
-      orderItemId: d.orderItemId,
-      quantity: d.quantity,
-      refundAmount: d.refundAmount,
-      reason: d.reason?.trim() || null,
-    },
+  await prisma.$transaction(async (tx) => {
+    await tx.return.create({
+      data: {
+        workspaceId,
+        orderItemId: d.orderItemId,
+        quantity: d.quantity,
+        refundAmount: d.refundAmount,
+        reason: d.reason?.trim() || null,
+      },
+    });
+    // A returned unit lowers what the customer owed, so the cash confirmed
+    // into the treasury for this order is no longer all the business's. The
+    // refund shows as the deposit shrinking rather than as its own line —
+    // money that never reached the treasury can't leave it.
+    await syncOrderCashEntry(tx, workspaceId, item.orderId);
   });
 
   revalidatePath(`/${slug}/sales/orders`);
+  revalidatePath(`/${slug}/treasury`);
   revalidatePath(`/${slug}/couriers`);
   revalidatePath(`/${slug}/dashboard`);
   return { ok: true };
@@ -737,6 +864,22 @@ export async function createReturn(
 export async function deleteOrder(slug: string, id: string): Promise<ActionResult> {
   const gate = await requireAccess(slug, "sales", "edit");
   if (!gate.ok) return gate;
+
+  // TreasuryEntry.orderId is ON DELETE SET NULL, so deleting an order whose
+  // cash was banked used to leave the entry behind with nothing attached — the
+  // balance still counted it and nobody could say what it was for. Blocked
+  // here rather than cleaned up, because neither cleanup is right: removing
+  // the entry loses money that genuinely arrived, and keeping it loses the
+  // trail. Undoing the deposit first is an explicit decision, and it needs
+  // treasury rights that deleting an order does not.
+  const order = await prisma.order.findFirst({
+    where: { id, workspaceId: gate.access.workspaceId },
+    select: { id: true, cashInTreasury: true },
+  });
+  if (!order) return { ok: true };
+  const blocked = blockedByDepositedCash(order, "delete");
+  if (blocked) return { ok: false, error: blocked };
+
   await prisma.order.deleteMany({
     where: { id, workspaceId: gate.access.workspaceId },
   });

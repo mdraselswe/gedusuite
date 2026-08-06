@@ -7,6 +7,23 @@ import { requireAccess } from "@/lib/authz";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
+/**
+ * Why a product or variant with purchase history can't be deleted, with the
+ * money named. "Can't delete this" invites someone to look for a way around
+ * it; "this would erase 8,000.00 of buying history" explains itself.
+ */
+function purchaseHistoryError(
+  purchases: { unitCost: unknown; quantity: number }[],
+  kind: "product" | "variant",
+): string {
+  const total = purchases.reduce((s, p) => s + Number(p.unitCost) * p.quantity, 0);
+  return (
+    `This ${kind} has ${purchases.length} purchase record(s) worth ${total.toFixed(2)} and can't be deleted — ` +
+    `that would erase the buying history, and the investment credit for whoever paid for it. ` +
+    `Delete those purchases first if the ${kind} really was entered by mistake.`
+  );
+}
+
 const MAX_IMAGE_CHARS = 2_000_000; // ~1.5MB data URI
 
 const imageField = z
@@ -231,14 +248,27 @@ export async function deleteProduct(slug: string, id: string): Promise<ActionRes
   // ProductVariant -> OrderItem is a RESTRICT fk: a variant that's ever been
   // sold can't be deleted (and Product delete cascades to variants), so check
   // first instead of letting the DB throw.
-  const soldCount = await prisma.orderItem.count({
-    where: { productVariant: { productId: id } },
-  });
+  //
+  // Purchase is NOT restricted — it cascades — which is why it's checked here
+  // by hand. A product bought but never sold used to delete cleanly and take
+  // its purchase rows with it, and with them the partner's investment credit
+  // for the money they put in to buy it. Money spent would simply stop having
+  // been spent.
+  const [soldCount, purchases] = await Promise.all([
+    prisma.orderItem.count({ where: { productVariant: { productId: id } } }),
+    prisma.purchase.findMany({
+      where: { productVariant: { productId: id } },
+      select: { unitCost: true, quantity: true },
+    }),
+  ]);
   if (soldCount > 0) {
     return {
       ok: false,
       error: "This product has been sold in past orders and can't be deleted. Remove unsold variants instead, or keep it for order history.",
     };
+  }
+  if (purchases.length > 0) {
+    return { ok: false, error: purchaseHistoryError(purchases, "product") };
   }
 
   await prisma.product.delete({ where: { id } });
@@ -292,13 +322,24 @@ export async function deleteVariant(
   if (!variant) return { ok: false, error: "Variant not found" };
 
   // ProductVariant -> OrderItem is a RESTRICT fk: block with a clear message
-  // instead of letting the raw DB constraint error surface.
-  const soldCount = await prisma.orderItem.count({ where: { productVariantId: variantId } });
+  // instead of letting the raw DB constraint error surface. Purchase cascades
+  // rather than restricting, so it needs the same check made by hand — see
+  // deleteProduct above for what that silently destroyed.
+  const [soldCount, purchases] = await Promise.all([
+    prisma.orderItem.count({ where: { productVariantId: variantId } }),
+    prisma.purchase.findMany({
+      where: { productVariantId: variantId },
+      select: { unitCost: true, quantity: true },
+    }),
+  ]);
   if (soldCount > 0) {
     return {
       ok: false,
       error: "This variant has been sold in past orders and can't be deleted — it's kept for order history.",
     };
+  }
+  if (purchases.length > 0) {
+    return { ok: false, error: purchaseHistoryError(purchases, "variant") };
   }
 
   await prisma.productVariant.delete({ where: { id: variantId } });

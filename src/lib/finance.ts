@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { cancelledOrderCost, computeOrderTotals } from "@/lib/orders";
 
@@ -174,9 +175,20 @@ export async function businessCapitalSummary(
   };
 }
 
-/** Central treasury running balance = sum(IN) − sum(OUT). */
-export async function treasuryBalance(workspaceId: string): Promise<number> {
-  const rows = await prisma.treasuryEntry.groupBy({
+/**
+ * Central treasury running balance = sum(IN) − sum(OUT).
+ *
+ * Pass a transaction client when the balance is about to be spent against.
+ * Reading it outside the transaction that then writes leaves a gap two people
+ * can both walk through: each sees 10,000, each takes 8,000, and the treasury
+ * ends at −6,000 with nothing to have stopped it. Inside the transaction the
+ * read and the write are one step.
+ */
+export async function treasuryBalance(
+  workspaceId: string,
+  client: Pick<Prisma.TransactionClient, "treasuryEntry"> = prisma,
+): Promise<number> {
+  const rows = await client.treasuryEntry.groupBy({
     by: ["type"],
     where: { workspaceId },
     _sum: { amount: true },
@@ -189,20 +201,117 @@ export async function treasuryBalance(workspaceId: string): Promise<number> {
   return round2(bal);
 }
 
+/** Thrown inside a transaction to roll it back with a message for the user. */
+export class InsufficientTreasury extends Error {
+  constructor(available: number, need: number) {
+    super(
+      `Treasury balance is insufficient — available ${available.toFixed(2)}, need ${need.toFixed(2)}`,
+    );
+    this.name = "InsufficientTreasury";
+  }
+}
+
 /**
- * Total business net profit (returns-aware), less what cancelled orders cost.
- *
- * Cancelled orders used to be filtered out at the query, which made their
- * packaging, gifts and courier return charges free. This figure is what
- * partner profit shares are calculated from, so an inflated one hands out
- * money the business never made.
+ * Check the treasury can cover `need` and roll the transaction back if not.
+ * `creditBack` is an amount already deducted by the row being edited — that
+ * money is being replaced, not spent a second time.
  */
-export async function totalBusinessProfit(workspaceId: string): Promise<number> {
-  const orders = await prisma.order.findMany({
-    where: { workspaceId },
-    include: { items: { include: { returns: true } } },
-  });
-  const total = orders.reduce(
+export async function assertTreasuryCovers(
+  tx: Prisma.TransactionClient,
+  workspaceId: string,
+  need: number,
+  creditBack = 0,
+): Promise<void> {
+  const available = round2((await treasuryBalance(workspaceId, tx)) + creditBack);
+  if (available < need) throw new InsufficientTreasury(available, need);
+}
+
+/** What one written-off piece cost: last purchase, else catalogue, else zero. */
+function writeOffUnitCost(a: {
+  productVariant: { unitCost: unknown; purchases: { unitCost: unknown }[] };
+}): number {
+  const lastPurchase = a.productVariant.purchases[0];
+  if (lastPurchase) return Number(lastPurchase.unitCost);
+  return a.productVariant.unitCost != null ? Number(a.productVariant.unitCost) : 0;
+}
+
+export type BusinessProfit = {
+  /** Order profit, returns-aware, less what cancelled orders cost. */
+  tradingProfit: number;
+  /** Advertising — every BoostDailySpend, whoever funded it. */
+  adSpend: number;
+  /** Every internal purchase — packaging, office supplies, equipment, utilities. */
+  internalPurchaseSpend: number;
+  /** Manual partner EXPENSE entries — anything with no dedicated record. */
+  miscExpense: number;
+  /** Stock written off as damaged or lost, valued at what it cost to buy. */
+  stockLoss: number;
+  operatingExpenses: number;
+  /** tradingProfit − operatingExpenses. What profit shares are paid on. */
+  netProfit: number;
+};
+
+/**
+ * What the business actually made.
+ *
+ * Two layers, and the difference between them matters. `tradingProfit` is what
+ * the orders themselves earned — returns applied, and cancelled orders costing
+ * their packaging, gifts and courier return charges rather than being free.
+ * `netProfit` then pays for running the shop: the ads, every internal purchase
+ * and the odd rent entry. No category is treated specially — a cost is charged
+ * to the period it was paid in, whether that's a month of Facebook ads, a
+ * year of hosting or a box of polybags. Simple to explain and simple to check,
+ * which for a shop this size is worth more than smoothing each cost over the
+ * months it will actually be used in.
+ *
+ * Only the first layer used to exist, under the name "total business profit",
+ * and partner profit shares were calculated from it. That handed out a share
+ * of money the ads had already spent — the exact failure the cancelled-order
+ * fix was made to prevent, one level up. Shares are paid on `netProfit` now.
+ *
+ * The breakdown is returned in full rather than as one "expenses" figure, so
+ * a partner asking why their share moved can read the reason instead of
+ * taking the total on trust.
+ */
+export async function totalBusinessProfit(workspaceId: string): Promise<BusinessProfit> {
+  const [orders, adSpendAgg, internalPurchases, miscAgg, writeOffs] = await Promise.all([
+    prisma.order.findMany({
+      where: { workspaceId },
+      include: { items: { include: { returns: true } } },
+    }),
+    prisma.boostDailySpend.aggregate({ where: { workspaceId }, _sum: { amount: true } }),
+    prisma.internalPurchase.findMany({
+      where: { workspaceId },
+      select: { cost: true, quantity: true },
+    }),
+    prisma.partnerTxn.aggregate({
+      where: { workspaceId, type: "EXPENSE" },
+      _sum: { amount: true },
+    }),
+    // Stock that left without being sold. It was bought with real money and it
+    // is never coming back, but nothing recognised it as a loss: profit only
+    // ever sees cost when something sells, so a broken box simply vanished
+    // from the shelf and from the accounts at the same time.
+    prisma.stockAdjustment.findMany({
+      where: { workspaceId, type: { in: ["DAMAGED", "LOST"] } },
+      select: {
+        delta: true,
+        productVariant: {
+          select: {
+            unitCost: true,
+            // Same cost chain a sale uses: what it last cost to buy, then the
+            // catalogue price, then nothing. Valuing a write-off only by the
+            // catalogue cost would report zero loss for every variant that was
+            // bought but never priced — which is most of them, since the
+            // purchase form is where the real cost gets typed.
+            purchases: { orderBy: { date: "desc" }, take: 1, select: { unitCost: true } },
+          },
+        },
+      },
+    }),
+  ]);
+
+  const tradingProfit = orders.reduce(
     (s, o) =>
       s +
       (o.status === "CANCELLED"
@@ -210,7 +319,24 @@ export async function totalBusinessProfit(workspaceId: string): Promise<number> 
         : computeOrderTotals(o).netProfit),
     0,
   );
-  return round2(total);
+  const adSpend = Number(adSpendAgg._sum.amount ?? 0);
+  const internalPurchaseSpend = internalPurchases.reduce(
+    (s, ip) => s + Number(ip.cost) * ip.quantity,
+    0,
+  );
+  const miscExpense = Number(miscAgg._sum.amount ?? 0);
+  const stockLoss = writeOffs.reduce((s, a) => s + Math.abs(Math.min(0, a.delta)) * writeOffUnitCost(a), 0);
+  const operatingExpenses = adSpend + internalPurchaseSpend + miscExpense + stockLoss;
+
+  return {
+    tradingProfit: round2(tradingProfit),
+    adSpend: round2(adSpend),
+    internalPurchaseSpend: round2(internalPurchaseSpend),
+    miscExpense: round2(miscExpense),
+    stockLoss: round2(stockLoss),
+    operatingExpenses: round2(operatingExpenses),
+    netProfit: round2(tradingProfit - operatingExpenses),
+  };
 }
 
 export type OverdueOrder = {

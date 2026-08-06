@@ -1,24 +1,29 @@
 import { prisma } from "@/lib/prisma";
 import { cancelledOrderCost, computeOrderTotals } from "@/lib/orders";
+import { splitByShare } from "@/lib/profit-share";
+import { dhakaDayEnd, dhakaDayKey, dhakaDayStart, dhakaDaysAgo, dhakaToday } from "@/lib/dhaka-time";
 
 const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
 
 export type DateRange = { from: Date; to: Date };
 
+/**
+ * Last 30 days, inclusive, on Dhaka calendar days.
+ *
+ * These used to be built with setHours(), which anchors to the *server's*
+ * midnight — UTC on Vercel. A range someone picked as "1 Aug to 31 Aug"
+ * actually covered 1 Aug 06:00 to 1 Sep 05:59 Dhaka time, so orders taken late
+ * on the last day of a month landed in the next one.
+ */
 export function defaultRange(): DateRange {
-  const to = new Date();
-  const from = new Date();
-  from.setDate(from.getDate() - 29); // last 30 days inclusive
-  from.setHours(0, 0, 0, 0);
-  to.setHours(23, 59, 59, 999);
-  return { from, to };
+  return { from: dhakaDayStart(dhakaDaysAgo(29)), to: dhakaDayEnd(dhakaToday()) };
 }
 
-/** Parse ?from=YYYY-MM-DD&to=YYYY-MM-DD, falling back to the default range. */
+/** Parse ?from=YYYY-MM-DD&to=YYYY-MM-DD as Dhaka days, or the default range. */
 export function parseRange(fromStr?: string, toStr?: string): DateRange {
   const def = defaultRange();
-  const from = fromStr ? new Date(fromStr + "T00:00:00") : def.from;
-  const to = toStr ? new Date(toStr + "T23:59:59") : def.to;
+  const from = fromStr ? dhakaDayStart(fromStr) : def.from;
+  const to = toStr ? dhakaDayEnd(toStr) : def.to;
   if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) return def;
   return { from, to };
 }
@@ -53,6 +58,14 @@ export type Report = {
     orders: number;
     avgOrder: number;
     adSpend: number;
+    internalPurchaseSpend: number;
+    miscExpense: number;
+    /** Stock written off as damaged or lost, at what it cost to buy. */
+    stockLoss: number;
+    /** adSpend + internalPurchaseSpend + miscExpense + stockLoss. */
+    operatingExpenses: number;
+    /** profit − operatingExpenses. What partner shares are paid on. */
+    netProfit: number;
     profitAfterAds: number;
     /** Cancelled orders in range, and the packaging/gift/courier they burned. */
     cancelledOrders: number;
@@ -60,7 +73,9 @@ export type Report = {
   };
   series: { date: string; sales: number; profit: number }[];
   products: ProductPerf[]; // all products, sorted by qty desc
-  partnerShares: { name: string; percent: number; amount: number }[];
+  // `percent` is what the partner's record says; `effectivePercent` is what
+  // they're actually paid on once shares are normalized to their own total.
+  partnerShares: { name: string; percent: number; effectivePercent: number; amount: number }[];
   // Money actually collected (paymentStatus PAID only — UNPAID/PARTIAL isn't
   // "collected" yet), grouped by how the customer paid. Sorted by amount desc.
   collectedByMethod: PaymentMethodTotal[];
@@ -119,7 +134,7 @@ export async function buildReport(
     revenue += t.netRevenue;
     profit += t.netProfit;
 
-    const day = o.date.toISOString().slice(0, 10);
+    const day = dhakaDayKey(o.date);
     const s = seriesMap.get(day) ?? { sales: 0, profit: 0 };
     s.sales += t.netRevenue;
     s.profit += t.netProfit;
@@ -163,7 +178,7 @@ export async function buildReport(
     cancelledCost += cost;
     profit -= cost;
 
-    const day = o.date.toISOString().slice(0, 10);
+    const day = dhakaDayKey(o.date);
     const s = seriesMap.get(day) ?? { sales: 0, profit: 0 };
     s.profit -= cost;
     seriesMap.set(day, s);
@@ -199,26 +214,75 @@ export async function buildReport(
     .map(([method, v]) => ({ method, amount: round2(v.amount), orders: v.orders }))
     .sort((a, b) => b.amount - a.amount);
 
-  // Boosting (ad) spend inside the range — shown alongside order profit so the
-  // report reflects what marketing actually cost.
-  const adSpendAgg = await prisma.boostDailySpend.aggregate({
-    _sum: { amount: true },
-    where: { workspaceId, ...(range ? { date: { gte: range.from, lte: range.to } } : {}) },
-  });
+  // Everything it costs to run the shop over the same range, so the report can
+  // say what was left rather than what was taken. Ad spend was already here;
+  // the other two were not, and partner shares were calculated from a profit
+  // figure that had paid for neither.
+  const dateFilter = range ? { date: { gte: range.from, lte: range.to } } : {};
+  const [adSpendAgg, internalPurchases, miscAgg, writeOffs, partners] = await Promise.all([
+    prisma.boostDailySpend.aggregate({ _sum: { amount: true }, where: { workspaceId, ...dateFilter } }),
+    prisma.internalPurchase.findMany({
+      where: { workspaceId, ...dateFilter },
+      select: { cost: true, quantity: true },
+    }),
+    prisma.partnerTxn.aggregate({
+      _sum: { amount: true },
+      where: { workspaceId, type: "EXPENSE", ...dateFilter },
+    }),
+    // Damaged and lost stock: bought with real money, never sold, and until
+    // now never counted as a loss anywhere.
+    prisma.stockAdjustment.findMany({
+      where: { workspaceId, type: { in: ["DAMAGED", "LOST"] }, ...dateFilter },
+      select: {
+        delta: true,
+        productVariant: {
+          select: {
+            unitCost: true,
+            purchases: { orderBy: { date: "desc" }, take: 1, select: { unitCost: true } },
+          },
+        },
+      },
+    }),
+    prisma.partner.findMany({
+      where: { workspaceId },
+      include: { user: { select: { name: true, email: true } } },
+    }),
+  ]);
   const adSpend = round2(Number(adSpendAgg._sum.amount ?? 0));
+  const internalPurchaseSpend = round2(
+    internalPurchases.reduce((s, ip) => s + Number(ip.cost) * ip.quantity, 0),
+  );
+  const miscExpense = round2(Number(miscAgg._sum.amount ?? 0));
+  // Last purchase price, then the catalogue cost, then nothing — the same
+  // chain a sale's cost snapshot follows.
+  const stockLoss = round2(
+    writeOffs.reduce((s, a) => {
+      const v = a.productVariant;
+      const unit = v.purchases[0]
+        ? Number(v.purchases[0].unitCost)
+        : v.unitCost != null
+          ? Number(v.unitCost)
+          : 0;
+      return s + Math.abs(Math.min(0, a.delta)) * unit;
+    }, 0),
+  );
+  const operatingExpenses = round2(adSpend + internalPurchaseSpend + miscExpense + stockLoss);
+  const netProfit = round2(profit - operatingExpenses);
 
-  const partners = await prisma.partner.findMany({
-    where: { workspaceId },
-    include: { user: { select: { name: true, email: true } } },
-  });
-  const partnerShares = partners.map((p) => {
-    const percent = Number(p.profitSharePercent);
-    return {
+  // splitByShare, not a raw percentage — the same function a distribution pays
+  // out with, so this table and the payout can't give different answers.
+  const partnerShares = splitByShare(
+    partners.map((p) => ({
       name: p.user.name ?? p.user.email,
-      percent,
-      amount: round2((percent / 100) * profit),
-    };
-  });
+      percent: Number(p.profitSharePercent),
+    })),
+    netProfit,
+  ).map((c) => ({
+    name: c.name,
+    percent: c.percent,
+    effectivePercent: c.effectivePercent,
+    amount: c.amount,
+  }));
 
   return {
     kpis: {
@@ -227,6 +291,11 @@ export async function buildReport(
       orders: orders.length,
       avgOrder: orders.length ? round2(revenue / orders.length) : 0,
       adSpend,
+      internalPurchaseSpend,
+      miscExpense,
+      stockLoss,
+      operatingExpenses,
+      netProfit,
       profitAfterAds: round2(profit - adSpend),
       cancelledOrders: cancelled.length,
       cancelledCost: round2(cancelledCost),

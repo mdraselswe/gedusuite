@@ -67,3 +67,41 @@ export function dhakaInputToDate(value: string | null | undefined): Date | null 
   const parsed = new Date(`${y}-${mo}-${d}T${h}:${mi}:${s ?? "00"}${DHAKA_OFFSET}`);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
+
+// ── Reporting boundaries ────────────────────────────────────────────
+//
+// A day in this business runs midnight to midnight in Dhaka, not in UTC. The
+// difference is six hours, which is enough to put a late-evening order on the
+// wrong day, and an order placed just after midnight on the first of a month
+// into the month before. Every date a report groups by or filters on goes
+// through here.
+
+/** Start of that Dhaka calendar day, as a real instant. "2026-08-04" → 03 Aug 18:00Z. */
+export function dhakaDayStart(day: string): Date {
+  return new Date(`${day}T00:00:00${DHAKA_OFFSET}`);
+}
+
+/** End of that Dhaka calendar day, inclusive. */
+export function dhakaDayEnd(day: string): Date {
+  return new Date(`${day}T23:59:59.999${DHAKA_OFFSET}`);
+}
+
+/** Which Dhaka day an instant falls on — the key a report groups by. */
+export function dhakaDayKey(d: Date): string {
+  return dateFmt.format(d);
+}
+
+/** Today's date in Dhaka, as "YYYY-MM-DD". */
+export function dhakaToday(): string {
+  return dateFmt.format(new Date());
+}
+
+/** `days` before today in Dhaka, as "YYYY-MM-DD". Used for default ranges. */
+export function dhakaDaysAgo(days: number): string {
+  return dateFmt.format(new Date(Date.now() - days * 86_400_000));
+}
+
+/** First day of the current Dhaka month, as "YYYY-MM-DD". */
+export function dhakaMonthStart(): string {
+  return `${dhakaToday().slice(0, 7)}-01`;
+}

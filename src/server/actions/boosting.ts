@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAccess } from "@/lib/authz";
-import { treasuryBalance } from "@/lib/finance";
+import { InsufficientTreasury, assertTreasuryCovers } from "@/lib/finance";
+import { ConcurrentWrite, runSerializable } from "@/lib/tx";
 import { isOrderSource } from "@/lib/order-source";
 
 export type ActionResult =
@@ -329,23 +330,17 @@ export async function addDailySpend(
     paidByPartnerId = partner.id;
   }
   const paidFromTreasury = d.fundingSource === "TREASURY";
-  if (paidFromTreasury) {
-    const balance = await treasuryBalance(workspaceId);
-    if (balance < d.amount) {
-      return {
-        ok: false,
-        error: `Treasury balance is insufficient — available ${balance.toFixed(2)}, need ${d.amount.toFixed(2)}`,
-      };
-    }
-  }
 
   // Normalize to date-only so per-day grouping works regardless of what
   // time-of-day the input parsed to. No same-day uniqueness: Facebook charges
   // a card as many times per day as it hits billing thresholds.
   const day = new Date(d.date.toISOString().slice(0, 10));
 
-  await prisma.$transaction(async (tx) => {
-    const spend = await tx.boostDailySpend.create({
+  try {
+    await runSerializable(async (tx) => {
+      // Inside the transaction: the balance is read and spent as one step.
+      if (paidFromTreasury) await assertTreasuryCovers(tx, workspaceId, d.amount);
+      const spend = await tx.boostDailySpend.create({
       data: {
         workspaceId,
         adSetId,
@@ -384,7 +379,13 @@ export async function addDailySpend(
         },
       });
     }
-  });
+    });
+  } catch (e) {
+    if (e instanceof InsufficientTreasury || e instanceof ConcurrentWrite) {
+      return { ok: false, error: e.message };
+    }
+    throw e;
+  }
 
   revalidateBoosting(slug, adSet.campaignId);
   revalidateFunding(slug);

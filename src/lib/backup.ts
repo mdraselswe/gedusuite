@@ -10,13 +10,20 @@ export async function computeBackupSummary(
   workspaceId: string,
   workspaceName: string,
 ): Promise<BackupSummary> {
-  const [orders, purchases, balance] = await Promise.all([
+  const [orders, purchases, balance, partners] = await Promise.all([
     prisma.order.findMany({
       where: { workspaceId, status: { not: "CANCELLED" } },
       include: { items: { include: { returns: true } } },
     }),
     prisma.purchase.findMany({ where: { workspaceId }, select: { unitCost: true, quantity: true } }),
     treasuryBalance(workspaceId),
+    // Names for the sheets. They come from User, which the snapshot leaves out
+    // on purpose, so they travel with the summary instead — the workbook would
+    // otherwise print a cuid wherever a partner belongs.
+    prisma.partner.findMany({
+      where: { workspaceId },
+      select: { id: true, user: { select: { name: true, email: true } } },
+    }),
   ]);
   const totalSales = orders.reduce((s, o) => s + computeOrderTotals(o).netRevenue, 0);
   const totalPurchases = purchases.reduce((s, p) => s + Number(p.unitCost) * p.quantity, 0);
@@ -27,6 +34,9 @@ export async function computeBackupSummary(
     totalPurchases: round2(totalPurchases),
     treasuryBalance: balance,
     lastSync: new Date().toISOString().slice(0, 16).replace("T", " "),
+    partnerNames: Object.fromEntries(
+      partners.map((p) => [p.id, p.user.name ?? p.user.email]),
+    ),
   };
 }
 

@@ -4,11 +4,11 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAccess } from "@/lib/authz";
-import { treasuryBalance } from "@/lib/finance";
+import { InsufficientTreasury, assertTreasuryCovers } from "@/lib/finance";
+import { ConcurrentWrite, runSerializable } from "@/lib/tx";
+import { splitByShare } from "@/lib/profit-share";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
-
-const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
 
 const DistributionSchema = z.object({
   amount: z.coerce.number().positive("Amount must be > 0"),
@@ -49,34 +49,20 @@ export async function createDistribution(
     return { ok: false, error: "No partners have a profit share set" };
   }
 
-  const balance = await treasuryBalance(workspaceId);
-  if (balance < d.amount) {
-    return {
-      ok: false,
-      error: `Treasury balance is insufficient — available ${balance.toFixed(2)}, need ${d.amount.toFixed(2)}`,
-    };
-  }
+  // Normalization and the rounding remainder both live in splitByShare now —
+  // the screens that tell a partner what their share is call the same function,
+  // so what they read and what they're paid can't drift apart.
+  const cuts = splitByShare(
+    partners.map((p) => ({ partnerId: p.id, percent: Number(p.profitSharePercent) })),
+    d.amount,
+  );
 
-  const totalPercent = partners.reduce((s, p) => s + Number(p.profitSharePercent), 0);
-
-  // Normalize each partner's cut against the total percent actually in use
-  // (not against 100), then fix up rounding so the cuts sum to exactly the
-  // requested amount — the remainder (a few cents either way) goes to
-  // whoever has the largest share, an arbitrary but consistent rule.
-  const cuts = partners.map((p) => ({
-    partnerId: p.id,
-    percent: Number(p.profitSharePercent),
-    amount: round2((Number(p.profitSharePercent) / totalPercent) * d.amount),
-  }));
-  const sumCuts = round2(cuts.reduce((s, c) => s + c.amount, 0));
-  const remainder = round2(d.amount - sumCuts);
-  if (remainder !== 0) {
-    const largest = cuts.reduce((max, c) => (c.percent > max.percent ? c : max), cuts[0]);
-    largest.amount = round2(largest.amount + remainder);
-  }
-
-  await prisma.$transaction(async (tx) => {
-    const distribution = await tx.profitDistribution.create({
+  try {
+    await runSerializable(async (tx) => {
+      // Checked here rather than before the transaction: two distributions
+      // approved at the same moment would otherwise both pass and overdraw.
+      await assertTreasuryCovers(tx, workspaceId, d.amount);
+      const distribution = await tx.profitDistribution.create({
       data: {
         workspaceId,
         totalAmount: d.amount,
@@ -109,7 +95,13 @@ export async function createDistribution(
         },
       });
     }
-  });
+    });
+  } catch (e) {
+    if (e instanceof InsufficientTreasury || e instanceof ConcurrentWrite) {
+      return { ok: false, error: e.message };
+    }
+    throw e;
+  }
 
   revalidatePath(`/${slug}/treasury`);
   revalidatePath(`/${slug}/partners`);

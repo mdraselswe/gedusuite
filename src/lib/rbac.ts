@@ -96,6 +96,15 @@ export function accessFor(role: Role, module: Module): Access {
  * Effective access: role matrix, then per-membership JSON overrides applied on
  * top. `permissions` is the Membership.permissions JSON blob, shaped as
  * { [module]: Access }.
+ *
+ * Overrides can only NARROW what the role already allows, never widen it. They
+ * used to do both, which made the column a privilege-escalation route: anything
+ * that could write a membership row could hand itself treasury access without
+ * changing anyone's role. Nothing in the app writes this column today, so the
+ * restriction costs nothing and closes the hole before something does.
+ *
+ * Widening is a role change, and role changes go through the team settings page
+ * where they are visible.
  */
 export function effectiveAccess(
   role: Role,
@@ -106,7 +115,10 @@ export function effectiveAccess(
   if (permissions && typeof permissions === "object") {
     const override = (permissions as Record<string, unknown>)[module];
     if (typeof override === "string" && ORDER.includes(override as Access)) {
-      return override as Access;
+      // Whichever is lower — an override may take access away, not grant it.
+      return ORDER.indexOf(override as Access) < ORDER.indexOf(base)
+        ? (override as Access)
+        : base;
     }
   }
   return base;

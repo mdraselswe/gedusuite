@@ -161,6 +161,61 @@ const METHODS = ["CASH", "BKASH", "NAGAD", "COURIER_COLLECTION", "OTHER"];
 const PAY_STATUS = ["UNPAID", "PAID", "PARTIAL"];
 const NONE = "__none__";
 
+/**
+ * Packaging cost on an order, with a nudge when it isn't zero.
+ *
+ * Packaging is bought in bulk and recorded once under Internal purchases, where
+ * the whole amount comes off profit in the period it was paid for. Filling this
+ * in as well charges the same money a second time — which is how 123 taka came
+ * off twice across twenty orders before anyone noticed.
+ *
+ * The field stays rather than being removed: an order whose packaging really was
+ * bought separately still needs somewhere to say so. It just says what it costs
+ * you to use it.
+ */
+function PackagingCostField({
+  id,
+  value,
+  onChange,
+  hint,
+  required,
+}: {
+  id: string;
+  value: string;
+  onChange: (v: string) => void;
+  hint?: string;
+  required?: boolean;
+}) {
+  const amount = parseFloat(value);
+  const warn = Number.isFinite(amount) && amount > 0;
+  return (
+    <div className="space-y-2">
+      <Label htmlFor={id}>Packaging cost</Label>
+      <Input
+        id={id}
+        name="packagingCost"
+        type="number"
+        step="0.01"
+        min="0"
+        inputMode="decimal"
+        required={required}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={warn ? "border-amber-500/60" : undefined}
+      />
+      {warn ? (
+        <p className="text-xs text-amber-700 dark:text-amber-400">
+          Counted twice? Packaging bought in bulk is normally logged once under
+          Internal purchases, and that whole amount already comes off profit. Leave
+          this at 0 unless this parcel&apos;s packaging was bought separately.
+        </p>
+      ) : (
+        hint && <p className="text-xs text-muted-foreground">{hint}</p>
+      )}
+    </div>
+  );
+}
+
 function emptyItem(): ItemDraft {
   return { variant: null, unitPrice: "", quantity: "1", discount: "0", unit: "PIECE" };
 }
@@ -318,6 +373,9 @@ export function OrderManager({
   const [loading, setLoading] = useState(false);
   // The order awaiting a "what did this cancellation cost?" answer.
   const [cancelling, setCancelling] = useState<OrderRow | null>(null);
+  // Both dialogs used defaultValue before. The warning has to react as you
+  // type, so the value is state now — seeded whenever the dialog opens.
+  const [cancelPackaging, setCancelPackaging] = useState("0");
   const [cancelSaving, setCancelSaving] = useState(false);
   const [items, setItems] = useState<ItemDraft[]>([emptyItem()]);
   const [gifts, setGifts] = useState<GiftDraft[]>([]);
@@ -345,6 +403,7 @@ export function OrderManager({
   // ── Edit details dialog state ──
   const [editOpen, setEditOpen] = useState(false);
   const [editOrder, setEditOrder] = useState<OrderRow | null>(null);
+  const [editPackaging, setEditPackaging] = useState("0");
   const [editHeldById, setEditHeldById] = useState<string>(NONE);
   const [editCourierId, setEditCourierId] = useState<string>(NONE);
   const [editCourierZoneId, setEditCourierZoneId] = useState<string>(NONE);
@@ -703,6 +762,10 @@ export function OrderManager({
     } else {
       toast.success("Order created");
     }
+    // Not an error — the order is saved either way — but a sale with no cost
+    // behind it reports as pure profit, and the moment to say so is now, while
+    // whoever entered it is still looking.
+    if (res.warning) toast.warning(res.warning, { duration: 10000 });
     setOpen(false);
     resetForm();
     router.refresh();
@@ -715,6 +778,7 @@ export function OrderManager({
     if (newStatus === "CANCELLED") {
       const order = orders.find((o) => o.id === orderId);
       if (order && order.status !== "CANCELLED") {
+        setCancelPackaging(String(order.packagingCost));
         setCancelling(order);
         return;
       }
@@ -784,6 +848,7 @@ export function OrderManager({
   }
 
   function openEdit(o: OrderRow) {
+    setEditPackaging(String(o.packagingCost));
     setEditOrder(o);
     setEditCustomer(o.customerId ? { value: o.customerId, label: o.customerName } : null);
     setEditDeliveryType(o.deliveryType);
@@ -1816,19 +1881,11 @@ export function OrderManager({
                           </SelectContent>
                         </Select>
                       </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="o-pack">Packaging cost</Label>
-                        <Input
-                          id="o-pack"
-                          name="packagingCost"
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          inputMode="decimal"
-                          value={packagingCost}
-                          onChange={(e) => setPackagingCost(e.target.value)}
-                        />
-                      </div>
+                      <PackagingCostField
+                        id="o-pack"
+                        value={packagingCost}
+                        onChange={setPackagingCost}
+                      />
                       <div className="space-y-2">
                         <Label htmlFor="o-disc">Order discount</Label>
                         <Input
@@ -1964,18 +2021,12 @@ export function OrderManager({
                     What the courier charged to bring it back.
                   </p>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="cx-packaging">Packaging cost</Label>
-                  <Input
-                    id="cx-packaging"
-                    name="packagingCost"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    defaultValue={cancelling.packagingCost}
-                  />
-                  <p className="text-xs text-muted-foreground">0 if never packed.</p>
-                </div>
+                <PackagingCostField
+                  id="cx-packaging"
+                  value={cancelPackaging}
+                  onChange={setCancelPackaging}
+                  hint="0 if never packed."
+                />
                 <div className="space-y-2">
                   <Label htmlFor="cx-gift">Gift cost</Label>
                   <Input
@@ -2326,18 +2377,12 @@ export function OrderManager({
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <Label htmlFor="eo-packaging">Packaging cost</Label>
-                  <Input
-                    id="eo-packaging"
-                    name="packagingCost"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    required
-                    defaultValue={editOrder.packagingCost}
-                  />
-                </div>
+                <PackagingCostField
+                  id="eo-packaging"
+                  value={editPackaging}
+                  onChange={setEditPackaging}
+                  required
+                />
                 <div className="space-y-2">
                   <Label htmlFor="eo-gift">Gift cost</Label>
                   <Input
@@ -2348,7 +2393,17 @@ export function OrderManager({
                     min="0"
                     required
                     defaultValue={editOrder.giftCost}
+                    // An order with gift lines gets its total from them on save,
+                    // whatever is typed here — so it isn't editable, rather than
+                    // accepting a number it will then ignore.
+                    readOnly={editOrder.gifts.length > 0}
+                    className={editOrder.gifts.length > 0 ? "text-muted-foreground" : undefined}
                   />
+                  {editOrder.gifts.length > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      Added up from this order&apos;s {editOrder.gifts.length} gift line(s).
+                    </p>
+                  )}
                 </div>
               </div>
               <div className="space-y-2">

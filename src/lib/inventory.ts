@@ -1,5 +1,20 @@
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { variantSuffix } from "@/lib/variants";
+
+/** Enough of a Prisma client to derive stock — the real one or a transaction. */
+type StockClient = Pick<
+  Prisma.TransactionClient,
+  "purchase" | "orderItem" | "orderGift" | "return" | "stockAdjustment"
+>;
+
+/** Raised inside a transaction when a variant can't cover what's being sold. */
+export class OutOfStock extends Error {
+  constructor(label: string) {
+    super(`Not enough stock — ${label} sold out while this order was being saved`);
+    this.name = "OutOfStock";
+  }
+}
 
 export const EXPIRY_WINDOW_DAYS = 30;
 
@@ -24,15 +39,20 @@ export async function variantStockMap(
   // product search so we don't aggregate every variant in the workspace just
   // to show one page of results.
   variantIds?: string[],
+  // Pass a transaction when the answer is about to be acted on. Stock is
+  // derived rather than stored, so nothing at the database level stops two
+  // orders claiming the same last piece; reading it inside the transaction
+  // that writes the order is what closes that gap.
+  client: StockClient = prisma,
 ): Promise<Map<string, number>> {
   const idFilter = variantIds ? { productVariantId: { in: variantIds } } : {};
   const [purchased, sold, gifted, returns, adjustments] = await Promise.all([
-    prisma.purchase.groupBy({
+    client.purchase.groupBy({
       by: ["productVariantId"],
       where: { workspaceId, ...idFilter },
       _sum: { quantity: true },
     }),
-    prisma.orderItem.groupBy({
+    client.orderItem.groupBy({
       by: ["productVariantId"],
       where: {
         order: { workspaceId, status: { in: [...STOCK_CONSUMING_STATUSES] } },
@@ -41,7 +61,7 @@ export async function variantStockMap(
       _sum: { quantity: true },
     }),
     // Product-linked gifts leave with the order just like sold items.
-    prisma.orderGift.groupBy({
+    client.orderGift.groupBy({
       by: ["productVariantId"],
       where: {
         order: { workspaceId, status: { in: [...STOCK_CONSUMING_STATUSES] } },
@@ -49,7 +69,7 @@ export async function variantStockMap(
       },
       _sum: { quantity: true },
     }),
-    prisma.return.findMany({
+    client.return.findMany({
       // Only count returns whose order actually consumed stock. If the order was
       // cancelled, its stock is already restored via the sold total, so counting
       // the return too would add phantom stock.
@@ -62,7 +82,7 @@ export async function variantStockMap(
       },
       select: { quantity: true, orderItem: { select: { productVariantId: true } } },
     }),
-    prisma.stockAdjustment.groupBy({
+    client.stockAdjustment.groupBy({
       by: ["productVariantId"],
       where: { workspaceId, ...idFilter },
       _sum: { delta: true },

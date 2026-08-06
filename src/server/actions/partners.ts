@@ -87,12 +87,64 @@ export async function updatePartner(
   return { ok: true };
 }
 
+/**
+ * Remove a partner who has no financial history.
+ *
+ * PartnerTxn cascades from Partner, and TreasuryEntry cascades from PartnerTxn,
+ * so this one delete used to run the whole chain: every investment, withdrawal
+ * and expense the partner ever recorded, plus the treasury IN entry behind each
+ * deposit they made. Money physically sitting in the treasury would drop off
+ * the ledger, and a profit distribution would keep its total while losing the
+ * cuts that made it up.
+ *
+ * Every other delete in the finance modules already refuses to break a derived
+ * row — deleteTreasuryEntry checks six links, deletePartnerTxn checks four.
+ * This one checked nothing, and had the largest blast radius of them all.
+ */
 export async function deletePartner(slug: string, id: string): Promise<ActionResult> {
   const gate = await requireAccess(slug, "partners", "full");
   if (!gate.ok) return gate;
-  await prisma.partner.deleteMany({
-    where: { id, workspaceId: gate.access.workspaceId },
+  const workspaceId = gate.access.workspaceId;
+
+  const partner = await prisma.partner.findFirst({
+    where: { id, workspaceId },
+    select: {
+      id: true,
+      _count: { select: { txns: true, purchases: true, internalPurchases: true, boostSpends: true } },
+    },
   });
+  if (!partner) return { ok: false, error: "Partner not found" };
+
+  const c = partner._count;
+  if (c.txns > 0) {
+    // Named separately because a deposit is the one that moves the treasury
+    // balance, and that's the damage worth spelling out.
+    const deposits = await prisma.partnerTxn.count({
+      where: { workspaceId, partnerId: id, type: "DEPOSIT_TO_TREASURY" },
+    });
+    return {
+      ok: false,
+      error:
+        `This partner has ${c.txns} ledger entries and can't be removed — deleting them would ` +
+        (deposits > 0
+          ? `take ${deposits} treasury deposit(s) out of the treasury balance, for money that is still there. `
+          : `erase the record of what they put in and took out. `) +
+        `Set their profit share to 0 instead if they're no longer active.`,
+    };
+  }
+  // Funding links are SetNull, so these rows survive — but they'd be left
+  // saying nobody paid for them, which is its own kind of wrong.
+  const funded = c.purchases + c.internalPurchases + c.boostSpends;
+  if (funded > 0) {
+    return {
+      ok: false,
+      error:
+        `This partner funded ${funded} purchase(s)/spend(s). Removing them would leave those ` +
+        `records with no one recorded as having paid. Set their profit share to 0 instead.`,
+    };
+  }
+
+  await prisma.partner.deleteMany({ where: { id, workspaceId } });
   revalidatePath(`/${slug}/partners`);
   return { ok: true };
 }

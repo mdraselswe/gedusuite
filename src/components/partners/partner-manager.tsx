@@ -34,6 +34,8 @@ type PartnerRow = {
   id: string;
   name: string;
   profitSharePercent: number;
+  /** The percent actually paid on, once shares are normalized to their own total. */
+  effectiveSharePercent: number;
   invested: number;
   withdrawn: number;
   expenses: number;
@@ -59,6 +61,12 @@ export function PartnerManager({
   const [editing, setEditing] = useState<PartnerRow | null>(null);
   const [userId, setUserId] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // Whether the normalized percent differs from the typed one at all — if the
+  // shares already total 100 the extra column would just repeat the first.
+  const showEffective = partners.some(
+    (p) => p.effectiveSharePercent.toFixed(2) !== p.profitSharePercent.toFixed(2),
+  );
 
   async function onAdd(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -90,7 +98,7 @@ export function PartnerManager({
   async function onDelete(p: PartnerRow) {
     const ok = await confirmDialog({
       title: "Remove partner?",
-      description: `"${p.name}" and all their transactions will be deleted.`,
+      description: `"${p.name}" will be removed. Only possible while they have no ledger entries and haven't funded anything — otherwise set their profit share to 0 instead.`,
       confirmText: "Remove",
       destructive: true,
     });
@@ -131,6 +139,22 @@ export function PartnerManager({
               sortValue: (p) => p.profitSharePercent,
               cell: (p) => p.profitSharePercent.toFixed(2),
             },
+            // Only worth a column when the shares don't add up to 100 — when
+            // they do it repeats the one beside it. Shown rather than silently
+            // applied, because this is the percent the money follows.
+            ...(showEffective
+              ? [
+                  {
+                    key: "effectiveShare",
+                    header: "Effective %",
+                    align: "right" as const,
+                    sortValue: (p: PartnerRow) => p.effectiveSharePercent,
+                    cell: (p: PartnerRow) => (
+                      <span className="tabular-nums">{p.effectiveSharePercent.toFixed(2)}</span>
+                    ),
+                  },
+                ]
+              : []),
             {
               key: "capital",
               header: "Net capital",

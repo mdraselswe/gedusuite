@@ -3,6 +3,7 @@ import { cancelledOrderCost, computeOrderTotals } from "@/lib/orders";
 import { variantStockMap } from "@/lib/inventory";
 import { variantChip } from "@/lib/variants";
 import type { DateRange } from "@/lib/reports";
+import { dhakaDayKey } from "@/lib/dhaka-time";
 
 const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
 
@@ -395,7 +396,7 @@ export async function buildProductReport(
     revenue += oRevenue;
     cogs += oCogs;
 
-    const day = o.date.toISOString().slice(0, 10);
+    const day = dhakaDayKey(o.date);
     const s = seriesMap.get(day) ?? { units: 0, revenue: 0, profit: 0 };
     s.units += oUnits;
     s.revenue += oRevenue;

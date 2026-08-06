@@ -5,6 +5,7 @@ import { can } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
 import { partnerBalances, totalBusinessProfit, businessCapitalSummary } from "@/lib/finance";
 import { unlinkedPartnerFundingCount } from "@/lib/partner-credit";
+import { splitByShare, sharesAreNormalized } from "@/lib/profit-share";
 import { serverT } from "@/lib/session";
 import { PartnerManager } from "@/components/partners/partner-manager";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -44,13 +45,25 @@ export default async function PartnersPage({
 
   // Full transparency model (owner's decision): every partner sees every
   // partner's record. Managing (add/edit/delete) is still gated by canManage.
+  //
+  // Shares come from splitByShare — the same function a distribution pays out
+  // with — against profit AFTER the ads and internal purchases are covered.
+  // Both of those used to be missing here, so this table promised each partner
+  // a cut of money the business had already spent.
+  const cuts = splitByShare(
+    partners.map((p) => ({ id: p.id, percent: Number(p.profitSharePercent) })),
+    profit.netProfit,
+  );
+  const cutById = new Map(cuts.map((c) => [c.id, c]));
+
   const rows = partners.map((p) => {
     const b = balances.get(p.id);
-    const share = Number(p.profitSharePercent);
+    const cut = cutById.get(p.id);
     return {
       id: p.id,
       name: p.user.name ?? p.user.email,
-      profitSharePercent: share,
+      profitSharePercent: Number(p.profitSharePercent),
+      effectiveSharePercent: cut?.effectivePercent ?? 0,
       invested: b?.invested ?? 0,
       withdrawn: b?.withdrawn ?? 0,
       customerProductSpend: b?.customerProductSpend ?? 0,
@@ -61,9 +74,10 @@ export default async function PartnersPage({
       depositedToTreasury: b?.depositedToTreasury ?? 0,
       netCapital: b?.netCapital ?? 0,
       remaining: b?.remaining ?? 0,
-      profitShareAmount: Math.round((share / 100) * profit * 100) / 100,
+      profitShareAmount: cut?.amount ?? 0,
     };
   });
+  const sharesNormalized = sharesAreNormalized(rows.map((r) => ({ percent: r.profitSharePercent })));
 
   // Members who aren't partners yet (for the add form).
   const partnerUserIds = new Set(partners.map((p) => p.userId));
@@ -80,10 +94,62 @@ export default async function PartnersPage({
         title={(await serverT())("partners")}
         action={
           <span className="text-sm text-muted-foreground">
-            Total business profit: <span className="font-semibold">{profit.toFixed(2)}</span>
+            Distributable profit:{" "}
+            <span className="font-semibold text-foreground">{profit.netProfit.toFixed(2)}</span>
           </span>
         }
       />
+
+      {/* The derivation, not just the answer: a partner asking why their share
+          moved should be able to read the reason off this card rather than
+          take the total on trust. */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">How distributable profit is worked out</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-1 text-sm">
+          {(
+            [
+              ["Order profit (returns and cancellations applied)", profit.tradingProfit, false],
+              ["Ad spend", -profit.adSpend, true],
+              ["Internal purchases", -profit.internalPurchaseSpend, true],
+              ["Other partner expenses", -profit.miscExpense, true],
+              ["Damaged / lost stock", -profit.stockLoss, true],
+            ] as [string, number, boolean][]
+          )
+            .filter(([, value], i) => i === 0 || value !== 0)
+            .map(([label, value, muted]) => (
+              <div key={label} className="flex justify-between gap-3 border-b py-1.5">
+                <span>{label}</span>
+                <span className={`tabular-nums ${muted ? "text-muted-foreground" : ""}`}>
+                  {value < 0 ? "−" : ""}
+                  {Math.abs(value).toFixed(2)}
+                </span>
+              </div>
+            ))}
+          <div className="flex justify-between gap-3 pt-1.5 font-semibold">
+            <span>Distributable profit</span>
+            <span
+              className={`tabular-nums ${profit.netProfit < 0 ? "text-destructive" : "text-emerald-600 dark:text-emerald-400"}`}
+            >
+              {profit.netProfit.toFixed(2)}
+            </span>
+          </div>
+          <p className="pt-2 text-xs text-muted-foreground">
+            Every expense comes off in the period it was paid in — a year of hosting
+            in full, not spread over the months it covers. Stock bought to resell is
+            the one exception: that reaches profit as cost of goods sold when it
+            sells, not when it&apos;s bought.
+          </p>
+          {!sharesNormalized && (
+            <p className="pt-2 text-xs text-muted-foreground">
+              The profit shares don&apos;t add up to 100%, so each partner is paid their
+              percent of the total in use rather than of 100 — the &quot;Effective %&quot;
+              column. A distribution splits the money exactly the same way.
+            </p>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Purchases made before the credit was derived from the purchase — until
           they're resolved, these partners' "invested" totals may be missing

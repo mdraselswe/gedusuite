@@ -5,7 +5,8 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAccess } from "@/lib/authz";
 import { refreshInventoryAlerts } from "@/lib/inventory";
-import { treasuryBalance } from "@/lib/finance";
+import { InsufficientTreasury, assertTreasuryCovers } from "@/lib/finance";
+import { ConcurrentWrite, runSerializable } from "@/lib/tx";
 import { removePartnerCredit, syncPartnerCredit } from "@/lib/partner-credit";
 import { variantFullName } from "@/lib/variants";
 
@@ -95,19 +96,14 @@ export async function createPurchase(
   const paidFromTreasury = d.fundingSource === "TREASURY";
 
   const cost = round2(d.unitCost * d.quantity);
-  if (paidFromTreasury) {
-    const balance = await treasuryBalance(workspaceId);
-    if (balance < cost) {
-      return {
-        ok: false,
-        error: `Treasury balance is insufficient — available ${balance.toFixed(2)}, need ${cost.toFixed(2)}`,
-      };
-    }
-  }
-
   const label = variantFullName(variant.product.name, variant.attributes);
 
-  await prisma.$transaction(async (tx) => {
+  try {
+    await runSerializable(async (tx) => {
+      // Serializable, so the balance can't be read and spent twice by two
+      // people saving at the same moment — see runSerializable for why the
+      // check being inside the transaction isn't enough on its own.
+      if (paidFromTreasury) await assertTreasuryCovers(tx, workspaceId, cost);
     const purchase = await tx.purchase.create({
       data: {
         workspaceId,
@@ -144,7 +140,13 @@ export async function createPurchase(
         date: d.date,
       });
     }
-  });
+    });
+  } catch (e) {
+    if (e instanceof InsufficientTreasury || e instanceof ConcurrentWrite) {
+      return { ok: false, error: e.message };
+    }
+    throw e;
+  }
 
   // Stock changed → recompute low-stock / expiry alerts.
   await refreshInventoryAlerts(workspaceId);
@@ -213,21 +215,21 @@ export async function updatePurchase(
   // either way, check the balance can cover it. When it was already
   // treasury-funded, add back the old entry's amount first: that money is
   // being replaced, not spent a second time.
-  if (paidFromTreasury) {
-    const balance = await treasuryBalance(workspaceId);
-    const available = wasTreasuryFunded ? balance + oldEntryAmount : balance;
-    if (available < newCost) {
-      return {
-        ok: false,
-        error: `Treasury balance is insufficient — available ${available.toFixed(2)}, need ${newCost.toFixed(2)}`,
-      };
-    }
-  }
-
   const label = variantFullName(variant.product.name, variant.attributes);
 
-  await prisma.$transaction(async (tx) => {
-    await tx.purchase.update({
+  try {
+    await runSerializable(async (tx) => {
+      // The old entry's amount is credited back: it's being replaced, not spent
+      // a second time.
+      if (paidFromTreasury) {
+        await assertTreasuryCovers(
+          tx,
+          workspaceId,
+          newCost,
+          wasTreasuryFunded ? oldEntryAmount : 0,
+        );
+      }
+      await tx.purchase.update({
       where: { id },
       data: {
         productVariantId: d.productVariantId,
@@ -275,7 +277,13 @@ export async function updatePurchase(
       purpose: `Product purchase: ${label}`,
       date: d.date,
     });
-  });
+    });
+  } catch (e) {
+    if (e instanceof InsufficientTreasury || e instanceof ConcurrentWrite) {
+      return { ok: false, error: e.message };
+    }
+    throw e;
+  }
 
   // Cost/quantity/variant may have changed → stock and alerts must recompute.
   await refreshInventoryAlerts(workspaceId);

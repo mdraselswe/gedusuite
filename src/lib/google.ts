@@ -87,7 +87,8 @@ const TAB_SPECS: TabSpec[] = [
     tab: "Partners",
     table: "partners",
     columns: [
-      { key: "userId", label: "User" },
+      { key: "partnerName", label: "Partner" }, // enriched
+
       { key: "profitSharePercent", label: "Profit share %" },
       { key: "notes", label: "Notes" },
     ],
@@ -156,6 +157,48 @@ const TAB_SPECS: TabSpec[] = [
       { key: "note", label: "Note" },
     ],
   },
+  // The three below were missing, which left the workbook unable to explain
+  // its own bottom line: stock written off is a real loss against profit, the
+  // partner ledger is where every taka in and out of a partner is recorded,
+  // and a refund is money that left. Reading the sheets without them gave a
+  // rosier picture than the app's own reports.
+  {
+    tab: "Stock Adjustments",
+    table: "stockAdjustments",
+    columns: [
+      { key: "date", label: "Date", date: true },
+      { key: "productName", label: "Product" }, // enriched
+      { key: "type", label: "Type" },
+      { key: "delta", label: "Change" },
+      { key: "lossValue", label: "Value lost", currency: true }, // enriched
+      { key: "reason", label: "Reason" },
+    ],
+  },
+  {
+    tab: "Partner Ledger",
+    table: "partnerTxns",
+    columns: [
+      { key: "date", label: "Date", date: true },
+      { key: "partnerName", label: "Partner" }, // enriched
+      { key: "type", label: "Type" },
+      { key: "amount", label: "Amount", currency: true },
+      { key: "purpose", label: "Purpose" },
+      { key: "derivedFrom", label: "Generated from" }, // enriched
+    ],
+  },
+  {
+    tab: "Returns",
+    table: "returns",
+    columns: [
+      { key: "date", label: "Date", date: true },
+      { key: "orderRef", label: "Order" }, // enriched
+      { key: "customerName", label: "Customer" }, // enriched
+      { key: "productName", label: "Product" }, // enriched
+      { key: "quantity", label: "Quantity" },
+      { key: "refundAmount", label: "Refunded", currency: true },
+      { key: "reason", label: "Reason" },
+    ],
+  },
 ];
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -175,14 +218,33 @@ function cellValue(row: Record<string, unknown>, col: Col): string | number {
   return typeof raw === "number" ? raw : String(raw);
 }
 
+/** How an order is referred to on an invoice — the last 8 of its id. */
+function orderRef(id: string): string {
+  return `#${id.slice(-8).toUpperCase()}`;
+}
+
+/** Which source row generated a ledger entry, in words. */
+function derivedFromLabel(txn: Record<string, unknown>): string {
+  if (txn.distributionId) return "Profit distribution";
+  if (txn.boostSpendId) return "Boost spend";
+  if (txn.purchaseId) return "Product purchase";
+  if (txn.internalPurchaseId) return "Internal purchase";
+  return "";
+}
+
 /**
  * The snapshot stores raw rows with foreign keys only — unreadable in a
  * spreadsheet ("which product was this purchase?"). Derive human columns from
- * data already inside the snapshot: productName on purchases (via variants +
- * products) and customerName on orders. Pure/read-only; the snapshot itself
- * is never mutated.
+ * data already inside the snapshot. Pure/read-only; the snapshot itself is
+ * never mutated, so nothing here can affect what a restore writes back.
+ *
+ * Partner names are the one thing not derivable from the snapshot — they live
+ * on User, which is deliberately excluded — so they come in from the summary.
  */
-function enrichSnapshotTables(snapshot: Snapshot): Snapshot["tables"] {
+function enrichSnapshotTables(
+  snapshot: Snapshot,
+  partnerNames: Record<string, string> = {},
+): Snapshot["tables"] {
   const t = snapshot.tables;
   const rows = (name: string) => (t[name] ?? []) as Record<string, unknown>[];
 
@@ -193,9 +255,26 @@ function enrichSnapshotTables(snapshot: Snapshot): Snapshot["tables"] {
       variantFullName(productNameById.get(v.productId as string) ?? "?", v.attributes),
     ]),
   );
+  const variantCostById = new Map(
+    rows("productVariants").map((v) => [v.id as string, Number(v.unitCost ?? 0)]),
+  );
   const customerNameById = new Map(
     rows("customers").map((c) => [c.id as string, c.name as string]),
   );
+  const orderById = new Map(rows("orders").map((o) => [o.id as string, o]));
+  const orderItemById = new Map(rows("orderItems").map((i) => [i.id as string, i]));
+
+  // Last purchase price per variant — the same cost a sale would snapshot, and
+  // what a written-off piece is therefore worth. Rows are scanned newest-first
+  // so the first hit wins.
+  const lastPurchaseCost = new Map<string, number>();
+  for (const p of [...rows("purchases")].sort(
+    (a, b) => String(b.date).localeCompare(String(a.date)),
+  )) {
+    const vid = p.productVariantId as string;
+    if (!lastPurchaseCost.has(vid)) lastPurchaseCost.set(vid, Number(p.unitCost ?? 0));
+  }
+  const unitCostOf = (vid: string) => lastPurchaseCost.get(vid) ?? variantCostById.get(vid) ?? 0;
 
   return {
     ...t,
@@ -207,6 +286,44 @@ function enrichSnapshotTables(snapshot: Snapshot): Snapshot["tables"] {
       ...o,
       customerName: o.customerId ? (customerNameById.get(o.customerId as string) ?? "") : "Walk-in",
     })),
+    partners: rows("partners").map((p) => ({
+      ...p,
+      partnerName: partnerNames[p.id as string] ?? (p.userId as string),
+    })),
+    partnerTxns: rows("partnerTxns").map((x) => ({
+      ...x,
+      partnerName: partnerNames[x.partnerId as string] ?? (x.partnerId as string),
+      derivedFrom: derivedFromLabel(x),
+    })),
+    stockAdjustments: rows("stockAdjustments").map((a) => {
+      const vid = a.productVariantId as string;
+      const delta = Number(a.delta ?? 0);
+      return {
+        ...a,
+        productName: variantLabelById.get(vid) ?? "",
+        // Only what LEFT is a loss. A gift or a positive correction costs
+        // nothing here, so the cell is empty — null rather than "", because a
+        // currency column turns an empty string into a very convincing ৳0.00.
+        lossValue:
+          a.type === "DAMAGED" || a.type === "LOST"
+            ? Math.abs(Math.min(0, delta)) * unitCostOf(vid)
+            : null,
+      };
+    }),
+    returns: rows("returns").map((r) => {
+      const item = orderItemById.get(r.orderItemId as string);
+      const order = item ? orderById.get(item.orderId as string) : undefined;
+      return {
+        ...r,
+        productName: item ? (variantLabelById.get(item.productVariantId as string) ?? "") : "",
+        orderRef: order ? orderRef(order.id as string) : "",
+        customerName: order?.customerId
+          ? (customerNameById.get(order.customerId as string) ?? "")
+          : order
+            ? "Walk-in"
+            : "",
+      };
+    }),
   };
 }
 
@@ -216,6 +333,14 @@ export type BackupSummary = {
   totalPurchases: number;
   treasuryBalance: number;
   lastSync: string;
+  /**
+   * partnerId -> display name. Names live on User, which the snapshot doesn't
+   * carry (auth rows are deliberately excluded), so the Partners tab used to
+   * print a raw cuid where a person's name belongs. Passed alongside rather
+   * than folded into the snapshot: this is for rendering, and adding a field
+   * the restore doesn't know about would break createMany.
+   */
+  partnerNames: Record<string, string>;
 };
 
 const CURRENCY_FORMAT = '"৳"#,##0.00';
@@ -264,7 +389,7 @@ export async function writeFormattedWorkbook(
     }
   }
 
-  const tables = enrichSnapshotTables(snapshot);
+  const tables = enrichSnapshotTables(snapshot, summary.partnerNames);
 
   // ── Write values ──
   // Summary tab (first): at-a-glance totals.
