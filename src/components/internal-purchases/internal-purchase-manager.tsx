@@ -46,6 +46,8 @@ type Item = {
   paidFromTreasury: boolean;
   cost: number;
   quantity: number;
+  /** Months the cost covers, or null when it's charged in full on its date. */
+  spreadMonths: number | null;
   category: string;
 };
 type Perms = { canAdd: boolean; canEdit: boolean };
@@ -94,6 +96,21 @@ export function InternalPurchaseManager({
   const [fundingSource, setFundingSource] = useState<FundingSource>("NONE");
   const [paidByPartnerId, setPaidByPartnerId] = useState(NO_PARTNER);
   const [loading, setLoading] = useState(false);
+  // Cost, quantity and spread are controlled so the per-month preview below
+  // can react as they're typed. The rest of the form stays uncontrolled.
+  const [costInput, setCostInput] = useState("");
+  const [qtyInput, setQtyInput] = useState("1");
+  const [spread, setSpread] = useState("");
+
+  // What the entered figures mean per month, said back to them. "12" is
+  // abstract; "405.08 a month for 12 months" is the decision being made.
+  const spreadPreview = (() => {
+    const months = parseInt(spread, 10);
+    if (!Number.isFinite(months) || months < 1) return null;
+    const total = (parseFloat(costInput) || 0) * (parseInt(qtyInput, 10) || 1);
+    if (total <= 0) return `Charged evenly across ${months} month(s).`;
+    return `${(total / months).toFixed(2)} a month for ${months} month(s), from the date above.`;
+  })();
   const filters: FilterDef<Item>[] = [
     {
       key: "category",
@@ -152,6 +169,9 @@ export function InternalPurchaseManager({
 
   function openNew() {
     setEditing(null);
+    setCostInput("");
+    setQtyInput("1");
+    setSpread("");
     setCategory("OTHER");
     setSupplier(null);
     setFundingSource("NONE");
@@ -160,6 +180,9 @@ export function InternalPurchaseManager({
   }
   function openEdit(i: Item) {
     setEditing(i);
+    setCostInput(String(i.cost));
+    setQtyInput(String(i.quantity));
+    setSpread(i.spreadMonths != null ? String(i.spreadMonths) : "");
     setCategory(i.category);
     setSupplier(i.supplierId && i.supplierName ? { value: i.supplierId, label: i.supplierName } : null);
     setFundingSource(fundingSourceOf(i));
@@ -255,6 +278,19 @@ export function InternalPurchaseManager({
               cell: (i) => (i.paidFromTreasury ? "Treasury" : i.paidBy ? `Partner: ${i.paidBy}` : "—"),
             },
             { key: "cost", header: "Cost", align: "right", hideable: true, sortValue: (i) => i.cost, cell: (i) => i.cost.toFixed(2) },
+            {
+              key: "spread",
+              header: "Spread",
+              align: "right",
+              hideable: true,
+              sortValue: (i) => i.spreadMonths ?? 0,
+              cell: (i) =>
+                i.spreadMonths ? (
+                  <span className="text-muted-foreground">{i.spreadMonths} mo</span>
+                ) : (
+                  "—"
+                ),
+            },
             { key: "qty", header: "Qty", align: "right", sortValue: (i) => i.quantity, cell: (i) => i.quantity },
             {
               key: "total",
@@ -365,15 +401,49 @@ export function InternalPurchaseManager({
               )}
               <div className="space-y-2">
                 <Label htmlFor="ip-cost">Unit cost</Label>
-                <Input id="ip-cost" name="cost" type="number" step="0.01" min="0" required defaultValue={editing?.cost ?? ""} />
+                <Input
+                  id="ip-cost"
+                  name="cost"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  required
+                  value={costInput}
+                  onChange={(e) => setCostInput(e.target.value)}
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="ip-qty">Quantity</Label>
-                <Input id="ip-qty" name="quantity" type="number" min="1" required defaultValue={editing?.quantity ?? 1} />
+                <Input
+                  id="ip-qty"
+                  name="quantity"
+                  type="number"
+                  min="1"
+                  required
+                  value={qtyInput}
+                  onChange={(e) => setQtyInput(e.target.value)}
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="ip-date">Date</Label>
                 <Input id="ip-date" name="date" type="date" required defaultValue={editing?.date} />
+              </div>
+              <div className="space-y-2 sm:col-span-2">
+                <Label htmlFor="ip-spread">Spread over (months)</Label>
+                <Input
+                  id="ip-spread"
+                  name="spreadMonths"
+                  type="number"
+                  min="1"
+                  max="120"
+                  placeholder="Leave blank to charge it all to this month"
+                  value={spread}
+                  onChange={(e) => setSpread(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  {spreadPreview ??
+                    "A year of hosting isn't this month's expense. Enter 12 and it's charged across the twelve months it covers instead — the money still left the account today, and the treasury still says so."}
+                </p>
               </div>
             </div>
             <DialogFooter>

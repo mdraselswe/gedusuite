@@ -666,6 +666,13 @@ model InternalPurchase {
   category         ExpenseCategory @default(OTHER)
   paidByPartnerId  String? // which partner's money funded this purchase (optional)
   paidFromTreasury Boolean         @default(false) // funded from the shared treasury instead of a partner (mutually exclusive with paidByPartnerId)
+  // How many months this cost covers, so it can be charged to them rather than
+  // all to the month it was paid in. A year of hosting bought in April is not
+  // an April expense; a bus fare is. Null = charge it in full on `date`, which
+  // is right for most rows and is what every existing one keeps doing.
+  // The cash is unaffected either way — that left when it left, and the
+  // treasury already says so.
+  spreadMonths     Int?
   date             DateTime        @default(now())
   createdAt        DateTime        @default(now())
 

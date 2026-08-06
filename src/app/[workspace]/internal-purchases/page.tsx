@@ -68,6 +68,7 @@ export default async function InternalPurchasesPage({
     paidFromTreasury: i.paidFromTreasury,
     cost: Number(i.cost),
     quantity: i.quantity,
+    spreadMonths: i.spreadMonths,
     category: i.category,
   }));
 

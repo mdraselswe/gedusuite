@@ -32,6 +32,12 @@ const Schema = z.object({
   quantity: z.coerce.number().int().positive("Quantity must be > 0"),
   category: z.enum(CATEGORIES),
   date: z.coerce.date(),
+  // Blank means "charge it in full on its date" — not zero months, which would
+  // be a window of no length. Stripped before coercion so "" doesn't become 0.
+  spreadMonths: z.preprocess(
+    (v) => (v === "" || v == null ? undefined : v),
+    z.coerce.number().int().min(1).max(120).optional(),
+  ),
 });
 
 function parse(formData: FormData) {
@@ -45,6 +51,7 @@ function parse(formData: FormData) {
     quantity: formData.get("quantity"),
     category: formData.get("category"),
     date: formData.get("date"),
+    spreadMonths: formData.get("spreadMonths") ?? undefined,
   });
 }
 
@@ -122,6 +129,7 @@ export async function createInternalPurchase(
         quantity: d.quantity,
         category: d.category,
         date: d.date,
+        spreadMonths: d.spreadMonths ?? null,
       },
     });
     if (paidFromTreasury) {
@@ -224,6 +232,7 @@ export async function updateInternalPurchase(
         quantity: d.quantity,
         category: d.category,
         date: d.date,
+        spreadMonths: d.spreadMonths ?? null,
       },
     });
 

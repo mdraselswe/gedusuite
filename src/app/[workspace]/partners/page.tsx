@@ -135,11 +135,24 @@ export default async function PartnersPage({
               {profit.netProfit.toFixed(2)}
             </span>
           </div>
+          {profit.prepaidExpenses > 0 && (
+            <div className="mt-2 flex justify-between gap-3 border-t pt-2">
+              <span className="text-muted-foreground">
+                Paid for but not yet expensed
+                <span className="block text-xs">
+                  spread costs with months left to run — this money has already left
+                  the account, so it isn&apos;t available to distribute
+                </span>
+              </span>
+              <span className="tabular-nums text-muted-foreground">
+                {profit.prepaidExpenses.toFixed(2)}
+              </span>
+            </div>
+          )}
           <p className="pt-2 text-xs text-muted-foreground">
-            Every expense comes off in the period it was paid in — a year of hosting
-            in full, not spread over the months it covers. Stock bought to resell is
-            the one exception: that reaches profit as cost of goods sold when it
-            sells, not when it&apos;s bought.
+            Expenses come off in the period they were paid for, unless a purchase says
+            how many months it covers. Stock bought to resell is separate again: that
+            reaches profit as cost of goods sold when it sells, not when it&apos;s bought.
           </p>
           {!sharesNormalized && (
             <p className="pt-2 text-xs text-muted-foreground">
@@ -228,19 +241,33 @@ export default async function PartnersPage({
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Remaining (unspent)
+              Remaining capital
             </CardTitle>
           </CardHeader>
-          <CardContent className="text-2xl font-bold">
-            {capital.totalRemaining.toFixed(2)}
+          <CardContent>
+            <div
+              className={`text-2xl font-bold tabular-nums ${capital.totalRemaining < 0 ? "text-destructive" : ""}`}
+            >
+              {capital.totalRemaining.toFixed(2)}
+            </div>
+            <p className="text-xs text-muted-foreground">of what partners put in</p>
           </CardContent>
         </Card>
       </div>
       <p className="text-xs text-muted-foreground">
-        Total spent (all categories): {capital.totalExpenses.toFixed(2)}. "Customer products"
-        and "Internal purchases" count every recorded purchase regardless of whether it was
-        tagged to a specific partner; per-partner breakdown below only reflects purchases
-        tagged with "Paid by".
+        Total spent, all categories: {capital.totalExpenses.toFixed(2)}
+        {capital.treasuryFundedSpend > 0 && (
+          <>
+            {" "}
+            — of which {capital.treasuryFundedSpend.toFixed(2)} came from the treasury.
+            Treasury money is the business&apos;s own, mostly sales takings, so spending it
+            uses up none of anyone&apos;s capital; only the remaining{" "}
+            {capital.capitalSpend.toFixed(2)} counts against &quot;Remaining capital&quot;
+          </>
+        )}
+        . The spend figures above count every recorded purchase whether or not anyone was
+        tagged as having paid; the per-partner table below only counts purchases tagged
+        with &quot;Paid by&quot;.
       </p>
 
       <PartnerManager

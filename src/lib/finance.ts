@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { cancelledOrderCost, computeOrderTotals } from "@/lib/orders";
+import { amortizeAll } from "@/lib/amortize";
 
 export const OVERDUE_DAYS = 7;
 
@@ -115,39 +116,62 @@ export type BusinessCapitalSummary = {
   boostSpend: number; // ALL boost daily spends, whatever funded them
   miscExpense: number; // ALL partner EXPENSE entries
   totalExpenses: number;
-  totalRemaining: number; // totalInvested − totalExpenses
+  /**
+   * The part of that spending paid for out of the shared treasury rather than
+   * a partner's pocket. Shared money is the business's own — mostly sales
+   * takings — so spending it uses up no partner's capital.
+   */
+  treasuryFundedSpend: number;
+  /** totalExpenses − treasuryFundedSpend: what partner capital actually paid for. */
+  capitalSpend: number;
+  totalRemaining: number; // totalInvested − capitalSpend
 };
 
 /**
  * Whole-business rollup: total invested (every partner) vs. total actually
- * spent — on customer-product purchases, internal purchases, and misc
- * (rent/food/etc.) — with what's left unspent. Unlike the per-partner view,
- * this counts EVERY purchase/internal-purchase regardless of whether it was
- * tagged to a specific partner, so the business total never silently drops
- * spending just because nobody recorded who paid for it.
+ * spent, with what's left of the capital.
+ *
+ * The spend figures count EVERY purchase regardless of whether anyone recorded
+ * who paid, so the business total never silently drops spending just because a
+ * row went untagged. "Remaining" is a different question though, and it used to
+ * be answered with the same number: capital minus ALL spending, including
+ * anything bought from the treasury. That was harmless while every purchase was
+ * partner-funded, and wrong the moment one wasn't — the first treasury-funded
+ * purchase would have shown the partners as overdrawn by its full amount,
+ * having spent nothing.
+ *
+ * So treasury-funded spending is separated out. An untagged row still counts
+ * against capital: nobody recording a payer is far more likely to mean a
+ * partner paid and forgot than that the treasury did, and the treasury leaves
+ * its own trail either way.
  */
 export async function businessCapitalSummary(
   workspaceId: string,
 ): Promise<BusinessCapitalSummary> {
-  const [balances, purchases, internalPurchases, miscRows, boostRows] = await Promise.all([
-    partnerBalances(workspaceId),
-    prisma.purchase.findMany({
-      where: { workspaceId },
-      select: { unitCost: true, quantity: true },
-    }),
-    prisma.internalPurchase.findMany({
-      where: { workspaceId },
-      select: { cost: true, quantity: true },
-    }),
-    prisma.partnerTxn.aggregate({
-      where: { workspaceId, type: "EXPENSE" },
-      _sum: { amount: true },
-    }),
-    prisma.boostDailySpend.aggregate({
-      where: { workspaceId },
-      _sum: { amount: true },
-    }),
-  ]);
+  const [balances, purchases, internalPurchases, miscRows, boostRows, treasuryBoost] =
+    await Promise.all([
+      partnerBalances(workspaceId),
+      prisma.purchase.findMany({
+        where: { workspaceId },
+        select: { unitCost: true, quantity: true, paidFromTreasury: true },
+      }),
+      prisma.internalPurchase.findMany({
+        where: { workspaceId },
+        select: { cost: true, quantity: true, paidFromTreasury: true },
+      }),
+      prisma.partnerTxn.aggregate({
+        where: { workspaceId, type: "EXPENSE" },
+        _sum: { amount: true },
+      }),
+      prisma.boostDailySpend.aggregate({
+        where: { workspaceId },
+        _sum: { amount: true },
+      }),
+      prisma.boostDailySpend.aggregate({
+        where: { workspaceId, paidFromTreasury: true },
+        _sum: { amount: true },
+      }),
+    ]);
 
   let totalInvested = 0;
   for (const b of balances.values()) totalInvested += b.invested;
@@ -164,6 +188,18 @@ export async function businessCapitalSummary(
   const boostSpend = Number(boostRows._sum.amount ?? 0);
   const totalExpenses = customerProductSpend + internalPurchaseSpend + boostSpend + miscExpense;
 
+  // Paid for out of the shared pot. A manual PartnerTxn EXPENSE is a partner's
+  // own money by definition, so it never appears here.
+  const treasuryFundedSpend =
+    purchases
+      .filter((p) => p.paidFromTreasury)
+      .reduce((s, p) => s + Number(p.unitCost) * p.quantity, 0) +
+    internalPurchases
+      .filter((ip) => ip.paidFromTreasury)
+      .reduce((s, ip) => s + Number(ip.cost) * ip.quantity, 0) +
+    Number(treasuryBoost._sum.amount ?? 0);
+  const capitalSpend = totalExpenses - treasuryFundedSpend;
+
   return {
     totalInvested: round2(totalInvested),
     customerProductSpend: round2(customerProductSpend),
@@ -171,7 +207,9 @@ export async function businessCapitalSummary(
     boostSpend: round2(boostSpend),
     miscExpense: round2(miscExpense),
     totalExpenses: round2(totalExpenses),
-    totalRemaining: round2(totalInvested - totalExpenses),
+    treasuryFundedSpend: round2(treasuryFundedSpend),
+    capitalSpend: round2(capitalSpend),
+    totalRemaining: round2(totalInvested - capitalSpend),
   };
 }
 
@@ -240,12 +278,24 @@ export type BusinessProfit = {
   tradingProfit: number;
   /** Advertising — every BoostDailySpend, whoever funded it. */
   adSpend: number;
-  /** Every internal purchase — packaging, office supplies, equipment, utilities. */
+  /**
+   * Internal purchases charged to this period. A purchase with spreadMonths
+   * set contributes only the part that has elapsed; the rest is `prepaid`.
+   */
   internalPurchaseSpend: number;
   /** Manual partner EXPENSE entries — anything with no dedicated record. */
   miscExpense: number;
   /** Stock written off as damaged or lost, valued at what it cost to buy. */
   stockLoss: number;
+  /**
+   * Spread costs paid for but not yet charged to any period — a year of
+   * hosting with eight months left to run.
+   *
+   * Shown beside profit, never inside it. The cash for this is already gone,
+   * so a healthier-looking profit must not read as money available to take
+   * out; this line is what says so.
+   */
+  prepaidExpenses: number;
   operatingExpenses: number;
   /** tradingProfit − operatingExpenses. What profit shares are paid on. */
   netProfit: number;
@@ -282,7 +332,7 @@ export async function totalBusinessProfit(workspaceId: string): Promise<Business
     prisma.boostDailySpend.aggregate({ where: { workspaceId }, _sum: { amount: true } }),
     prisma.internalPurchase.findMany({
       where: { workspaceId },
-      select: { cost: true, quantity: true },
+      select: { cost: true, quantity: true, date: true, spreadMonths: true },
     }),
     prisma.partnerTxn.aggregate({
       where: { workspaceId, type: "EXPENSE" },
@@ -320,10 +370,17 @@ export async function totalBusinessProfit(workspaceId: string): Promise<Business
     0,
   );
   const adSpend = Number(adSpendAgg._sum.amount ?? 0);
-  const internalPurchaseSpend = internalPurchases.reduce(
-    (s, ip) => s + Number(ip.cost) * ip.quantity,
-    0,
+  // A spread purchase contributes only its elapsed share; the remainder comes
+  // back as `prepaid` rather than disappearing.
+  const internal = amortizeAll(
+    internalPurchases.map((ip) => ({
+      date: ip.date,
+      amount: Number(ip.cost) * ip.quantity,
+      spreadMonths: ip.spreadMonths,
+    })),
+    null,
   );
+  const internalPurchaseSpend = internal.recognized;
   const miscExpense = Number(miscAgg._sum.amount ?? 0);
   const stockLoss = writeOffs.reduce((s, a) => s + Math.abs(Math.min(0, a.delta)) * writeOffUnitCost(a), 0);
   const operatingExpenses = adSpend + internalPurchaseSpend + miscExpense + stockLoss;
@@ -334,6 +391,7 @@ export async function totalBusinessProfit(workspaceId: string): Promise<Business
     internalPurchaseSpend: round2(internalPurchaseSpend),
     miscExpense: round2(miscExpense),
     stockLoss: round2(stockLoss),
+    prepaidExpenses: internal.prepaid,
     operatingExpenses: round2(operatingExpenses),
     netProfit: round2(tradingProfit - operatingExpenses),
   };

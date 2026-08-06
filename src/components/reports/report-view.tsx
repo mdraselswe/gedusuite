@@ -317,9 +317,22 @@ export function ReportView({
             {report.kpis.netProfit.toFixed(2)}
           </span>
         </div>
+        {report.kpis.prepaidExpenses > 0 && (
+          <div className="mt-2 flex justify-between gap-3 border-t pt-2 text-sm">
+            <span className="text-muted-foreground">
+              Paid for but not yet expensed
+              <span className="block text-xs">
+                spread costs with time left to run — the cash for these is already gone
+              </span>
+            </span>
+            <span className="tabular-nums text-muted-foreground">
+              {report.kpis.prepaidExpenses.toFixed(2)}
+            </span>
+          </div>
+        )}
         <p className="pt-2 text-xs text-muted-foreground">
-          Every expense is charged to the period it was paid in — a year of hosting
-          and a box of polybags both come off in full, the same as a month of ads.
+          Expenses land in the period they were paid for, unless a purchase says how
+          many months it covers — then it&apos;s charged across those months instead.
         </p>
       </CardContent>
     </Card>

@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { cancelledOrderCost, computeOrderTotals } from "@/lib/orders";
 import { splitByShare } from "@/lib/profit-share";
 import { dhakaDayEnd, dhakaDayKey, dhakaDayStart, dhakaDaysAgo, dhakaToday } from "@/lib/dhaka-time";
+import { amortizeAll } from "@/lib/amortize";
 
 const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
 
@@ -62,6 +63,8 @@ export type Report = {
     miscExpense: number;
     /** Stock written off as damaged or lost, at what it cost to buy. */
     stockLoss: number;
+    /** Spread costs paid for but not yet charged to any period. */
+    prepaidExpenses: number;
     /** adSpend + internalPurchaseSpend + miscExpense + stockLoss. */
     operatingExpenses: number;
     /** profit − operatingExpenses. What partner shares are paid on. */
@@ -221,9 +224,12 @@ export async function buildReport(
   const dateFilter = range ? { date: { gte: range.from, lte: range.to } } : {};
   const [adSpendAgg, internalPurchases, miscAgg, writeOffs, partners] = await Promise.all([
     prisma.boostDailySpend.aggregate({ _sum: { amount: true }, where: { workspaceId, ...dateFilter } }),
+    // Not date-filtered: a purchase from March can still put part of itself
+    // into a May report if it was spread. The range is applied by the
+    // amortizer instead, which knows how much of each cost belongs here.
     prisma.internalPurchase.findMany({
-      where: { workspaceId, ...dateFilter },
-      select: { cost: true, quantity: true },
+      where: { workspaceId },
+      select: { cost: true, quantity: true, date: true, spreadMonths: true },
     }),
     prisma.partnerTxn.aggregate({
       _sum: { amount: true },
@@ -249,9 +255,15 @@ export async function buildReport(
     }),
   ]);
   const adSpend = round2(Number(adSpendAgg._sum.amount ?? 0));
-  const internalPurchaseSpend = round2(
-    internalPurchases.reduce((s, ip) => s + Number(ip.cost) * ip.quantity, 0),
+  const internal = amortizeAll(
+    internalPurchases.map((ip) => ({
+      date: ip.date,
+      amount: Number(ip.cost) * ip.quantity,
+      spreadMonths: ip.spreadMonths,
+    })),
+    range,
   );
+  const internalPurchaseSpend = internal.recognized;
   const miscExpense = round2(Number(miscAgg._sum.amount ?? 0));
   // Last purchase price, then the catalogue cost, then nothing — the same
   // chain a sale's cost snapshot follows.
@@ -294,6 +306,7 @@ export async function buildReport(
       internalPurchaseSpend,
       miscExpense,
       stockLoss,
+      prepaidExpenses: internal.prepaid,
       operatingExpenses,
       netProfit,
       profitAfterAds: round2(profit - adSpend),
