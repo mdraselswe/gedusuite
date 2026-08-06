@@ -84,11 +84,16 @@ type OrderRow = {
   cashInTreasury: boolean;
   deliveryCharge: number;
   deliveryCost: number | null;
+  courierId: string | null;
+  courierZoneId: string | null;
+  weightKg: number | null;
+  cancelledCollected: number;
   packagingCost: number;
   giftCost: number;
   discount: number;
   notes: string | null;
   heldByName: string | null;
+  heldByMembershipId: string | null;
   totals: { customerTotal: number; netProfit: number; returnedUnits: number };
   gifts: { label: string; quantity: number }[];
   items: OrderItem[];
@@ -333,6 +338,10 @@ export function OrderManager({
   // ── Edit details dialog state ──
   const [editOpen, setEditOpen] = useState(false);
   const [editOrder, setEditOrder] = useState<OrderRow | null>(null);
+  const [editHeldById, setEditHeldById] = useState<string>(NONE);
+  const [editCourierId, setEditCourierId] = useState<string>(NONE);
+  const [editCourierZoneId, setEditCourierZoneId] = useState<string>(NONE);
+  const [editWeightKg, setEditWeightKg] = useState("");
   const [editCustomer, setEditCustomer] = useState<ComboOption | null>(null);
   const [editDeliveryType, setEditDeliveryType] = useState("SELF");
   const [editPaymentMethod, setEditPaymentMethod] = useState("CASH");
@@ -562,6 +571,23 @@ export function OrderManager({
     });
   }, [courierQuote, selectedCourier, courierZoneId, items, orderDiscount, weightKg, suggestedWeightKg]);
 
+  const editCourier = couriers.find((c) => c.id === editCourierId) ?? null;
+  const editCourierQuote = useMemo(() => {
+    if (!editOrder || editDeliveryType !== "COURIER" || !editCourier) return null;
+    const zone = editCourier.zones.find((z) => z.id === editCourierZoneId);
+    if (!zone) return null;
+    const goods = editOrder.totals.customerTotal - editOrder.deliveryCharge;
+    return quoteCourier(editCourier, {
+      zoneRate: zone.rate,
+      weightKg: parseFloat(editWeightKg) || null,
+      // A cancelled parcel collected nothing to be charged a percentage on.
+      codAmount:
+        editOrder.status === "CANCELLED" || editPaymentMethod !== "COURIER_COLLECTION"
+          ? 0
+          : goods + editOrder.deliveryCharge,
+    });
+  }, [editOrder, editDeliveryType, editCourier, editCourierZoneId, editWeightKg, editPaymentMethod]);
+
   const preview = useMemo(() => {
     const itemsSubtotal = items.reduce((s, it) => {
       const price = parseFloat(it.unitPrice) || 0;
@@ -742,6 +768,10 @@ export function OrderManager({
     setEditCustomer(o.customerId ? { value: o.customerId, label: o.customerName } : null);
     setEditDeliveryType(o.deliveryType);
     setEditPaymentMethod(o.paymentMethod);
+    setEditHeldById(o.heldByMembershipId ?? NONE);
+    setEditCourierId(o.courierId ?? NONE);
+    setEditCourierZoneId(o.courierZoneId ?? NONE);
+    setEditWeightKg(o.weightKg != null ? String(o.weightKg) : "");
     setEditOpen(true);
   }
 
@@ -753,6 +783,7 @@ export function OrderManager({
     fd.set("customerId", editCustomer?.value ?? "");
     fd.set("deliveryType", editDeliveryType);
     fd.set("paymentMethod", editPaymentMethod);
+    fd.set("heldByMembershipId", editHeldById === NONE ? "" : editHeldById);
     const res = await updateOrderHeader(slug, editOrder.id, fd);
     setEditSaving(false);
     if (!res.ok) return toast.error(res.error);
@@ -2094,11 +2125,159 @@ export function OrderManager({
                     type="number"
                     step="0.01"
                     min="0"
-                    placeholder="blank = same as charge"
+                    placeholder={
+                      editCourierQuote
+                        ? String(editCourierQuote.deliveryCharge)
+                        : "blank = same as charge"
+                    }
                     defaultValue={editOrder.deliveryCost ?? ""}
                   />
                 </div>
               </div>
+
+              {/* Courier, zone and weight are editable here so an order that
+                  predates its courier's rules — or one sent on the wrong zone
+                  — can be corrected where everything else about it is. */}
+              {editDeliveryType === "COURIER" && couriers.length > 0 && (
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="space-y-2">
+                    <Label>Courier</Label>
+                    <Select
+                      value={editCourierId}
+                      onValueChange={(v) => {
+                        setEditCourierId(v ?? NONE);
+                        setEditCourierZoneId(NONE);
+                      }}
+                      items={[
+                        { value: NONE, label: "Not set" },
+                        ...couriers.map((c) => ({ value: c.id, label: c.name })),
+                      ]}
+                    >
+                      <SelectTrigger className="w-full">
+                        <span data-slot="select-value">
+                          {couriers.find((c) => c.id === editCourierId)?.name ?? "Not set"}
+                        </span>
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={NONE}>Not set</SelectItem>
+                        {couriers.map((c) => (
+                          <SelectItem key={c.id} value={c.id}>
+                            {c.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Zone</Label>
+                    <Select
+                      value={editCourierZoneId}
+                      onValueChange={(v) => setEditCourierZoneId(v ?? NONE)}
+                      items={[
+                        { value: NONE, label: "Not set" },
+                        ...(editCourier?.zones ?? []).map((z) => ({
+                          value: z.id,
+                          label: `${z.name} · ${z.rate.toFixed(0)}`,
+                        })),
+                      ]}
+                    >
+                      <SelectTrigger className="w-full">
+                        <span data-slot="select-value">
+                          {editCourier?.zones.find((z) => z.id === editCourierZoneId)?.name ??
+                            "Not set"}
+                        </span>
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={NONE}>Not set</SelectItem>
+                        {(editCourier?.zones ?? []).map((z) => (
+                          <SelectItem key={z.id} value={z.id}>
+                            {z.name} · {z.rate.toFixed(0)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="eo-weight">Weight (kg)</Label>
+                    <Input
+                      id="eo-weight"
+                      name="weightKg"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="0.5"
+                      value={editWeightKg}
+                      onChange={(e) => setEditWeightKg(e.target.value)}
+                    />
+                  </div>
+                  <input
+                    type="hidden"
+                    name="courierId"
+                    value={editCourierId === NONE ? "" : editCourierId}
+                  />
+                  <input
+                    type="hidden"
+                    name="courierZoneId"
+                    value={editCourierZoneId === NONE ? "" : editCourierZoneId}
+                  />
+                  {editCourierQuote && (
+                    <p className="rounded-md border bg-muted/40 p-3 text-sm sm:col-span-3">
+                      Courier keeps{" "}
+                      <span className="font-medium tabular-nums">
+                        {editCourierQuote.total.toFixed(2)}
+                      </span>{" "}
+                      — {editCourierQuote.deliveryCharge.toFixed(2)} delivery +{" "}
+                      {editCourierQuote.codFee.toFixed(2)} COD fee. Saving recalculates it
+                      from these rates.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Cash changes hands, and until now this could only be set
+                  when the order was created — a wrong name stayed wrong. */}
+              <div className="space-y-2">
+                <Label>Cash held by</Label>
+                <Select
+                  value={editHeldById}
+                  onValueChange={(v) => setEditHeldById(v ?? NONE)}
+                  items={[
+                    { value: NONE, label: "Nobody assigned" },
+                    ...members.map((m) => ({ value: m.id, label: m.label })),
+                  ]}
+                >
+                  <SelectTrigger className="w-full">
+                    <span data-slot="select-value">
+                      {members.find((m) => m.id === editHeldById)?.label ?? "Nobody assigned"}
+                    </span>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NONE}>Nobody assigned</SelectItem>
+                    {members.map((m) => (
+                      <SelectItem key={m.id} value={m.id}>
+                        {m.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Only on a cancelled order, and only because a partial
+                  delivery still hands money over — the one number the cancel
+                  dialog asks for that nothing else can recover. */}
+              {editOrder.status === "CANCELLED" && (
+                <div className="space-y-2">
+                  <Label htmlFor="eo-collected">Collected on a partial delivery</Label>
+                  <Input
+                    id="eo-collected"
+                    name="cancelledCollected"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    defaultValue={editOrder.cancelledCollected}
+                  />
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
                   <Label>Payment method</Label>

@@ -386,6 +386,24 @@ const HeaderSchema = z.object({
   giftCost: z.coerce.number().nonnegative().default(0),
   discount: z.coerce.number().nonnegative().default(0),
   notes: z.string().trim().max(500).optional().or(z.literal("")),
+  // Who holds this order's cash. Was set-once at creation with no way back —
+  // and the one field most likely to be wrong, since cash changes hands.
+  heldByMembershipId: z.string().optional().or(z.literal("")),
+  // Editable here too, not just at creation: orders entered before their
+  // courier's rules existed have no zone, and a zone picked wrongly can only
+  // be corrected where the order is corrected. Without this the only fix was
+  // a script.
+  courierId: z.string().optional().or(z.literal("")),
+  courierZoneId: z.string().optional().or(z.literal("")),
+  weightKg: z.preprocess(
+    (v) => (v === "" || v == null ? undefined : v),
+    z.coerce.number().nonnegative().max(1000).optional(),
+  ),
+  /** Only meaningful on a cancelled order — a partial delivery's takings. */
+  cancelledCollected: z.preprocess(
+    (v) => (v === "" || v == null ? undefined : v),
+    z.coerce.number().nonnegative().max(99_999_999).optional(),
+  ),
 });
 
 export async function updateOrderHeader(
@@ -399,7 +417,12 @@ export async function updateOrderHeader(
 
   const order = await prisma.order.findFirst({
     where: { id: orderId, workspaceId },
-    select: { id: true, cashInTreasury: true },
+    select: {
+      id: true,
+      cashInTreasury: true,
+      status: true,
+      items: { select: { unitPrice: true, quantity: true, discount: true } },
+    },
   });
   if (!order) return { ok: false, error: "Order not found" };
 
@@ -414,6 +437,11 @@ export async function updateOrderHeader(
     giftCost: formData.get("giftCost"),
     discount: formData.get("discount"),
     notes: formData.get("notes") ?? undefined,
+    heldByMembershipId: formData.get("heldByMembershipId") ?? undefined,
+    courierId: formData.get("courierId") ?? undefined,
+    courierZoneId: formData.get("courierZoneId") ?? undefined,
+    weightKg: formData.get("weightKg") ?? undefined,
+    cancelledCollected: formData.get("cancelledCollected") ?? undefined,
   });
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
@@ -430,15 +458,51 @@ export async function updateOrderHeader(
     customerId = customer.id;
   }
 
+  // Checked against this workspace: the id comes from a form, and a
+  // membership from elsewhere would otherwise be accepted by the FK.
+  let heldByMembershipId: string | null = null;
+  if (d.heldByMembershipId) {
+    const member = await prisma.membership.findFirst({
+      where: { id: d.heldByMembershipId, workspaceId },
+      select: { id: true },
+    });
+    if (!member) return { ok: false, error: "Selected member is invalid" };
+    heldByMembershipId = member.id;
+  }
+
+  // Re-quoted on every save, because the fee follows the order's value: change
+  // the delivery charge or a discount and the percentage the courier keeps
+  // changes with it. A cancelled order collected nothing to be charged on.
+  const itemsNet = order.items.reduce(
+    (s, it) => s + Number(it.unitPrice) * it.quantity - Number(it.discount),
+    0,
+  );
+  const courierQuote = await quoteForOrder(workspaceId, {
+    courierId: d.courierId || undefined,
+    courierZoneId: d.courierZoneId || undefined,
+    weightKg: d.weightKg,
+    deliveryCost: d.deliveryCost,
+    codAmount: Math.max(0, itemsNet - d.discount + d.deliveryCharge),
+    paymentMethod: order.status === "CANCELLED" ? "" : d.paymentMethod,
+  });
+
   await prisma.$transaction(async (tx) => {
     await tx.order.update({
       where: { id: orderId },
       data: {
         customerId,
+        heldByMembershipId,
         date: d.date,
         deliveryType: d.deliveryType,
         deliveryCharge: d.deliveryCharge,
-        deliveryCost: d.deliveryCost ?? null,
+        deliveryCost: courierQuote.deliveryCost,
+        courierId: courierQuote.courierId,
+        courierZoneId: courierQuote.courierZoneId,
+        weightKg: d.weightKg ?? null,
+        codFeeCost: courierQuote.codFeeCost,
+        ...(d.cancelledCollected !== undefined
+          ? { cancelledCollected: d.cancelledCollected }
+          : {}),
         paymentMethod: d.paymentMethod,
         packagingCost: d.packagingCost,
         giftCost: d.giftCost,
