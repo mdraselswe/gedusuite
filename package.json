@@ -9,6 +9,8 @@
     "start": "next start",
     "db:deploy": "dotenv -e .env.local -- prisma migrate deploy",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "postinstall": "prisma generate",
     "db:generate": "prisma generate",
     "db:migrate": "dotenv -e .env.local -- prisma migrate dev",
@@ -56,6 +58,7 @@
     "prisma": "^6.19.3",
     "serwist": "^9.5.11",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.10"
   }
 }
