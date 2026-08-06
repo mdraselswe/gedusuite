@@ -11,6 +11,8 @@ import {
   type CreditLink,
 } from "@/lib/partner-credit";
 import { variantFullName } from "@/lib/variants";
+import { InsufficientTreasury, assertTreasuryCovers } from "@/lib/finance";
+import { ConcurrentWrite, runSerializable } from "@/lib/tx";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -155,6 +157,18 @@ const TxnSchema = z.object({
   amount: z.coerce.number().positive("Amount must be > 0"),
   purpose: z.string().trim().max(300).optional().or(z.literal("")),
   date: z.coerce.date(),
+  /**
+   * Withdrawal only: the money came out of the shared treasury rather than
+   * from wherever else the partner was holding it.
+   *
+   * Depositing to the treasury has always written the matching IN entry, but
+   * taking money out wrote nothing, so a partner could withdraw their capital
+   * and leave the treasury still claiming to hold it. Not made automatic,
+   * because a withdrawal can just as easily be cash that never reached the
+   * treasury — which is exactly the ambiguity the purchase forms resolve by
+   * asking, so this asks too.
+   */
+  fromTreasury: z.coerce.boolean().default(false),
 });
 
 export async function createPartnerTxn(
@@ -171,6 +185,7 @@ export async function createPartnerTxn(
     amount: formData.get("amount"),
     purpose: formData.get("purpose") ?? undefined,
     date: formData.get("date"),
+    fromTreasury: formData.get("fromTreasury") === "true",
   });
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
@@ -188,31 +203,55 @@ export async function createPartnerTxn(
     return { ok: false, error: "You can only add your own transactions" };
   }
 
-  await prisma.partnerTxn.create({
-    data: {
-      workspaceId,
-      partnerId: d.partnerId,
-      type: d.type,
-      amount: d.amount,
-      purpose: d.purpose?.trim() || null,
-      date: d.date,
-      // Depositing to treasury auto-creates a linked IN entry in the ledger.
-      treasuryEntry:
-        d.type === "DEPOSIT_TO_TREASURY"
-          ? {
-              create: {
-                workspaceId,
-                type: "IN",
-                amount: d.amount,
-                source: "Partner deposit",
-                note: d.purpose?.trim() || null,
-                partnerId: d.partnerId,
-                date: d.date,
-              },
-            }
-          : undefined,
-    },
-  });
+  const fromTreasury = d.fromTreasury && d.type === "WITHDRAWAL";
+  if (d.fromTreasury && d.type !== "WITHDRAWAL") {
+    return { ok: false, error: "Only a withdrawal can be taken from the treasury" };
+  }
+
+  // Both directions write a matching treasury entry now: a deposit puts money
+  // in, a treasury-funded withdrawal takes it out.
+  const linkedEntry =
+    d.type === "DEPOSIT_TO_TREASURY"
+      ? { type: "IN" as const, source: "Partner deposit" }
+      : fromTreasury
+        ? { type: "OUT" as const, source: "Partner withdrawal" }
+        : null;
+
+  try {
+    await runSerializable(async (tx) => {
+      // Only the OUT direction can overdraw, and the check belongs inside the
+      // transaction that writes it.
+      if (fromTreasury) await assertTreasuryCovers(tx, workspaceId, d.amount);
+      await tx.partnerTxn.create({
+        data: {
+          workspaceId,
+          partnerId: d.partnerId,
+          type: d.type,
+          amount: d.amount,
+          purpose: d.purpose?.trim() || null,
+          date: d.date,
+          treasuryEntry: linkedEntry
+            ? {
+                create: {
+                  workspaceId,
+                  type: linkedEntry.type,
+                  amount: d.amount,
+                  source: linkedEntry.source,
+                  note: d.purpose?.trim() || null,
+                  partnerId: d.partnerId,
+                  date: d.date,
+                },
+              }
+            : undefined,
+        },
+      });
+    });
+  } catch (e) {
+    if (e instanceof InsufficientTreasury || e instanceof ConcurrentWrite) {
+      return { ok: false, error: e.message };
+    }
+    throw e;
+  }
 
   revalidatePath(`/${slug}/partners`, "layout");
   revalidatePath(`/${slug}/treasury`);

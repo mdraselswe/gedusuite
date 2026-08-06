@@ -8,6 +8,7 @@ import { createPartnerTxn, deletePartnerTxn } from "@/server/actions/partners";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Select,
@@ -58,6 +59,7 @@ export function PartnerTxnManager({
 }) {
   const router = useRouter();
   const [type, setType] = useState("INVESTMENT");
+  const [fromTreasury, setFromTreasury] = useState(false);
   const [loading, setLoading] = useState(false);
   const filters: FilterDef<Txn>[] = [
     {
@@ -103,6 +105,8 @@ export function PartnerTxnManager({
     if (!res.ok) return toast.error(res.error);
     toast.success("Transaction added");
     (e.target as HTMLFormElement).reset();
+    // form.reset() only clears the native inputs; the tick is React state.
+    setFromTreasury(false);
     router.refresh();
   }
 
@@ -131,7 +135,15 @@ export function PartnerTxnManager({
             <form onSubmit={onSubmit} className="grid gap-3 sm:grid-cols-4">
               <div className="space-y-2">
                 <Label>Type</Label>
-                <Select value={type} onValueChange={(v) => setType(v ?? "INVESTMENT")}>
+                <Select
+                  value={type}
+                  onValueChange={(v) => {
+                    setType(v ?? "INVESTMENT");
+                    // Switching away from Withdrawal hides the tick; clearing it
+                    // stops a stale one being submitted if they switch back.
+                    if (v !== "WITHDRAWAL") setFromTreasury(false);
+                  }}
+                >
                   <SelectTrigger className="w-full">
                     <SelectValue />
                   </SelectTrigger>
@@ -156,6 +168,29 @@ export function PartnerTxnManager({
                 <Label htmlFor="t-purpose">Purpose</Label>
                 <Input id="t-purpose" name="purpose" />
               </div>
+              {/* Only a withdrawal can come out of the treasury. An investment
+                  and a deposit both put money in, and a manual expense is the
+                  partner's own money by definition — that's what makes it
+                  theirs to be reimbursed for. */}
+              {type === "WITHDRAWAL" && (
+                <div className="space-y-2 sm:col-span-4">
+                  <label className="flex items-start gap-2 text-sm">
+                    <Checkbox
+                      checked={fromTreasury}
+                      onCheckedChange={(v) => setFromTreasury(v === true)}
+                    />
+                    <span>
+                      Taken out of the treasury
+                      <span className="block text-xs text-muted-foreground">
+                        Writes the matching OUT entry so the treasury balance drops with it.
+                        Leave unticked if this was cash held somewhere else — the treasury
+                        never had it, so nothing should come off it.
+                      </span>
+                    </span>
+                  </label>
+                </div>
+              )}
+              <input type="hidden" name="fromTreasury" value={String(type === "WITHDRAWAL" && fromTreasury)} />
               <div className="sm:col-span-4">
                 <Button type="submit" disabled={loading}>
                   {loading ? "Saving…" : "Add transaction"}
