@@ -32,6 +32,7 @@ import { type ComboOption } from "@/components/ui/async-combobox";
 import { SupplierPicker } from "@/components/products/supplier-picker";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { useFilterBar, type FilterDef } from "@/components/ui/filter-bar";
+import { readLastFundingSource, writeLastFundingSource } from "@/lib/last-funding-source";
 import { Receipt } from "lucide-react";
 
 type Item = {
@@ -93,7 +94,10 @@ export function InternalPurchaseManager({
   const [editing, setEditing] = useState<Item | null>(null);
   const [category, setCategory] = useState("OTHER");
   const [supplier, setSupplier] = useState<ComboOption | null>(null);
-  const [fundingSource, setFundingSource] = useState<FundingSource>("NONE");
+  // Seeded from the last choice on this device — see last-funding-source.
+  const [fundingSource, setFundingSource] = useState<FundingSource>(() =>
+    readLastFundingSource(slug, "internal-purchase"),
+  );
   const [paidByPartnerId, setPaidByPartnerId] = useState(NO_PARTNER);
   const [loading, setLoading] = useState(false);
   // Cost, quantity and spread are controlled so the per-month preview below
@@ -174,7 +178,7 @@ export function InternalPurchaseManager({
     setSpread("");
     setCategory("OTHER");
     setSupplier(null);
-    setFundingSource("NONE");
+    setFundingSource(readLastFundingSource(slug, "internal-purchase"));
     setPaidByPartnerId(NO_PARTNER);
     setOpen(true);
   }
@@ -203,6 +207,9 @@ export function InternalPurchaseManager({
       : await createInternalPurchase(slug, fd);
     setLoading(false);
     if (!res.ok) return toast.error(res.error);
+    // Only a fresh entry says anything about how this shop funds things now;
+    // correcting an old row shouldn't change what the next new one defaults to.
+    if (!editing) writeLastFundingSource(slug, "internal-purchase", fundingSource);
     toast.success(editing ? "Updated" : "Added");
     setOpen(false);
     router.refresh();

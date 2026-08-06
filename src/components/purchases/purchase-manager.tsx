@@ -37,6 +37,7 @@ import { SupplierPicker } from "@/components/products/supplier-picker";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { ANY_VALUE, UrlFilterBar, type FilterDef } from "@/components/ui/filter-bar";
 import { formatStock } from "@/lib/units";
+import { readLastFundingSource, writeLastFundingSource } from "@/lib/last-funding-source";
 import { Columns3, MoreVertical, PackageOpen, X } from "lucide-react";
 
 // Local calendar date (not UTC) as a stable "today" default — must NOT depend
@@ -217,7 +218,12 @@ export function PurchaseManager({
   }
   const [variant, setVariant] = useState<VariantOption | null>(null);
   const [supplier, setSupplier] = useState<ComboOption | null>(null);
-  const [fundingSource, setFundingSource] = useState<FundingSource>("NONE");
+  // Seeded from the last choice on this device rather than always "None" —
+  // see last-funding-source for why the forgotten one is the expensive case.
+  // Lazy initial state, because localStorage isn't there during SSR.
+  const [fundingSource, setFundingSource] = useState<FundingSource>(() =>
+    readLastFundingSource(slug, "purchase"),
+  );
   const [paidByPartnerId, setPaidByPartnerId] = useState<string>(NO_PARTNER);
   const [buyUnit, setBuyUnit] = useState<"PIECE" | "PACK">("PIECE");
   const [loading, setLoading] = useState(false);
@@ -318,8 +324,9 @@ export function PurchaseManager({
     (e.target as HTMLFormElement).reset();
     setVariant(null);
     setSupplier(null);
-    setFundingSource("NONE");
-    setPaidByPartnerId(NO_PARTNER);
+    // Kept for the next purchase, which is nearly always funded the same way.
+    writeLastFundingSource(slug, "purchase", fundingSource);
+    setPaidByPartnerId(fundingSource === "PARTNER" ? paidByPartnerId : NO_PARTNER);
     setBuyUnit("PIECE");
     router.refresh();
   }
