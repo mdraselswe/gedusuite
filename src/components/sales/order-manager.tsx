@@ -141,10 +141,17 @@ type GiftDraft = {
 };
 
 // Toggleable columns on the orders table (Columns menu). Profit starts on;
-// Held by / Courier ID start hidden to keep the table lean.
+// the rest start hidden to keep the table lean.
+//
+// Every optional column belongs here, including ones only some workspaces can
+// use (see availability below). Marking a column `hideable` on the DataTable
+// instead would work, but it switches on DataTable's OWN Columns menu — and
+// this page keeps its own toolbar, so the table would grow a second Columns
+// button beside the first.
 const OPTIONAL_COLUMNS = [
   { key: "heldBy", label: "Held by" },
   { key: "courier", label: "Courier ID" },
+  { key: "campaign", label: "Campaign" },
   { key: "profit", label: "Profit" },
 ] as const;
 
@@ -457,6 +464,19 @@ export function OrderManager({
       return next;
     });
   }
+
+  // Not every optional column applies to every workspace: Profit needs reports
+  // access, and Campaign has nothing to show until somebody runs an ad. Both
+  // the menu and the table go through this, so an unavailable column can't be
+  // offered in one place and rendered in the other.
+  const columnAvailable = (c: { key: string }) => {
+    if (c.key === "profit") return perms.canViewProfit;
+    if (c.key === "campaign") return campaigns.length > 0;
+    return true;
+  };
+  const showColumn = (key: string) =>
+    visibleCols.has(key) && columnAvailable({ key });
+
   const shownOrders = orders;
 
   // Arriving from a call-list row opens the order form already pointed at that
@@ -868,7 +888,7 @@ export function OrderManager({
               Columns
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start">
-              {OPTIONAL_COLUMNS.filter((c) => c.key !== "profit" || perms.canViewProfit).map((c) => (
+              {OPTIONAL_COLUMNS.filter(columnAvailable).map((c) => (
                 <DropdownMenuCheckboxItem
                   key={c.key}
                   checked={visibleCols.has(c.key)}
@@ -991,10 +1011,10 @@ export function OrderManager({
                 </div>
               ),
             },
-            ...(visibleCols.has("heldBy")
+            ...(showColumn("heldBy")
               ? [{ key: "heldBy", header: "Held by", cell: (o: OrderRow) => o.heldByName ?? "—" }]
               : []),
-            ...(visibleCols.has("courier")
+            ...(showColumn("courier")
               ? [
                   {
                     key: "courier",
@@ -1025,15 +1045,13 @@ export function OrderManager({
                 />
               ),
             },
-            // Hidden by default: only shops that run ads care, and they can
-            // turn the column on from Columns.
-            ...(campaigns.length > 0
+            // Off by default: only shops that run ads care, and they can turn
+            // the column on from Columns.
+            ...(showColumn("campaign")
               ? [
                   {
                     key: "campaign",
                     header: "Campaign",
-                    hideable: true,
-                    defaultHidden: true,
                     cell: (o: OrderRow) => (
                       <OrderCampaignCell
                         slug={slug}
@@ -1052,7 +1070,7 @@ export function OrderManager({
               align: "right",
               cell: (o) => o.totals.customerTotal.toFixed(2),
             },
-            ...(perms.canViewProfit && visibleCols.has("profit")
+            ...(showColumn("profit")
               ? [
                   {
                     key: "profit",
