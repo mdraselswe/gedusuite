@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
@@ -556,14 +557,25 @@ export function ProductManager({
                 )}
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                    <span className="font-medium wrap-break-word">{p.name}</span>
+                    <Link
+                      href={`/${slug}/products/${p.id}`}
+                      className="font-medium underline-offset-4 wrap-break-word hover:underline"
+                    >
+                      {p.name}
+                    </Link>
                     {p.category && <Badge variant="secondary">{p.category}</Badge>}
                     {p.expiryTracked && <Badge variant="outline">Expiry tracked</Badge>}
                   </div>
                   <div className="text-xs wrap-break-word text-muted-foreground">
                     {p.sku && <>SKU {p.sku} · </>}
                     {p.barcode && <>Barcode {p.barcode} · </>}
-                    Low-stock ≤ {p.lowStockThreshold}
+                    Low-stock ≤ {p.lowStockThreshold} ·{" "}
+                    <Link
+                      href={`/${slug}/products/${p.id}`}
+                      className="underline underline-offset-4"
+                    >
+                      Sales &amp; profit
+                    </Link>
                   </div>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {p.variants.map((v) => {

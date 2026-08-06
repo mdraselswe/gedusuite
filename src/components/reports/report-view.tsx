@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ResponsiveContainer,
@@ -333,7 +334,7 @@ export function ReportView({
             <CardTitle className="text-base">Best-selling</CardTitle>
           </CardHeader>
           <CardContent>
-            <ProductTable rows={best} empty="No sales yet." />
+            <ProductTable slug={slug} rows={best} empty="No sales yet." />
           </CardContent>
         </Card>
         <Card>
@@ -341,7 +342,7 @@ export function ReportView({
             <CardTitle className="text-base">Slow-moving</CardTitle>
           </CardHeader>
           <CardContent>
-            <ProductTable rows={slow} empty="No products yet." />
+            <ProductTable slug={slug} rows={slow} empty="No products yet." />
           </CardContent>
         </Card>
       </div>
@@ -476,7 +477,15 @@ export function ReportView({
   );
 }
 
-function ProductTable({ rows, empty }: { rows: Report["products"]; empty: string }) {
+function ProductTable({
+  slug,
+  rows,
+  empty,
+}: {
+  slug: string;
+  rows: Report["products"];
+  empty: string;
+}) {
   return (
     <DataTable
       rows={rows}
@@ -484,7 +493,22 @@ function ProductTable({ rows, empty }: { rows: Report["products"]; empty: string
       empty={{ icon: BarChart3, title: empty }}
       columns={
         [
-          { key: "name", header: "Product", cardTitle: true, cell: (p) => p.name },
+          {
+            key: "name",
+            header: "Product",
+            cardTitle: true,
+            wrap: true,
+            // The figures here are gross margin only; the product page breaks
+            // the same sale down to net profit.
+            cell: (p) => (
+              <Link
+                href={`/${slug}/products/${p.productId}`}
+                className="underline-offset-4 hover:underline"
+              >
+                {p.name}
+              </Link>
+            ),
+          },
           { key: "qty", header: "Qty", align: "right", cell: (p) => p.qty },
           {
             key: "revenue",
