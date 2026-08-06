@@ -10,31 +10,54 @@ const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
 export type PartnerBalance = {
   partnerId: string;
   invested: number; // sum of INVESTMENT
-  withdrawn: number; // sum of WITHDRAWAL
+  withdrawn: number; // sum of WITHDRAWAL, both kinds below
+  /**
+   * Withdrawals that took capital back out — anything not part of a profit
+   * distribution. This is money the partner no longer has in the business.
+   */
+  capitalWithdrawn: number;
+  /**
+   * Withdrawals that were a share of profit (distribution-linked). Taking
+   * profit doesn't reduce what you have invested, so this is tracked apart.
+   */
+  profitWithdrawn: number;
   customerProductSpend: number; // Purchase (inventory to resell) rows tagged to this partner
   internalPurchaseSpend: number; // InternalPurchase rows tagged to this partner
   boostSpend: number; // BoostDailySpend rows tagged to this partner (ad money from their own pocket)
   miscExpense: number; // manual PartnerTxn EXPENSE entries — rent, food, anything with no dedicated record
   expenses: number; // customerProductSpend + internalPurchaseSpend + boostSpend + miscExpense
   depositedToTreasury: number; // sum of DEPOSIT_TO_TREASURY
-  netCapital: number; // invested − withdrawn
-  remaining: number; // invested − expenses: what's left of their capital still to spend
+  netCapital: number; // invested − capitalWithdrawn
+  remaining: number; // netCapital − expenses: what's left of their capital still to spend
 };
 
 /**
  * Derive each partner's balances — never stored, always computed from the
- * underlying records. `expenses` is no longer a single manually-typed number:
- * it's auto-summed from three real sources — Purchase and InternalPurchase
- * rows tagged with `paidByPartnerId`, plus manual PartnerTxn EXPENSE entries
- * for anything with no dedicated record (rent, food, misc).
+ * underlying records. `expenses` is auto-summed from three real sources —
+ * Purchase and InternalPurchase rows tagged with `paidByPartnerId`, plus
+ * manual PartnerTxn EXPENSE entries for anything with no dedicated record.
+ *
+ * Withdrawals are split by what they took. Taking a share of profit leaves
+ * your capital where it is; taking capital back does not, and only the second
+ * belongs in "net capital" and "remaining". Both were previously ignored by
+ * `remaining` and both treated alike by `netCapital`, so a partner could
+ * withdraw their capital and the page would go on reporting it as still
+ * invested and still available to spend. `distributionId` is what tells them
+ * apart — a distribution sets it, a hand-entered withdrawal doesn't.
  */
 export async function partnerBalances(
   workspaceId: string,
 ): Promise<Map<string, PartnerBalance>> {
-  const [txnRows, purchaseRows, internalRows, boostRows] = await Promise.all([
+  const [txnRows, capitalOutRows, purchaseRows, internalRows, boostRows] = await Promise.all([
     prisma.partnerTxn.groupBy({
       by: ["partnerId", "type"],
       where: { workspaceId },
+      _sum: { amount: true },
+    }),
+    // Withdrawals with no distribution behind them: capital coming back out.
+    prisma.partnerTxn.groupBy({
+      by: ["partnerId"],
+      where: { workspaceId, type: "WITHDRAWAL", distributionId: null },
       _sum: { amount: true },
     }),
     prisma.purchase.findMany({
@@ -60,6 +83,8 @@ export async function partnerBalances(
         partnerId: id,
         invested: 0,
         withdrawn: 0,
+        capitalWithdrawn: 0,
+        profitWithdrawn: 0,
         customerProductSpend: 0,
         internalPurchaseSpend: 0,
         boostSpend: 0,
@@ -78,6 +103,9 @@ export async function partnerBalances(
     else if (r.type === "WITHDRAWAL") b.withdrawn += amt;
     else if (r.type === "EXPENSE") b.miscExpense += amt;
     else if (r.type === "DEPOSIT_TO_TREASURY") b.depositedToTreasury += amt;
+  }
+  for (const r of capitalOutRows) {
+    ensure(r.partnerId).capitalWithdrawn += Number(r._sum.amount ?? 0);
   }
   for (const p of purchaseRows) {
     const b = ensure(p.paidByPartnerId!);
@@ -103,14 +131,21 @@ export async function partnerBalances(
       b.customerProductSpend + b.internalPurchaseSpend + b.boostSpend + b.miscExpense,
     );
     b.depositedToTreasury = round2(b.depositedToTreasury);
-    b.netCapital = round2(b.invested - b.withdrawn);
-    b.remaining = round2(b.invested - b.expenses);
+    b.capitalWithdrawn = round2(b.capitalWithdrawn);
+    b.profitWithdrawn = round2(b.withdrawn - b.capitalWithdrawn);
+    b.netCapital = round2(b.invested - b.capitalWithdrawn);
+    b.remaining = round2(b.netCapital - b.expenses);
   }
   return map;
 }
 
 export type BusinessCapitalSummary = {
+  /** Everything the partners ever put in, before anything came back out. */
   totalInvested: number;
+  /** Capital taken back out — profit distributions aren't counted here. */
+  totalCapitalWithdrawn: number;
+  /** totalInvested − totalCapitalWithdrawn: what's actually still in. */
+  netInvested: number;
   customerProductSpend: number; // ALL purchases in the workspace, tagged or not
   internalPurchaseSpend: number; // ALL internal purchases in the workspace, tagged or not
   boostSpend: number; // ALL boost daily spends, whatever funded them
@@ -124,12 +159,12 @@ export type BusinessCapitalSummary = {
   treasuryFundedSpend: number;
   /** totalExpenses − treasuryFundedSpend: what partner capital actually paid for. */
   capitalSpend: number;
-  totalRemaining: number; // totalInvested − capitalSpend
+  totalRemaining: number; // netInvested − capitalSpend
 };
 
 /**
- * Whole-business rollup: total invested (every partner) vs. total actually
- * spent, with what's left of the capital.
+ * Whole-business rollup: what the partners put in, what's still in, and what's
+ * left of it once the spending is accounted for.
  *
  * The spend figures count EVERY purchase regardless of whether anyone recorded
  * who paid, so the business total never silently drops spending just because a
@@ -174,7 +209,14 @@ export async function businessCapitalSummary(
     ]);
 
   let totalInvested = 0;
-  for (const b of balances.values()) totalInvested += b.invested;
+  let totalCapitalWithdrawn = 0;
+  for (const b of balances.values()) {
+    totalInvested += b.invested;
+    totalCapitalWithdrawn += b.capitalWithdrawn;
+  }
+  // What's still in. Summing `invested` alone would go on reporting money a
+  // partner has already taken back as though it were still funding the shop.
+  const netInvested = totalInvested - totalCapitalWithdrawn;
 
   const customerProductSpend = purchases.reduce(
     (s, p) => s + Number(p.unitCost) * p.quantity,
@@ -202,6 +244,8 @@ export async function businessCapitalSummary(
 
   return {
     totalInvested: round2(totalInvested),
+    totalCapitalWithdrawn: round2(totalCapitalWithdrawn),
+    netInvested: round2(netInvested),
     customerProductSpend: round2(customerProductSpend),
     internalPurchaseSpend: round2(internalPurchaseSpend),
     boostSpend: round2(boostSpend),
@@ -209,7 +253,7 @@ export async function businessCapitalSummary(
     totalExpenses: round2(totalExpenses),
     treasuryFundedSpend: round2(treasuryFundedSpend),
     capitalSpend: round2(capitalSpend),
-    totalRemaining: round2(totalInvested - capitalSpend),
+    totalRemaining: round2(netInvested - capitalSpend),
   };
 }
 

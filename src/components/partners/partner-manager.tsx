@@ -38,6 +38,8 @@ type PartnerRow = {
   effectiveSharePercent: number;
   invested: number;
   withdrawn: number;
+  /** Capital taken back out — a profit distribution isn't counted here. */
+  capitalWithdrawn: number;
   expenses: number;
   depositedToTreasury: number;
   netCapital: number;
@@ -162,6 +164,14 @@ export function PartnerManager({
               hideable: true,
               sortValue: (p) => p.netCapital,
               cell: (p) => p.netCapital.toFixed(2),
+            },
+            {
+              key: "takenBack",
+              header: "Capital taken back",
+              align: "right",
+              hideable: true,
+              sortValue: (p) => p.capitalWithdrawn,
+              cell: (p) => (p.capitalWithdrawn > 0 ? p.capitalWithdrawn.toFixed(2) : "—"),
             },
             {
               key: "expenses",

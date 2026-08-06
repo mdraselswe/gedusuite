@@ -66,6 +66,7 @@ export default async function PartnersPage({
       effectiveSharePercent: cut?.effectivePercent ?? 0,
       invested: b?.invested ?? 0,
       withdrawn: b?.withdrawn ?? 0,
+      capitalWithdrawn: b?.capitalWithdrawn ?? 0,
       customerProductSpend: b?.customerProductSpend ?? 0,
       internalPurchaseSpend: b?.internalPurchaseSpend ?? 0,
       boostSpend: b?.boostSpend ?? 0,
@@ -238,6 +239,23 @@ export default async function PartnersPage({
             {capital.miscExpense.toFixed(2)}
           </CardContent>
         </Card>
+        {capital.totalCapitalWithdrawn > 0 && (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Capital taken back
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-xl font-bold tabular-nums">
+                {capital.totalCapitalWithdrawn.toFixed(2)}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                still in: {capital.netInvested.toFixed(2)}
+              </p>
+            </CardContent>
+          </Card>
+        )}
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
