@@ -146,6 +146,10 @@ export function moduleForSegment(segment: string, subSegment?: string): Module |
     dashboard: "dashboard",
     products: "products",
     purchases: "purchases",
+    // The spending side of the same data — money out, day by day. Gated with
+    // purchases rather than reports: it is the purchase records read a
+    // different way, and a segment missing from this map gets no gate at all.
+    expenses: "purchases",
     sales: "sales",
     customers: "customers",
     partners: "partners",

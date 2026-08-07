@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import {
+  Coins,
   LayoutDashboard,
   Package,
   ShoppingCart,
@@ -149,6 +150,14 @@ async function WorkspaceChrome({
       icon: <Megaphone className="size-4" />,
       color: "sky",
       show: can(role, "boosting", "view"),
+    }),
+    navItem({
+      href: `/${slug}/expenses`,
+      label: "Spending",
+      icon: <Coins className="size-4" />,
+      color: "orange",
+      // Same gate as the page: the spending side of purchase data.
+      show: can(role, "purchases", "view"),
     }),
     navItem({
       href: `/${slug}/internal-purchases`,
