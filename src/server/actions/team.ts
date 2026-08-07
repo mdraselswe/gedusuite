@@ -11,8 +11,11 @@ import type { Role } from "@prisma/client";
 
 const ROLES = ["OWNER", "PARTNER", "MANAGER", "STAFF"] as const;
 
-/** How long an invite link stays usable. */
-export const INVITE_TTL_DAYS = 14;
+// How long an invite link stays usable. Not exported: a "use server" file may
+// only export async functions, because everything it exports becomes a callable
+// server endpoint — and a number cannot be one. tsc has no opinion on that
+// rule, so it only surfaces at build time.
+const INVITE_TTL_DAYS = 14;
 
 const InviteSchema = z.object({
   slug: z.string().min(1),
