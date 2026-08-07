@@ -159,21 +159,44 @@ html[lang="bn"] {
   --ring: oklch(0.77 0.16 70);
 }
 
-/* ── TECH_SPEC §10: touch targets + interaction states ──────────────── */
-/* On touch devices, enforce a 44px minimum tappable size app-wide without
-   bloating dense desktop layouts. */
+/* ── Control density ────────────────────────────────────────────────
+   The base sizes are set for a mouse: h-8 controls, which are compact enough
+   to fit a working day's data on one screen. A finger needs 44px, and the
+   rule below used to jump straight there with min-height — so a button grew
+   by 12px on a phone while its text, padding and icon stayed put, and it
+   read as a stretched version of itself rather than a bigger one.
+
+   Sized rather than stretched now: the whole control scales on touch, so the
+   proportions hold. min-height stays as the floor for anything the variants
+   below don't reach. */
 @media (pointer: coarse) {
   [data-slot="button"],
   [data-slot="select-trigger"],
   button,
   a[role="button"],
-  [data-slot="input"] {
+  [data-slot="input"],
+  [data-slot="textarea"] {
     min-height: 44px;
   }
   [data-slot="button"] {
     min-width: 44px;
   }
+  /* Padding and text grow with the box. Without this a 44px-tall button keeps
+     its 10px side padding and looks like a tall thin slab. */
+  [data-slot="button"]:not([data-slot="dialog-close"]) {
+    padding-inline: 0.875rem;
+  }
+  [data-slot="input"],
+  [data-slot="select-trigger"],
+  [data-slot="textarea"] {
+    padding-inline: 0.75rem;
+    /* 16px: anything smaller and iOS zooms the page on focus, which then has
+       to be pinched back out on every single field. */
+    font-size: 1rem;
+  }
 }
+
+/* ── Interaction states ─────────────────────────────────────────────── */
 
 /* Ensure every interactive element shows a focus ring for keyboard users. */
 a:focus-visible,

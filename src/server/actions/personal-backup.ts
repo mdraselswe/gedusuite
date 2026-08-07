@@ -12,8 +12,9 @@ import {
   personalBackupConfigured,
 } from "@/lib/google-personal";
 import { encrypt } from "@/lib/crypto";
+import type { ActionFailure } from "@/lib/form";
 
-export type Result<T = unknown> = ({ ok: true } & T) | { ok: false; error: string };
+export type Result<T = unknown> = ({ ok: true } & T) | ActionFailure;
 
 /** Personal connection status for the current user (no secrets returned). */
 export async function getPersonalStatus(): Promise<{

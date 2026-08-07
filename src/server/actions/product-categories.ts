@@ -4,8 +4,9 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAccess } from "@/lib/authz";
+import { failed, type ActionFailure } from "@/lib/form";
 
-export type ActionResult = { ok: true } | { ok: false; error: string };
+export type ActionResult = { ok: true } | ActionFailure;
 
 // Baseline categories for a baby-products business (GeduShop). Seeded once
 // per workspace the first time its category list is empty — existing
@@ -55,7 +56,7 @@ const NameSchema = z.string().trim().min(1, "Category name is required").max(60)
 
 export type CreateCategoryResult =
   | { ok: true; name: string }
-  | { ok: false; error: string };
+  | ActionFailure;
 
 /** Add a custom category to the workspace's list. Products can use it right away. */
 export async function createProductCategory(
@@ -67,7 +68,7 @@ export async function createProductCategory(
 
   const parsed = NameSchema.safeParse(name);
   if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid name" };
+    return failed(parsed.error);
   }
   const clean = parsed.data;
 

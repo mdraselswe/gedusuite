@@ -60,6 +60,8 @@ import { formatStock } from "@/lib/units";
 import { cn } from "@/lib/utils";
 import { Money } from "@/components/ui/money";
 import { formatMoney } from "@/lib/money";
+import { Field } from "@/components/ui/field";
+import { MoneyInput } from "@/components/ui/money-input";
 
 type VariantOption = { id: string; label: string; stock: number };
 type OrderItem = {
@@ -1931,13 +1933,10 @@ export function OrderManager({
                       {paymentStatus === "PARTIAL" && (
                         <div className="space-y-2">
                           <Label htmlFor="o-paid">Paid so far</Label>
-                          <Input
+                          <MoneyInput
                             id="o-paid"
                             name="amountPaid"
-                            type="number"
-                            step="0.01"
                             min="0"
-                            inputMode="decimal"
                             required
                             value={amountPaid}
                             onChange={(e) => setAmountPaid(e.target.value)}
@@ -2165,19 +2164,21 @@ export function OrderManager({
                 <Money value={partPaying.totals.customerTotal} />. Enter what they have
                 handed over so far — the rest stays on the due list.
               </p>
-              <div className="space-y-2">
-                <Label htmlFor="pp-amount">Paid so far</Label>
-                <Input
-                  id="pp-amount"
-                  type="number"
-                  step="0.01"
+              <Field
+                name="amountPaid"
+                label="Paid so far"
+                required
+                hint={`Order total ${formatMoney(partPaying.totals.customerTotal)}`}
+              >
+                <MoneyInput
                   min="0"
-                  inputMode="decimal"
                   required
                   autoFocus
                   value={partPaidAmount}
                   onChange={(e) => setPartPaidAmount(e.target.value)}
                 />
+              </Field>
+              <div className="space-y-2">
                 <p className="text-xs text-muted-foreground">
                   Still due{" "}
                   <Money

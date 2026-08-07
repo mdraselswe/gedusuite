@@ -6,8 +6,9 @@ import { prisma } from "@/lib/prisma";
 import { requireAccess } from "@/lib/authz";
 import { InsufficientTreasury, assertTreasuryCovers } from "@/lib/finance";
 import { ConcurrentWrite, runSerializable } from "@/lib/tx";
+import { failed, type ActionFailure } from "@/lib/form";
 
-export type ActionResult = { ok: true } | { ok: false; error: string };
+export type ActionResult = { ok: true } | ActionFailure;
 
 const EntrySchema = z.object({
   type: z.enum(["IN", "OUT"]),
@@ -36,7 +37,7 @@ export async function createTreasuryEntry(
     date: formData.get("date"),
   });
   if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+    return failed(parsed.error);
   }
   const d = parsed.data;
 

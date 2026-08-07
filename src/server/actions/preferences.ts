@@ -3,8 +3,9 @@
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
+import { failed, type ActionFailure } from "@/lib/form";
 
-export type ActionResult = { ok: true } | { ok: false; error: string };
+export type ActionResult = { ok: true } | ActionFailure;
 
 const Schema = z.object({
   theme: z.enum(["light", "dark", "system"]),
@@ -20,7 +21,7 @@ export async function updatePreferences(formData: FormData): Promise<ActionResul
     locale: formData.get("locale"),
   });
   if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+    return failed(parsed.error);
   }
   await prisma.user.update({ where: { id: user.id }, data: parsed.data });
   return { ok: true };

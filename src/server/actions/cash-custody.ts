@@ -5,8 +5,9 @@ import { prisma } from "@/lib/prisma";
 import { requireAccess } from "@/lib/authz";
 import { computeOrderTotals } from "@/lib/orders";
 import { cashEntryNote, cashEntrySource, depositAmount } from "@/lib/order-cash";
+import type { ActionFailure } from "@/lib/form";
 
-export type ActionResult = { ok: true } | { ok: false; error: string };
+export type ActionResult = { ok: true } | ActionFailure;
 
 /**
  * Confirm a PAID order's cash has physically reached the shared treasury —

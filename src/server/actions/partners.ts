@@ -13,8 +13,9 @@ import {
 import { variantFullName } from "@/lib/variants";
 import { InsufficientTreasury, assertTreasuryCovers } from "@/lib/finance";
 import { ConcurrentWrite, runSerializable } from "@/lib/tx";
+import { failed, type ActionFailure } from "@/lib/form";
 
-export type ActionResult = { ok: true } | { ok: false; error: string };
+export type ActionResult = { ok: true } | ActionFailure;
 
 const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
 
@@ -38,7 +39,7 @@ export async function createPartner(
     notes: formData.get("notes") ?? undefined,
   });
   if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+    return failed(parsed.error);
   }
   const d = parsed.data;
 
@@ -188,7 +189,7 @@ export async function createPartnerTxn(
     fromTreasury: formData.get("fromTreasury") === "true",
   });
   if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+    return failed(parsed.error);
   }
   const d = parsed.data;
 
@@ -506,7 +507,7 @@ export async function adoptPartnerCredit(
 export async function generateAllPartnerCredits(
   slug: string,
   partnerId: string,
-): Promise<{ ok: true; created: number } | { ok: false; error: string }> {
+): Promise<{ ok: true; created: number } | ActionFailure> {
   const gate = await requireAccess(slug, "partners", "edit");
   if (!gate.ok) return gate;
   const workspaceId = gate.access.workspaceId;
@@ -556,7 +557,7 @@ export async function generateAllPartnerCredits(
 export async function adoptAllMatchedCredits(
   slug: string,
   partnerId: string,
-): Promise<{ ok: true; adopted: number } | { ok: false; error: string }> {
+): Promise<{ ok: true; adopted: number } | ActionFailure> {
   const gate = await requireAccess(slug, "partners", "edit");
   if (!gate.ok) return gate;
   const workspaceId = gate.access.workspaceId;

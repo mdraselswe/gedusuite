@@ -5,8 +5,9 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAccess } from "@/lib/authz";
 import { refreshInventoryAlerts } from "@/lib/inventory";
+import { failed, type ActionFailure } from "@/lib/form";
 
-export type ActionResult = { ok: true } | { ok: false; error: string };
+export type ActionResult = { ok: true } | ActionFailure;
 
 const Schema = z.object({
   productVariantId: z.string().min(1, "Select a product variant"),
@@ -34,7 +35,7 @@ export async function createStockAdjustment(
     date: formData.get("date"),
   });
   if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+    return failed(parsed.error);
   }
   const d = parsed.data;
 

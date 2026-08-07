@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { workspaceAccess } from "@/lib/authz";
 import { uniqueWorkspaceSlug } from "@/lib/slug";
+import { failed, type ActionFailure } from "@/lib/form";
 
 const CreateSchema = z.object({
   name: z.string().trim().min(2, "Business name is required").max(100),
@@ -14,7 +15,7 @@ const CreateSchema = z.object({
 
 export type CreateWorkspaceResult =
   | { ok: true; slug: string }
-  | { ok: false; error: string };
+  | ActionFailure;
 
 /**
  * Create a new Workspace and make the current user its OWNER.
@@ -30,7 +31,7 @@ export async function createWorkspace(
     themeColor: formData.get("themeColor") || undefined,
   });
   if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+    return failed(parsed.error);
   }
 
   const slug = await uniqueWorkspaceSlug(parsed.data.name);
@@ -49,7 +50,7 @@ export async function createWorkspace(
   return { ok: true, slug };
 }
 
-export type ActionResult = { ok: true } | { ok: false; error: string };
+export type ActionResult = { ok: true } | ActionFailure;
 
 /**
  * Rename the workspace (display name only — the slug/URL stays stable so

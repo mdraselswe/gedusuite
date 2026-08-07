@@ -7,10 +7,11 @@ import { requireAccess } from "@/lib/authz";
 import { InsufficientTreasury, assertTreasuryCovers } from "@/lib/finance";
 import { ConcurrentWrite, runSerializable } from "@/lib/tx";
 import { isOrderSource } from "@/lib/order-source";
+import { failed, type ActionFailure } from "@/lib/form";
 
 export type ActionResult =
   | { ok: true; id?: string }
-  | { ok: false; error: string };
+  | ActionFailure;
 
 const BOOST_STATUSES = ["ACTIVE", "PAUSED", "COMPLETED", "CANCELLED"] as const;
 
@@ -79,7 +80,7 @@ export async function createCampaign(
     notes: formData.get("notes") ?? undefined,
   });
   if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+    return failed(parsed.error);
   }
   const d = parsed.data;
 
@@ -120,7 +121,7 @@ export async function updateCampaign(
     notes: formData.get("notes") ?? undefined,
   });
   if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+    return failed(parsed.error);
   }
   const d = parsed.data;
 
@@ -193,7 +194,7 @@ export async function createAdSet(
     notes: formData.get("notes") ?? undefined,
   });
   if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+    return failed(parsed.error);
   }
   const d = parsed.data;
   if (d.endDate && d.endDate < d.startDate) {
@@ -240,7 +241,7 @@ export async function updateAdSet(
     notes: formData.get("notes") ?? undefined,
   });
   if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+    return failed(parsed.error);
   }
   const d = parsed.data;
   if (d.endDate && d.endDate < d.startDate) {
@@ -313,7 +314,7 @@ export async function addDailySpend(
     paidByPartnerId: formData.get("paidByPartnerId") ?? undefined,
   });
   if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+    return failed(parsed.error);
   }
   const d = parsed.data;
 

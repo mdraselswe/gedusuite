@@ -12,6 +12,9 @@ import { markCashDeposited, unmarkCashDeposited } from "@/server/actions/cash-cu
 import { createDistribution, deleteDistribution } from "@/server/actions/distributions";
 import { beyondDistributableProfit, splitByShare } from "@/lib/profit-share";
 import { Money } from "@/components/ui/money";
+import { Field, FormError, type FieldError } from "@/components/ui/field";
+import { MoneyInput } from "@/components/ui/money-input";
+import { formatMoney } from "@/lib/money";
 import { InfoNote } from "@/components/ui/info-note";
 import { toneForBalance } from "@/lib/money";
 import { Button } from "@/components/ui/button";
@@ -212,6 +215,10 @@ export function TreasuryManager({
     router.refresh();
   }
   const [type, setType] = useState("IN");
+  const [amount, setAmount] = useState("");
+  // The whole failure, kept so the field it names can turn red. A toast alone
+  // left "Amount must be > 0" hovering over a form with six inputs.
+  const [formError, setFormError] = useState<FieldError>(null);
   const [partnerId, setPartnerId] = useState(NONE);
   const [loading, setLoading] = useState(false);
 
@@ -622,18 +629,20 @@ export function TreasuryManager({
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="te-amount">Amount</Label>
-                <Input id="te-amount" name="amount" type="number" step="0.01" min="0" required />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="te-date">Date</Label>
-                <Input id="te-date" name="date" type="date" required />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="te-source">Source</Label>
-                <Input id="te-source" name="source" required placeholder="Sales, Rent, …" />
-              </div>
+              <Field name="amount" label="Amount" error={formError} required>
+                <MoneyInput
+                  min="0"
+                  required
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                />
+              </Field>
+              <Field name="date" label="Date" error={formError} required>
+                <Input type="date" required />
+              </Field>
+              <Field name="source" label="Source" error={formError} hint="What this money was for" required>
+                <Input required placeholder="Sales, Rent, …" />
+              </Field>
               <div className="space-y-2">
                 <Label>Partner (optional)</Label>
                 <Select
@@ -657,11 +666,11 @@ export function TreasuryManager({
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="te-note">Note</Label>
-                <Input id="te-note" name="note" />
-              </div>
-              <div className="sm:col-span-3">
+              <Field name="note" label="Note" error={formError}>
+                <Input />
+              </Field>
+              <div className="space-y-3 sm:col-span-3">
+                <FormError error={formError} />
                 <Button type="submit" disabled={loading}>
                   {loading ? "Saving…" : "Add entry"}
                 </Button>
@@ -751,23 +760,22 @@ export function TreasuryManager({
                 </p>
               )}
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="dist-amount">Amount to distribute</Label>
-              <Input
-                id="dist-amount"
-                name="amount"
-                type="number"
-                step="0.01"
+            <Field
+              name="amount"
+              label="Amount to distribute"
+              hint={`At most ${formatMoney(balance)} — the cash actually in the treasury`}
+              required
+            >
+              <MoneyInput
                 min="0"
                 required
                 value={distAmount}
                 onChange={(e) => setDistAmount(e.target.value)}
               />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="dist-date">Date</Label>
-              <Input id="dist-date" name="date" type="date" required defaultValue={new Date().toISOString().slice(0, 10)} />
-            </div>
+            </Field>
+            <Field name="date" label="Date" required>
+              <Input type="date" required defaultValue={new Date().toISOString().slice(0, 10)} />
+            </Field>
             <div className="space-y-2">
               <Label htmlFor="dist-note">Note (optional)</Label>
               <Input id="dist-note" name="note" />

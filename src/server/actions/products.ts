@@ -4,8 +4,9 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAccess } from "@/lib/authz";
+import { failed, type ActionFailure } from "@/lib/form";
 
-export type ActionResult = { ok: true } | { ok: false; error: string };
+export type ActionResult = { ok: true } | ActionFailure;
 
 /**
  * Why a product or variant with purchase history can't be deleted, with the
@@ -147,7 +148,7 @@ export async function createProduct(
 
   const parsed = parseProduct(formData);
   if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+    return failed(parsed.error);
   }
   const d = parsed.data;
 
@@ -189,7 +190,7 @@ export async function updateProduct(
 
   const parsed = parseProduct(formData);
   if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+    return failed(parsed.error);
   }
   const d = parsed.data;
 
@@ -291,7 +292,7 @@ export async function addVariant(
 
   const parsed = AddVariantSchema.safeParse(parseJson(formData, "variant"));
   if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+    return failed(parsed.error);
   }
   // Confirm the product belongs to this workspace before attaching a variant.
   const product = await prisma.product.findFirst({
@@ -389,7 +390,7 @@ const ImportSchema = z.array(ImportProduct).min(1, "The file has no products").m
 
 export type ImportResult =
   | { ok: true; created: number; skipped: string[] }
-  | { ok: false; error: string };
+  | ActionFailure;
 
 /**
  * Bulk-create products from a JSON array (see the import dialog for the

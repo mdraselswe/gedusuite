@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAccess } from "@/lib/authz";
 import { variantStockMap } from "@/lib/inventory";
 import { variantFullName } from "@/lib/variants";
+import type { ActionFailure } from "@/lib/form";
 
 // Async-combobox data source. Each call returns one page of matches for a
 // typed query plus an offset cursor. Offset (not keyset) pagination is fine
@@ -28,7 +29,7 @@ export type VariantOption = ComboOption & {
 };
 export type SearchResult<T> =
   | { ok: true; items: T[]; next: number | null }
-  | { ok: false; error: string };
+  | ActionFailure;
 
 /** Search product variants by product name / sku / variant sku. */
 export async function searchVariants(

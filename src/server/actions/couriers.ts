@@ -4,8 +4,9 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAccess } from "@/lib/authz";
+import { failed, type ActionFailure } from "@/lib/form";
 
-export type ActionResult = { ok: true; id?: string } | { ok: false; error: string };
+export type ActionResult = { ok: true; id?: string } | ActionFailure;
 
 // Couriers are sales plumbing rather than a module of their own, so they ride
 // on the `sales` permission and rbac.ts needs no new entry.
@@ -50,7 +51,7 @@ export async function createCourier(slug: string, input: CourierInput): Promise<
 
   const parsed = CourierSchema.safeParse(input);
   if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+    return failed(parsed.error);
   }
   const d = parsed.data;
 
@@ -95,7 +96,7 @@ export async function updateCourier(
 
   const parsed = CourierSchema.safeParse(input);
   if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+    return failed(parsed.error);
   }
   const d = parsed.data;
 

@@ -10,10 +10,11 @@ import {
   type RestoreMode,
   type SnapshotCounts,
 } from "@/lib/backup";
+import type { ActionFailure } from "@/lib/form";
 
 export type BackupResult<T = unknown> =
   | ({ ok: true } & T)
-  | { ok: false; error: string };
+  | ActionFailure;
 
 const KEEP_JSON_PAYLOADS = 10;
 

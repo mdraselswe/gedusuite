@@ -17,12 +17,13 @@ import { computeOrderTotals } from "@/lib/orders";
 import { isOrderSource } from "@/lib/order-source";
 import { quoteCourier } from "@/lib/courier";
 import type { OrderStatus, PaymentStatus } from "@prisma/client";
+import { failed, type ActionFailure } from "@/lib/form";
 
 export type ActionResult =
   // `warning` is for things worth saying that aren't worth refusing over —
   // selling something with no cost on record, for one.
   | { ok: true; id?: string; warning?: string }
-  | { ok: false; error: string };
+  | ActionFailure;
 
 const CONSUMING: readonly string[] = STOCK_CONSUMING_STATUSES;
 
@@ -265,7 +266,7 @@ export async function createOrder(
     gifts: giftsRaw,
   });
   if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+    return failed(parsed.error);
   }
   const d = parsed.data;
   const giftVariantIds = d.gifts
@@ -556,7 +557,7 @@ export async function updateOrderHeader(
     cancelledCollected: formData.get("cancelledCollected") ?? undefined,
   });
   if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+    return failed(parsed.error);
   }
   const d = parsed.data;
 
@@ -690,7 +691,7 @@ export async function updateOrderStatus(
   if (status === "CANCELLED" && cancelCosts) {
     const parsed = CancelCostSchema.safeParse(cancelCosts);
     if (!parsed.success) {
-      return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid cancellation costs" };
+      return failed(parsed.error);
     }
     costs = parsed.data;
   }
@@ -916,7 +917,7 @@ export async function createReturn(
     reason: formData.get("reason") ?? undefined,
   });
   if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+    return failed(parsed.error);
   }
   const d = parsed.data;
 
@@ -1019,7 +1020,7 @@ export async function setOrderSource(
   slug: string,
   id: string,
   source: string | null,
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<{ ok: true } | ActionFailure> {
   const gate = await requireAccess(slug, "sales", "edit");
   if (!gate.ok) return gate;
 
@@ -1056,7 +1057,7 @@ export async function setOrderCampaign(
   slug: string,
   id: string,
   boostCampaignId: string | null,
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<{ ok: true } | ActionFailure> {
   const gate = await requireAccess(slug, "sales", "edit");
   if (!gate.ok) return gate;
   const workspaceId = gate.access.workspaceId;

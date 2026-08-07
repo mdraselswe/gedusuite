@@ -3,6 +3,7 @@
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { failed, type ActionFailure } from "@/lib/form";
 
 const RegisterSchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(100),
@@ -10,7 +11,7 @@ const RegisterSchema = z.object({
   password: z.string().min(8, "Password must be at least 8 characters"),
 });
 
-export type ActionResult = { ok: true } | { ok: false; error: string };
+export type ActionResult = { ok: true } | ActionFailure;
 
 /** Create a credentials-based user account. Sign-in happens client-side after. */
 export async function registerUser(formData: FormData): Promise<ActionResult> {
@@ -20,7 +21,7 @@ export async function registerUser(formData: FormData): Promise<ActionResult> {
     password: formData.get("password"),
   });
   if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+    return failed(parsed.error);
   }
   const { name, email, password } = parsed.data;
 

@@ -4,10 +4,11 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAccess } from "@/lib/authz";
+import { failed, type ActionFailure } from "@/lib/form";
 
 export type ActionResult =
   | { ok: true; id?: string; name?: string }
-  | { ok: false; error: string };
+  | ActionFailure;
 
 const SupplierSchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(120),
@@ -36,7 +37,7 @@ export async function createSupplier(
 
   const parsed = parse(formData);
   if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+    return failed(parsed.error);
   }
   const { name, address, phone, altPhone, notes } = parsed.data;
   const created = await prisma.supplier.create({
@@ -63,7 +64,7 @@ export async function updateSupplier(
 
   const parsed = parse(formData);
   if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+    return failed(parsed.error);
   }
   const { name, address, phone, altPhone, notes } = parsed.data;
   // Scope by workspaceId so one workspace can't edit another's rows.

@@ -8,6 +8,7 @@ import { requireUser } from "@/lib/session";
 import { requireAccess } from "@/lib/authz";
 import { can } from "@/lib/rbac";
 import type { Role } from "@prisma/client";
+import { failed, type ActionFailure } from "@/lib/form";
 
 const ROLES = ["OWNER", "PARTNER", "MANAGER", "STAFF"] as const;
 
@@ -25,7 +26,7 @@ const InviteSchema = z.object({
 
 export type InviteResult =
   | { ok: true; inviteUrl: string }
-  | { ok: false; error: string };
+  | ActionFailure;
 
 /** OWNER-only: invite an email to the workspace with a role. */
 export async function inviteMember(formData: FormData): Promise<InviteResult> {
@@ -37,7 +38,7 @@ export async function inviteMember(formData: FormData): Promise<InviteResult> {
     role: formData.get("role"),
   });
   if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+    return failed(parsed.error);
   }
   const { slug, email, role } = parsed.data;
 
@@ -93,7 +94,7 @@ export async function inviteMember(formData: FormData): Promise<InviteResult> {
   };
 }
 
-export type Result = { ok: true } | { ok: false; error: string };
+export type Result = { ok: true } | ActionFailure;
 
 /** OWNER-only: change a member's role. Blocked if it would leave the workspace with no Owner. */
 export async function updateMemberRole(
@@ -167,7 +168,7 @@ export async function revokeInvite(formData: FormData): Promise<void> {
 
 export type AcceptResult =
   | { ok: true; slug: string }
-  | { ok: false; error: string };
+  | ActionFailure;
 
 /** Accept an invite as the currently logged-in user (email must match). */
 export async function acceptInvite(token: string): Promise<AcceptResult> {

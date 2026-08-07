@@ -13,8 +13,9 @@ import { isOrderSource } from "@/lib/order-source";
 import { nextOrderNo } from "@/lib/lead-order-no";
 import { dhakaInputToDate } from "@/lib/dhaka-time";
 import { computeOrderTotals } from "@/lib/orders";
+import { failed, type ActionFailure } from "@/lib/form";
 
-export type ActionResult = { ok: true } | { ok: false; error: string };
+export type ActionResult = { ok: true } | ActionFailure;
 
 // Gated on `sales` rather than a module of its own, so rbac.ts stays untouched.
 // STAFF has sales:add, which is deliberate — they're the ones making the calls.
@@ -75,7 +76,7 @@ function parseLead(formData: FormData) {
  */
 export async function nextManualOrderNo(
   slug: string,
-): Promise<{ ok: true; orderNo: string } | { ok: false; error: string }> {
+): Promise<{ ok: true; orderNo: string } | ActionFailure> {
   const gate = await requireAccess(slug, MODULE, "add");
   if (!gate.ok) return gate;
 
@@ -94,7 +95,7 @@ export async function createLead(slug: string, formData: FormData): Promise<Acti
 
   const parsed = parseLead(formData);
   if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+    return failed(parsed.error);
   }
   const d = parsed.data;
 
@@ -144,7 +145,7 @@ export async function updateLead(
 
   const parsed = parseLead(formData);
   if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+    return failed(parsed.error);
   }
   const d = parsed.data;
   const orderedAt = dhakaInputToDate(d.orderedAt);
@@ -252,7 +253,7 @@ export async function updateLeadNotes(
       internalNote: formData.get("internalNote") ?? undefined,
     });
   if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+    return failed(parsed.error);
   }
 
   const res = await prisma.orderLead.updateMany({
@@ -387,7 +388,7 @@ export async function findOrdersForLead(
   slug: string,
   leadId: string,
   query = "",
-): Promise<{ ok: true; orders: LinkCandidate[] } | { ok: false; error: string }> {
+): Promise<{ ok: true; orders: LinkCandidate[] } | ActionFailure> {
   const gate = await requireAccess(slug, MODULE, "add");
   if (!gate.ok) return gate;
   const workspaceId = gate.access.workspaceId;

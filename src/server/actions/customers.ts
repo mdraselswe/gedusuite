@@ -5,8 +5,9 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAccess } from "@/lib/authz";
 import { normalizePhone } from "@/lib/phone";
+import { failed, type ActionFailure } from "@/lib/form";
 
-export type ActionResult = { ok: true } | { ok: false; error: string };
+export type ActionResult = { ok: true } | ActionFailure;
 
 const CustomerSchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(120),
@@ -39,7 +40,7 @@ export async function createCustomer(
   if (!gate.ok) return gate;
   const parsed = parse(formData);
   if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+    return failed(parsed.error);
   }
   const d = parsed.data;
   const customer = await prisma.customer.create({
@@ -67,7 +68,7 @@ export async function updateCustomer(
   if (!gate.ok) return gate;
   const parsed = parse(formData);
   if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+    return failed(parsed.error);
   }
   const d = parsed.data;
   const res = await prisma.customer.updateMany({

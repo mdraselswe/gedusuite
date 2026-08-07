@@ -13,12 +13,13 @@ import {
 } from "@/lib/finance";
 import { ConcurrentWrite, runSerializable } from "@/lib/tx";
 import { beyondDistributableProfit, splitByShare } from "@/lib/profit-share";
+import { failed, type ActionFailure } from "@/lib/form";
 
 const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
 
 export type ActionResult =
   | { ok: true }
-  | { ok: false; error: string }
+  | ActionFailure
   // Not a refusal: something the person should see before it happens. The UI
   // puts it in front of them and re-submits with confirmBeyondProfit set.
   | { ok: false; error: string; confirm: true };
@@ -53,7 +54,7 @@ export async function createDistribution(
     confirmBeyondProfit: formData.get("confirmBeyondProfit") === "true",
   });
   if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+    return failed(parsed.error);
   }
   const d = parsed.data;
 
