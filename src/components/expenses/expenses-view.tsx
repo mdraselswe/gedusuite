@@ -1,11 +1,13 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, Coins, Wallet } from "lucide-react";
+import { ChevronLeft, ChevronRight, Coins, Wallet, X } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Field } from "@/components/ui/field";
@@ -16,6 +18,8 @@ import { StatGrid, StatTile } from "@/components/ui/stat-tile";
 import {
   spendCategoryLabel,
   spendFundingLabel,
+  summarizeRows,
+  type SpendCategory,
   type SpendRow,
   type SpendingSummary,
 } from "@/lib/spending";
@@ -67,6 +71,51 @@ export function ExpensesView({
   const router = useRouter();
   const singleDay = from === to;
 
+  // Which categories are being left out. Excluding rather than including is
+  // the right default direction: the question is nearly always "what did the
+  // day cost if you don't count the restock", and starting from everything
+  // means a fresh page shows the whole truth rather than an empty filter.
+  const [excluded, setExcluded] = useState<Set<SpendCategory>>(new Set());
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  const visible = useMemo(
+    () => summary.rows.filter((r) => !excluded.has(r.category)),
+    [summary.rows, excluded],
+  );
+  // Every figure on the page is recomputed from the rows on screen, not
+  // adjusted from the server's totals — subtracting one set of rounded numbers
+  // from another is how a breakdown stops adding up to its own total.
+  const shown = useMemo(() => summarizeRows(visible), [visible]);
+
+  // A selection only means the rows still visible: excluding a category with
+  // ticked rows inside it must not leave them counted from somewhere off-screen.
+  const selectedRows = useMemo(
+    () => visible.filter((r) => selected.has(r.id)),
+    [visible, selected],
+  );
+  const picked = useMemo(() => summarizeRows(selectedRows), [selectedRows]);
+
+  const allVisibleSelected = visible.length > 0 && selectedRows.length === visible.length;
+  const someSelected = selectedRows.length > 0;
+
+  function toggleCategory(c: SpendCategory) {
+    setExcluded((prev) => {
+      const next = new Set(prev);
+      if (next.has(c)) next.delete(c);
+      else next.add(c);
+      return next;
+    });
+  }
+
+  function toggleRow(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
   function go(nextFrom: string, nextTo: string) {
     router.push(`/${slug}/expenses?from=${nextFrom}&to=${nextTo}`);
   }
@@ -79,6 +128,31 @@ export function ExpensesView({
   ];
 
   const columns: Column<SpendRow>[] = [
+    {
+      key: "pick",
+      header: (
+        <Checkbox
+          aria-label={allVisibleSelected ? "Clear selection" : "Select all rows"}
+          checked={allVisibleSelected}
+          // Half-picked reads as neither on nor off, which is exactly what it is.
+          indeterminate={someSelected && !allVisibleSelected}
+          onCheckedChange={() =>
+            setSelected(
+              allVisibleSelected ? new Set() : new Set(visible.map((r) => r.id)),
+            )
+          }
+        />
+      ),
+      label: "Select",
+      cardFullWidth: true,
+      cell: (r) => (
+        <Checkbox
+          aria-label={`Select ${r.label}`}
+          checked={selected.has(r.id)}
+          onCheckedChange={() => toggleRow(r.id)}
+        />
+      ),
+    },
     ...(singleDay
       ? []
       : [{ key: "date", header: "Date", cell: (r: SpendRow) => r.date } as Column<SpendRow>]),
@@ -100,9 +174,7 @@ export function ExpensesView({
           <Link href={r.href} className="font-medium hover:underline">
             {r.label}
           </Link>
-          {r.detail && (
-            <div className="text-xs text-muted-foreground">{r.detail}</div>
-          )}
+          {r.detail && <div className="text-xs text-muted-foreground">{r.detail}</div>}
         </div>
       ),
     },
@@ -157,7 +229,9 @@ export function ExpensesView({
                 type="date"
                 value={from}
                 max={today}
-                onChange={(e) => e.target.value && go(e.target.value, singleDay ? e.target.value : to)}
+                onChange={(e) =>
+                  e.target.value && go(e.target.value, singleDay ? e.target.value : to)
+                }
               />
             </Field>
             {!singleDay && (
@@ -189,21 +263,62 @@ export function ExpensesView({
         </CardContent>
       </Card>
 
+      {/* Category toggles. Every category present in the range gets a chip;
+          switching one off takes it out of every figure below, so "what did
+          the day cost apart from the restock" is one click. */}
+      {summary.byCategory.length > 1 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm text-muted-foreground">Include:</span>
+          {summary.byCategory.map((c) => {
+            const off = excluded.has(c.category);
+            return (
+              <Button
+                key={c.category}
+                size="sm"
+                variant={off ? "ghost" : "secondary"}
+                onClick={() => toggleCategory(c.category)}
+                className={cn(off && "text-muted-foreground line-through")}
+                aria-pressed={!off}
+              >
+                {spendCategoryLabel[c.category]}
+                <span className="ml-1 tabular-nums opacity-70">
+                  <Money value={c.amount} bare />
+                </span>
+              </Button>
+            );
+          })}
+          {excluded.size > 0 && (
+            <Button size="sm" variant="ghost" onClick={() => setExcluded(new Set())}>
+              <X /> Show all
+            </Button>
+          )}
+        </div>
+      )}
+
       <StatGrid className="lg:grid-cols-3">
         <StatTile
-          label="Money spent"
-          value={summary.total}
+          label={excluded.size > 0 ? "Spent (filtered)" : "Money spent"}
+          value={shown.total}
           icon={<Coins />}
           color="orange"
           sub={
-            summary.rows.length === 0
-              ? "nothing recorded"
-              : `${summary.byCategory.length} categor${summary.byCategory.length === 1 ? "y" : "ies"} · ${summary.rows.length} entries`
+            visible.length === 0
+              ? "nothing to show"
+              : excluded.size > 0
+                ? `${visible.length} of ${summary.rows.length} entries shown`
+                : `${shown.byCategory.length} categor${shown.byCategory.length === 1 ? "y" : "ies"} · ${visible.length} entries`
+          }
+          footer={
+            excluded.size > 0 ? (
+              <p className="text-xs text-muted-foreground">
+                Everything together: <Money value={summary.total} />
+              </p>
+            ) : undefined
           }
         />
         <StatTile
           label="Out of the treasury"
-          value={summary.byFunding.find((f) => f.funding === "TREASURY")?.amount ?? 0}
+          value={shown.byFunding.find((f) => f.funding === "TREASURY")?.amount ?? 0}
           icon={<Wallet />}
           color="amber"
           sub="the rest came from partners, credit, or wasn't recorded"
@@ -219,10 +334,12 @@ export function ExpensesView({
         )}
       </StatGrid>
 
-      {summary.rows.length === 0 ? (
+      {visible.length === 0 ? (
         <Card>
           <CardContent className="py-8 text-center text-sm text-muted-foreground">
-            Nothing was spent {singleDay ? "on this day" : "in this range"}.
+            {summary.rows.length === 0
+              ? `Nothing was spent ${singleDay ? "on this day" : "in this range"}.`
+              : "Every category is switched off — turn one back on to see the entries."}
           </CardContent>
         </Card>
       ) : (
@@ -234,7 +351,7 @@ export function ExpensesView({
               </CardHeader>
               <CardContent>
                 <FigureList>
-                  {summary.byCategory.map((c) => (
+                  {shown.byCategory.map((c) => (
                     <FigureRow
                       key={c.category}
                       label={spendCategoryLabel[c.category]}
@@ -242,7 +359,19 @@ export function ExpensesView({
                       value={c.amount}
                     />
                   ))}
-                  <FigureRow label="Total spent" value={summary.total} total />
+                  <FigureRow
+                    label={excluded.size > 0 ? "Total shown" : "Total spent"}
+                    value={shown.total}
+                    total
+                  />
+                  {excluded.size > 0 && (
+                    <FigureRow
+                      label="Left out by the filter"
+                      value={summary.total - shown.total}
+                      tone="muted"
+                      sub
+                    />
+                  )}
                 </FigureList>
               </CardContent>
             </Card>
@@ -254,7 +383,7 @@ export function ExpensesView({
                 </CardHeader>
                 <CardContent>
                   <FigureList>
-                    {summary.byFunding.map((f) => (
+                    {shown.byFunding.map((f) => (
                       <FigureRow
                         key={f.funding}
                         label={spendFundingLabel[f.funding]}
@@ -293,12 +422,59 @@ export function ExpensesView({
           </div>
 
           <Card>
-            <CardHeader>
+            <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0">
               <CardTitle className="text-base">Every entry</CardTitle>
+              {someSelected && (
+                <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
+                  <X /> Clear {selectedRows.length} selected
+                </Button>
+              )}
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-3">
+              {/* Adding up a few rows by hand is what a phone calculator was
+                  for. Tick them and the same breakdown appears for just those. */}
+              {someSelected && (
+                <div className="rounded-lg border border-primary/30 bg-primary/5 p-3">
+                  <div className="flex flex-wrap items-baseline justify-between gap-2">
+                    <span className="text-sm font-medium">
+                      {selectedRows.length} of {visible.length} selected
+                    </span>
+                    <span className="text-xl font-semibold">
+                      <Money value={picked.total} />
+                    </span>
+                  </div>
+                  <div className="mt-2 grid gap-x-6 gap-y-1 sm:grid-cols-2">
+                    <FigureList className="text-xs">
+                      {picked.byCategory.map((c) => (
+                        <FigureRow
+                          key={c.category}
+                          label={`${spendCategoryLabel[c.category]} (${c.count})`}
+                          value={c.amount}
+                        />
+                      ))}
+                    </FigureList>
+                    <FigureList className="text-xs">
+                      {picked.byFunding.map((f) => (
+                        <FigureRow
+                          key={f.funding}
+                          label={spendFundingLabel[f.funding]}
+                          value={f.amount}
+                          tone={f.funding === "UNRECORDED" ? "muted" : "neutral"}
+                        />
+                      ))}
+                    </FigureList>
+                  </div>
+                  {picked.total !== shown.total && (
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      The other {visible.length - selectedRows.length} entr
+                      {visible.length - selectedRows.length === 1 ? "y" : "ies"} come to{" "}
+                      <Money value={shown.total - picked.total} />.
+                    </p>
+                  )}
+                </div>
+              )}
               <DataTable
-                rows={summary.rows}
+                rows={visible}
                 rowKey={(r) => r.id}
                 columns={columns}
                 empty={{ title: "Nothing spent" }}

@@ -81,14 +81,61 @@ export type PayoutRow = {
   amount: number;
 };
 
-export type SpendingSummary = {
-  rows: SpendRow[];
-  payouts: PayoutRow[];
+/** The figures any set of spend rows adds up to. */
+export type SpendTotals = {
   total: number;
   byCategory: { category: SpendCategory; amount: number; count: number }[];
   byFunding: { funding: SpendFunding; amount: number; count: number }[];
+};
+
+export type SpendingSummary = SpendTotals & {
+  rows: SpendRow[];
+  payouts: PayoutRow[];
   payoutTotal: number;
 };
+
+export const FUNDING_ORDER = ["TREASURY", "PARTNER", "CREDIT", "UNRECORDED"] as const;
+
+/**
+ * Add up a set of rows — all of them, the ones left after a category is
+ * excluded, or just the ones somebody ticked.
+ *
+ * Pure and exported so the same arithmetic runs on the server for the whole
+ * day and in the browser for a subset. Recomputing a filtered view from
+ * server-side totals would mean subtracting one set of rounded figures from
+ * another, and the breakdown would stop adding up to its own total.
+ */
+export function summarizeRows(rows: SpendRow[]): SpendTotals {
+  const group = <K extends string>(keys: readonly K[], pick: (r: SpendRow) => K) => {
+    const acc = new Map<K, { amount: number; count: number }>();
+    for (const r of rows) {
+      const k = pick(r);
+      const cur = acc.get(k) ?? { amount: 0, count: 0 };
+      cur.amount += r.amount;
+      cur.count += 1;
+      acc.set(k, cur);
+    }
+    // Fixed order, and only the keys actually present — an empty "Boosting"
+    // row on a day nobody advertised is noise.
+    return keys
+      .filter((k) => acc.has(k))
+      .map((k) => ({ key: k, amount: round2(acc.get(k)!.amount), count: acc.get(k)!.count }));
+  };
+
+  return {
+    total: round2(rows.reduce((s, r) => s + r.amount, 0)),
+    byCategory: group(SPEND_CATEGORIES, (r) => r.category).map((x) => ({
+      category: x.key,
+      amount: x.amount,
+      count: x.count,
+    })),
+    byFunding: group(FUNDING_ORDER, (r) => r.funding).map((x) => ({
+      funding: x.key,
+      amount: x.amount,
+      count: x.count,
+    })),
+  };
+}
 
 /** A purchase's funding, as one of the four mutually exclusive states. */
 function fundingOf(p: {
@@ -249,33 +296,10 @@ export async function spendingForRange(
     })),
   ].sort((a, b) => a.date.localeCompare(b.date));
 
-  const sumBy = <K extends string>(keys: readonly K[], pick: (r: SpendRow) => K) => {
-    const acc = new Map<K, { amount: number; count: number }>();
-    for (const r of rows) {
-      const k = pick(r);
-      const cur = acc.get(k) ?? { amount: 0, count: 0 };
-      cur.amount += r.amount;
-      cur.count += 1;
-      acc.set(k, cur);
-    }
-    return keys
-      .filter((k) => acc.has(k))
-      .map((k) => ({ key: k, amount: round2(acc.get(k)!.amount), count: acc.get(k)!.count }));
-  };
-
   return {
     rows,
     payouts,
-    total: round2(rows.reduce((s, r) => s + r.amount, 0)),
-    byCategory: sumBy(SPEND_CATEGORIES, (r) => r.category).map((x) => ({
-      category: x.key,
-      amount: x.amount,
-      count: x.count,
-    })),
-    byFunding: sumBy(
-      ["TREASURY", "PARTNER", "CREDIT", "UNRECORDED"] as const,
-      (r) => r.funding,
-    ).map((x) => ({ funding: x.key, amount: x.amount, count: x.count })),
+    ...summarizeRows(rows),
     payoutTotal: round2(payouts.reduce((s, p) => s + p.amount, 0)),
   };
 }
