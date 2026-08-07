@@ -31,6 +31,7 @@ import {
 import { quoteCourier } from "@/lib/courier";
 import { cn } from "@/lib/utils";
 import { Money } from "@/components/ui/money";
+import { Field } from "@/components/ui/field";
 
 export type CourierZoneRow = { id: string; name: string; rate: number };
 export type CourierRow = {
@@ -269,8 +270,7 @@ export function CourierManager({
           </DialogHeader>
           <form onSubmit={onSave} className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="cr-name">Name</Label>
+              <Field name="cr-name" label="Name" required>
                 <Input
                   id="cr-name"
                   required
@@ -278,15 +278,14 @@ export function CourierManager({
                   onChange={(e) => setDraft({ ...draft, name: e.target.value })}
                   placeholder="Steadfast, Pathao, RedX…"
                 />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="cr-notes">Notes (optional)</Label>
+              </Field>
+              <Field name="cr-notes" label="Notes (optional)">
                 <Input
                   id="cr-notes"
                   value={draft.notes}
                   onChange={(e) => setDraft({ ...draft, notes: e.target.value })}
                 />
-              </div>
+              </Field>
             </div>
 
             <div className="space-y-2">
@@ -343,8 +342,7 @@ export function CourierManager({
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="cr-base">Weight included (kg)</Label>
+              <Field name="cr-base" label="Weight included (kg)">
                 <Input
                   id="cr-base"
                   type="number"
@@ -353,7 +351,7 @@ export function CourierManager({
                   value={draft.baseWeightKg}
                   onChange={(e) => setDraft({ ...draft, baseWeightKg: e.target.value })}
                 />
-              </div>
+              </Field>
               <div className="space-y-2">
                 <Label htmlFor="cr-extra">Per extra kg</Label>
                 <Input
@@ -427,10 +425,7 @@ export function CourierManager({
                 </Select>
               </div>
               {draft.returnChargeType !== "NONE" && (
-                <div className="space-y-2">
-                  <Label htmlFor="cr-retval">
-                    {draft.returnChargeType === "FLAT" ? "Amount" : "Percent"}
-                  </Label>
+                <Field name="cr-retval" label={<>{draft.returnChargeType === "FLAT" ? "Amount" : "Percent"}</>}>
                   <Input
                     id="cr-retval"
                     type="number"
@@ -439,7 +434,7 @@ export function CourierManager({
                     value={draft.returnChargeValue}
                     onChange={(e) => setDraft({ ...draft, returnChargeValue: e.target.value })}
                   />
-                </div>
+                </Field>
               )}
             </div>
 

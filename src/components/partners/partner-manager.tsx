@@ -30,6 +30,7 @@ import {
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { Handshake } from "lucide-react";
 import { Money } from "@/components/ui/money";
+import { Field } from "@/components/ui/field";
 
 type PartnerRow = {
   id: string;
@@ -264,14 +265,12 @@ export function PartnerManager({
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="a-share">Profit share %</Label>
+            <Field name="profitSharePercent" label="Profit share %">
               <Input id="a-share" name="profitSharePercent" type="number" step="0.01" min="0" max="100" defaultValue="0" />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="a-notes">Notes</Label>
+            </Field>
+            <Field name="notes" label="Notes">
               <Input id="a-notes" name="notes" />
-            </div>
+            </Field>
             <DialogFooter>
               <Button type="submit" disabled={loading}>
                 {loading ? "Saving…" : "Add partner"}
@@ -288,8 +287,7 @@ export function PartnerManager({
             <DialogTitle>Edit {editing?.name}</DialogTitle>
           </DialogHeader>
           <form key={editing?.id ?? "new"} onSubmit={onEdit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="e-share">Profit share %</Label>
+            <Field name="profitSharePercent" label="Profit share %">
               <Input
                 id="e-share"
                 name="profitSharePercent"
@@ -299,7 +297,7 @@ export function PartnerManager({
                 max="100"
                 defaultValue={editing?.profitSharePercent ?? 0}
               />
-            </div>
+            </Field>
             <DialogFooter>
               <Button type="submit" disabled={loading}>
                 {loading ? "Saving…" : "Save"}

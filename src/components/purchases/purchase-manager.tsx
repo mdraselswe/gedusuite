@@ -44,6 +44,7 @@ import {
 } from "@/lib/last-funding-source";
 import { Columns3, MoreVertical, PackageOpen, X } from "lucide-react";
 import { Money } from "@/components/ui/money";
+import { Field, type FieldError } from "@/components/ui/field";
 
 // Local calendar date (not UTC) as a stable "today" default — must NOT depend
 // on props/state that change after mount (e.g. the newest purchase's date),
@@ -243,6 +244,9 @@ export function PurchaseManager({
   const [paidByPartnerId, setPaidByPartnerId] = useState<string>(NO_PARTNER);
   const [buyUnit, setBuyUnit] = useState<"PIECE" | "PACK">("PIECE");
   const [loading, setLoading] = useState(false);
+  // The last refusal, kept so the Field it names can show it. A toast alone
+  // left the message hovering over a form with no sign of which box it meant.
+  const [formError, setFormError] = useState<FieldError>(null);
 
   const showExpiry = variant?.expiryTracked ?? false;
   // Pack-based product: quantities/costs can be entered per packet — always
@@ -394,7 +398,12 @@ export function PurchaseManager({
     });
     if (!ok) return;
     const res = await deletePurchase(slug, id);
-    if (!res.ok) return toast.error(res.error);
+    if (!res.ok) {
+      setFormError(res);
+      if (!res.field) toast.error(res.error);
+      return;
+    }
+    setFormError(null);
     toast.success("Purchase deleted");
     router.refresh();
   }
@@ -504,18 +513,13 @@ export function PurchaseManager({
                     </Select>
                   </div>
                 )}
-                <div className="space-y-2">
-                  <Label htmlFor="date">Date</Label>
+                <Field name="date" error={formError} label="Date" required>
                   <Input id="date" name="date" type="date" required defaultValue={todayInputValue()} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="unitCost">{buyingByPack ? "Cost per packet" : "Unit cost"}</Label>
+                </Field>
+                <Field name="unitCost" error={formError} label={<>{buyingByPack ? "Cost per packet" : "Unit cost"}</>} required>
                   <Input id="unitCost" name="unitCost" type="number" step="0.01" min="0" required />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="salePrice">
-                    {buyingByPack ? "Sale price (per packet)" : "Sale price (per unit)"}
-                  </Label>
+                </Field>
+                <Field name="salePrice" error={formError} label={<>{buyingByPack ? "Sale price (per packet)" : "Sale price (per unit)"}</>}>
                   <Input
                     id="salePrice"
                     name="salePrice"
@@ -524,16 +528,14 @@ export function PurchaseManager({
                     min="0"
                     placeholder="Intended selling price — optional"
                   />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="quantity">{buyingByPack ? "Quantity (packets)" : "Quantity"}</Label>
+                </Field>
+                <Field name="quantity" error={formError} label={<>{buyingByPack ? "Quantity (packets)" : "Quantity"}</>} required>
                   <Input id="quantity" name="quantity" type="number" min="1" required />
-                </div>
+                </Field>
                 {showExpiry && (
-                  <div className="space-y-2">
-                    <Label htmlFor="expiryDate">Expiry date</Label>
+                  <Field name="expiryDate" error={formError} label="Expiry date">
                     <Input id="expiryDate" name="expiryDate" type="date" />
-                  </div>
+                  </Field>
                 )}
                 <div className="sm:col-span-2">
                   <Button type="submit" disabled={loading}>
@@ -851,8 +853,7 @@ export function PurchaseManager({
                   </Select>
                 </div>
               )}
-              <div className="space-y-2">
-                <Label htmlFor="edit-date">Date</Label>
+              <Field name="date" error={formError} label="Date" required>
                 <Input
                   id="edit-date"
                   name="date"
@@ -860,9 +861,8 @@ export function PurchaseManager({
                   required
                   defaultValue={editing.date}
                 />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-unitCost">{editByPack ? "Cost per packet" : "Unit cost"}</Label>
+              </Field>
+              <Field name="edit-unitCost" error={formError} label={<>{editByPack ? "Cost per packet" : "Unit cost"}</>} required>
                 <Input
                   id="edit-unitCost"
                   type="number"
@@ -872,11 +872,8 @@ export function PurchaseManager({
                   value={editCost}
                   onChange={(e) => setEditCost(e.target.value)}
                 />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-salePrice">
-                  {editByPack ? "Sale price (per packet)" : "Sale price (per unit)"}
-                </Label>
+              </Field>
+              <Field name="edit-salePrice" error={formError} label={<>{editByPack ? "Sale price (per packet)" : "Sale price (per unit)"}</>}>
                 <Input
                   id="edit-salePrice"
                   type="number"
@@ -886,11 +883,8 @@ export function PurchaseManager({
                   value={editSale}
                   onChange={(e) => setEditSale(e.target.value)}
                 />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-quantity">
-                  {editByPack ? "Quantity (packets)" : "Quantity"}
-                </Label>
+              </Field>
+              <Field name="edit-quantity" error={formError} label={<>{editByPack ? "Quantity (packets)" : "Quantity"}</>} required>
                 <Input
                   id="edit-quantity"
                   type="number"
@@ -900,17 +894,16 @@ export function PurchaseManager({
                   value={editQty}
                   onChange={(e) => setEditQty(e.target.value)}
                 />
-              </div>
+              </Field>
               {editShowExpiry && (
-                <div className="space-y-2">
-                  <Label htmlFor="edit-expiryDate">Expiry date</Label>
+                <Field name="expiryDate" error={formError} label="Expiry date">
                   <Input
                     id="edit-expiryDate"
                     name="expiryDate"
                     type="date"
                     defaultValue={editing.expiryDate ?? ""}
                   />
-                </div>
+                </Field>
               )}
               <DialogFooter className="sm:col-span-2">
                 <Button type="submit" disabled={editLoading}>

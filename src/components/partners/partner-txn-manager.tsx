@@ -23,6 +23,7 @@ import type { DerivedKind } from "@/lib/partner-credit";
 import { MANUAL, SOURCE_OPTIONS, totalsByType } from "@/lib/partner-ledger-filters";
 import { ArrowLeftRight } from "lucide-react";
 import { Money } from "@/components/ui/money";
+import { Field, FormError, type FieldError } from "@/components/ui/field";
 
 type Txn = {
   id: string;
@@ -62,6 +63,9 @@ export function PartnerTxnManager({
   const [type, setType] = useState("INVESTMENT");
   const [fromTreasury, setFromTreasury] = useState(false);
   const [loading, setLoading] = useState(false);
+  // The last refusal, kept so the Field it names can show it. A toast alone
+  // left the message hovering over a form with no sign of which box it meant.
+  const [formError, setFormError] = useState<FieldError>(null);
   const filters: FilterDef<Txn>[] = [
     {
       key: "type",
@@ -103,7 +107,12 @@ export function PartnerTxnManager({
     fd.set("type", type);
     const res = await createPartnerTxn(slug, fd);
     setLoading(false);
-    if (!res.ok) return toast.error(res.error);
+    if (!res.ok) {
+      setFormError(res);
+      if (!res.field) toast.error(res.error);
+      return;
+    }
+    setFormError(null);
     toast.success("Transaction added");
     (e.target as HTMLFormElement).reset();
     // form.reset() only clears the native inputs; the tick is React state.
@@ -120,7 +129,12 @@ export function PartnerTxnManager({
     });
     if (!ok) return;
     const res = await deletePartnerTxn(slug, id);
-    if (!res.ok) return toast.error(res.error);
+    if (!res.ok) {
+      setFormError(res);
+      if (!res.field) toast.error(res.error);
+      return;
+    }
+    setFormError(null);
     toast.success("Transaction deleted");
     router.refresh();
   }
@@ -157,18 +171,15 @@ export function PartnerTxnManager({
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="t-amount">Amount</Label>
+              <Field name="amount" error={formError} label="Amount" required>
                 <Input id="t-amount" name="amount" type="number" step="0.01" min="0" required />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="t-date">Date</Label>
+              </Field>
+              <Field name="date" error={formError} label="Date" required>
                 <Input id="t-date" name="date" type="date" required />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="t-purpose">Purpose</Label>
+              </Field>
+              <Field name="purpose" error={formError} label="Purpose">
                 <Input id="t-purpose" name="purpose" />
-              </div>
+              </Field>
               {/* Only a withdrawal can come out of the treasury. An investment
                   and a deposit both put money in, and a manual expense is the
                   partner's own money by definition — that's what makes it
@@ -193,6 +204,7 @@ export function PartnerTxnManager({
               )}
               <input type="hidden" name="fromTreasury" value={String(type === "WITHDRAWAL" && fromTreasury)} />
               <div className="sm:col-span-4">
+                <FormError error={formError} />
                 <Button type="submit" disabled={loading}>
                   {loading ? "Saving…" : "Add transaction"}
                 </Button>

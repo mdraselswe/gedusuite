@@ -23,6 +23,7 @@ import { DataTable, type Column } from "@/components/ui/data-table";
 import { useFilterBar, type FilterDef } from "@/components/ui/filter-bar";
 import { Users, AlertTriangle } from "lucide-react";
 import { Money } from "@/components/ui/money";
+import { Field, FormError, type FieldError } from "@/components/ui/field";
 
 type Customer = {
   id: string;
@@ -49,6 +50,9 @@ export function CustomerManager({
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Customer | null>(null);
   const [loading, setLoading] = useState(false);
+  // The last refusal, kept so the Field it names can show it. A toast alone
+  // left the message hovering over a form with no sign of which box it meant.
+  const [formError, setFormError] = useState<FieldError>(null);
   const [query, setQuery] = useState("");
   const [duesOnly, setDuesOnly] = useState(false);
   const [phoneMatch, setPhoneMatch] = useState<{ id: string; name: string } | null>(null);
@@ -149,7 +153,12 @@ export function CustomerManager({
     });
     if (!ok) return;
     const res = await deleteCustomer(slug, c.id);
-    if (!res.ok) return toast.error(res.error);
+    if (!res.ok) {
+      setFormError(res);
+      if (!res.field) toast.error(res.error);
+      return;
+    }
+    setFormError(null);
     toast.success("Customer deleted");
     router.refresh();
   }
@@ -301,10 +310,9 @@ export function CustomerManager({
             <DialogTitle>{editing ? "Edit customer" : "Add customer"}</DialogTitle>
           </DialogHeader>
           <form key={editing?.id ?? "new"} onSubmit={onSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="c-name">Name</Label>
+            <Field name="name" error={formError} label="Name" required>
               <Input id="c-name" name="name" required defaultValue={editing?.name ?? ""} />
-            </div>
+            </Field>
             <div className="space-y-2">
               <Label htmlFor="c-phone">Phone</Label>
               <Input
@@ -331,14 +339,13 @@ export function CustomerManager({
               <Label htmlFor="c-alt-phone">Alternate phone</Label>
               <Input id="c-alt-phone" name="altPhone" defaultValue={editing?.altPhone ?? ""} />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="c-address">Address</Label>
+            <Field name="address" error={formError} label="Address">
               <Input id="c-address" name="address" defaultValue={editing?.address ?? ""} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="c-notes">Notes</Label>
+            </Field>
+            <Field name="notes" error={formError} label="Notes">
               <Textarea id="c-notes" name="notes" defaultValue={editing?.notes ?? ""} />
-            </div>
+            </Field>
+            <FormError error={formError} />
             <DialogFooter>
               <Button type="submit" disabled={loading}>
                 {loading ? "Saving…" : "Save"}

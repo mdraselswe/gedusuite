@@ -30,6 +30,7 @@ import { BoostStatusBadge } from "@/components/boosting/boost-status-badge";
 import { ORDER_SOURCES, ORDER_SOURCE_LABEL, orderSourceLabel } from "@/lib/order-source";
 import { cn } from "@/lib/utils";
 import { Money } from "@/components/ui/money";
+import { Field, FormError, type FieldError } from "@/components/ui/field";
 
 type CampaignRow = {
   id: string;
@@ -76,6 +77,9 @@ export function BoostingManager({
   const [status, setStatus] = useState<string>("ACTIVE");
   const [channel, setChannel] = useState<string>(ANY_CHANNEL);
   const [loading, setLoading] = useState(false);
+  // The last refusal, kept so the Field it names can show it. A toast alone
+  // left the message hovering over a form with no sign of which box it meant.
+  const [formError, setFormError] = useState<FieldError>(null);
   const filters: FilterDef<CampaignRow>[] = [
     {
       key: "status",
@@ -134,7 +138,12 @@ export function BoostingManager({
     fd.set("channel", channel === ANY_CHANNEL ? "" : channel);
     const res = await createCampaign(slug, fd);
     setLoading(false);
-    if (!res.ok) return toast.error(res.error);
+    if (!res.ok) {
+      setFormError(res);
+      if (!res.field) toast.error(res.error);
+      return;
+    }
+    setFormError(null);
     toast.success("Campaign created");
     setOpen(false);
     setStatus("ACTIVE");
@@ -153,7 +162,12 @@ export function BoostingManager({
     });
     if (!ok) return;
     const res = await deleteCampaign(slug, c.id);
-    if (!res.ok) return toast.error(res.error);
+    if (!res.ok) {
+      setFormError(res);
+      if (!res.field) toast.error(res.error);
+      return;
+    }
+    setFormError(null);
     toast.success("Campaign deleted");
     router.refresh();
   }
@@ -351,14 +365,12 @@ export function BoostingManager({
             <DialogTitle>New campaign</DialogTitle>
           </DialogHeader>
           <form onSubmit={onSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="bc-name">Campaign name</Label>
+            <Field name="name" error={formError} label="Campaign name" required>
               <Input id="bc-name" name="name" required placeholder="e.g. Eid collection boost" />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="bc-objective">Objective (optional)</Label>
+            </Field>
+            <Field name="objective" error={formError} label="Objective (optional)">
               <Input id="bc-objective" name="objective" placeholder="Message, Engagement, Sales…" />
-            </div>
+            </Field>
             <div className="space-y-2">
               <Label>Channel</Label>
               <Select
@@ -403,10 +415,10 @@ export function BoostingManager({
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="bc-notes">Notes (optional)</Label>
+            <Field name="notes" error={formError} label="Notes (optional)">
               <Input id="bc-notes" name="notes" />
-            </div>
+            </Field>
+            <FormError error={formError} />
             <DialogFooter>
               <Button type="submit" disabled={loading}>
                 {loading ? "Creating…" : "Create campaign"}

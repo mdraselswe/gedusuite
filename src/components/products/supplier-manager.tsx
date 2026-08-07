@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/dialog";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { Truck } from "lucide-react";
+import { Field, FormError, type FieldError } from "@/components/ui/field";
 
 type Supplier = {
   id: string;
@@ -47,6 +48,9 @@ export function SupplierManager({
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Supplier | null>(null);
   const [loading, setLoading] = useState(false);
+  // The last refusal, kept so the Field it names can show it. A toast alone
+  // left the message hovering over a form with no sign of which box it meant.
+  const [formError, setFormError] = useState<FieldError>(null);
   const [query, setQuery] = useState("");
 
   const shown = suppliers.filter((s) => {
@@ -175,26 +179,22 @@ export function SupplierManager({
             <DialogTitle>{editing ? "Edit supplier" : "Add supplier"}</DialogTitle>
           </DialogHeader>
           <form key={editing?.id ?? "new"} onSubmit={onSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="s-name">Name</Label>
+            <Field name="name" error={formError} label="Name" required>
               <Input id="s-name" name="name" required defaultValue={editing?.name ?? ""} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="s-phone">Phone</Label>
+            </Field>
+            <Field name="phone" error={formError} label="Phone">
               <Input id="s-phone" name="phone" defaultValue={editing?.phone ?? ""} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="s-alt-phone">Alternate phone</Label>
+            </Field>
+            <Field name="altPhone" error={formError} label="Alternate phone">
               <Input id="s-alt-phone" name="altPhone" defaultValue={editing?.altPhone ?? ""} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="s-address">Address</Label>
+            </Field>
+            <Field name="address" error={formError} label="Address">
               <Input id="s-address" name="address" defaultValue={editing?.address ?? ""} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="s-notes">Notes</Label>
+            </Field>
+            <Field name="notes" error={formError} label="Notes">
               <Textarea id="s-notes" name="notes" defaultValue={editing?.notes ?? ""} />
-            </div>
+            </Field>
+            <FormError error={formError} />
             <DialogFooter>
               <Button type="submit" disabled={loading}>
                 {loading ? "Saving…" : "Save"}

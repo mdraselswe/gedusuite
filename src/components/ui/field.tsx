@@ -49,17 +49,30 @@ export function Field({
   children: React.ReactNode;
 }) {
   const reactId = React.useId();
-  const id = name ? `f-${name}-${reactId}` : reactId;
+  // The control's own id wins. Generating one and pointing the label at it
+  // while the input kept the id it already had would leave htmlFor aiming at
+  // nothing — the label would stop focusing its own box, which is exactly the
+  // thing a label is for.
+  const childId =
+    React.isValidElement(children)
+      ? ((children.props as Record<string, unknown>).id as string | undefined)
+      : undefined;
+  const id = childId ?? (name ? `f-${name}-${reactId}` : reactId);
   const mine = isFieldError(error, name);
   const describedBy = mine ? `${id}-error` : hint ? `${id}-hint` : undefined;
 
   // The control gets its id and aria wiring without every caller repeating it.
   // Only for a single element child — anything else (a Select with a trigger,
   // a composite picker) keeps its own arrangement and just gets the label.
+  //
+  // `name` is deliberately NOT passed down. A control without one is left
+  // without one: an unnamed input is absent from FormData on purpose — its
+  // value is set by the submit handler — and quietly giving it a name here
+  // would add a field to every one of those forms. The Field's own `name` is
+  // for matching an error to a box and nothing else.
   const control = React.isValidElement(children)
     ? React.cloneElement(children as React.ReactElement<Record<string, unknown>>, {
         id: (children.props as Record<string, unknown>).id ?? id,
-        name: (children.props as Record<string, unknown>).name ?? name,
         "aria-invalid": mine || undefined,
         "aria-describedby": describedBy,
       })

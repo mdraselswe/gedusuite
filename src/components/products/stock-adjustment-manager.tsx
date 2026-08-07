@@ -25,6 +25,7 @@ import { searchVariants, type VariantOption } from "@/server/actions/search";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { useFilterBar, type FilterDef } from "@/components/ui/filter-bar";
 import { ClipboardList } from "lucide-react";
+import { Field, FormError, type FieldError } from "@/components/ui/field";
 
 type Adjustment = {
   id: string;
@@ -59,6 +60,9 @@ export function StockAdjustmentManager({
   const [type, setType] = useState("DAMAGED");
   const [direction, setDirection] = useState("REMOVE");
   const [loading, setLoading] = useState(false);
+  // The last refusal, kept so the Field it names can show it. A toast alone
+  // left the message hovering over a form with no sign of which box it meant.
+  const [formError, setFormError] = useState<FieldError>(null);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -70,7 +74,12 @@ export function StockAdjustmentManager({
     fd.set("direction", type === "CORRECTION" ? direction : "REMOVE");
     const res = await createStockAdjustment(slug, fd);
     setLoading(false);
-    if (!res.ok) return toast.error(res.error);
+    if (!res.ok) {
+      setFormError(res);
+      if (!res.field) toast.error(res.error);
+      return;
+    }
+    setFormError(null);
     toast.success("Adjustment recorded");
     (e.target as HTMLFormElement).reset();
     setVariant(null);
@@ -86,7 +95,12 @@ export function StockAdjustmentManager({
     });
     if (!ok) return;
     const res = await deleteStockAdjustment(slug, id);
-    if (!res.ok) return toast.error(res.error);
+    if (!res.ok) {
+      setFormError(res);
+      if (!res.field) toast.error(res.error);
+      return;
+    }
+    setFormError(null);
     toast.success("Deleted");
     router.refresh();
   }
@@ -191,19 +205,18 @@ export function StockAdjustmentManager({
                     </Select>
                   </div>
                 )}
-                <div className="space-y-2">
-                  <Label htmlFor="sa-qty">Quantity</Label>
+                <Field name="quantity" error={formError} label="Quantity" required>
                   <Input id="sa-qty" name="quantity" type="number" min="1" required />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="sa-date">Date</Label>
+                </Field>
+                <Field name="date" error={formError} label="Date" required>
                   <Input id="sa-date" name="date" type="date" required />
-                </div>
+                </Field>
                 <div className="space-y-2 sm:col-span-2">
                   <Label htmlFor="sa-reason">Reason</Label>
                   <Input id="sa-reason" name="reason" />
                 </div>
                 <div className="sm:col-span-2">
+                  <FormError error={formError} />
                   <Button type="submit" disabled={loading}>
                     {loading ? "Saving…" : "Record adjustment"}
                   </Button>

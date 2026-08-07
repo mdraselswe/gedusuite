@@ -1615,10 +1615,9 @@ export function OrderManager({
                         emptyText="No customers"
                       />
                     </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="o-date">Date</Label>
+                    <Field name="date" label="Date" required>
                       <Input id="o-date" name="date" type="date" required defaultValue={todayInputValue()} />
-                    </div>
+                    </Field>
                     <div className="space-y-2">
                       <Label>Status</Label>
                       <Select value={status} onValueChange={(v) => setStatus(v ?? "PENDING")}>
@@ -1684,8 +1683,7 @@ export function OrderManager({
                           </SelectContent>
                         </Select>
                       </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="o-delivery">Charge from customer</Label>
+                      <Field name="deliveryCharge" label="Charge from customer">
                         <Input
                           id="o-delivery"
                           name="deliveryCharge"
@@ -1696,7 +1694,7 @@ export function OrderManager({
                           value={deliveryCharge}
                           onChange={(e) => setDeliveryCharge(e.target.value)}
                         />
-                      </div>
+                      </Field>
                       {deliveryType === "COURIER" && couriers.length > 0 && (
                         <>
                           <div className="space-y-2">
@@ -1974,15 +1972,14 @@ export function OrderManager({
                   </div>
                 </section>
 
-                <div className="space-y-2">
-                  <Label htmlFor="o-notes">Notes</Label>
+                <Field name="notes" label="Notes">
                   <Textarea
                     id="o-notes"
                     name="notes"
                     className="min-h-20"
                     placeholder="Courier note, payment note, or special instruction"
                   />
-                </div>
+                </Field>
               </div>
 
               <div className="shrink-0 border-t bg-background/95 p-4 backdrop-blur">
@@ -2022,24 +2019,20 @@ export function OrderManager({
             <DialogTitle>New customer</DialogTitle>
           </DialogHeader>
           <form onSubmit={onCreateCustomer} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="nc-name">Name</Label>
+            <Field name="name" label="Name" required>
               <Input id="nc-name" name="name" required autoFocus />
-            </div>
+            </Field>
             <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label htmlFor="nc-phone">Phone</Label>
+              <Field name="phone" label="Phone">
                 <Input id="nc-phone" name="phone" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="nc-alt-phone">Alt phone</Label>
+              </Field>
+              <Field name="altPhone" label="Alt phone">
                 <Input id="nc-alt-phone" name="altPhone" />
-              </div>
+              </Field>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="nc-address">Address</Label>
+            <Field name="address" label="Address">
               <Input id="nc-address" name="address" />
-            </div>
+            </Field>
             <DialogFooter>
               <Button type="submit" disabled={newCustomerSaving}>
                 {newCustomerSaving ? "Saving…" : "Add & select"}
@@ -2243,15 +2236,13 @@ export function OrderManager({
                   <Label htmlFor="r-qty">Quantity</Label>
                   <Input id="r-qty" name="quantity" type="number" min="1" required defaultValue="1" />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="r-refund">Refund amount</Label>
+                <Field name="refundAmount" label="Refund amount">
                   <Input id="r-refund" name="refundAmount" type="number" step="0.01" min="0" defaultValue="0" />
-                </div>
+                </Field>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="r-reason">Reason</Label>
+              <Field name="reason" label="Reason">
                 <Input id="r-reason" name="reason" />
-              </div>
+              </Field>
               <DialogFooter>
                 <Button type="submit">Record return</Button>
               </DialogFooter>
@@ -2285,10 +2276,9 @@ export function OrderManager({
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <Label htmlFor="eo-date">Date</Label>
+                <Field name="date" label="Date" required>
                   <Input id="eo-date" name="date" type="date" required defaultValue={editOrder.date} />
-                </div>
+                </Field>
                 <div className="space-y-2">
                   <Label>Delivery type</Label>
                   <Select value={editDeliveryType} onValueChange={(v) => setEditDeliveryType(v ?? "SELF")}>
@@ -2303,8 +2293,7 @@ export function OrderManager({
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <Label htmlFor="eo-charge">Delivery charge (customer pays)</Label>
+                <Field name="deliveryCharge" label="Delivery charge (customer pays)" required>
                   <Input
                     id="eo-charge"
                     name="deliveryCharge"
@@ -2314,9 +2303,8 @@ export function OrderManager({
                     required
                     defaultValue={editOrder.deliveryCharge}
                   />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="eo-cost">Courier cost (actual)</Label>
+                </Field>
+                <Field name="deliveryCost" label="Courier cost (actual)">
                   <Input
                     id="eo-cost"
                     name="deliveryCost"
@@ -2330,7 +2318,7 @@ export function OrderManager({
                     }
                     defaultValue={editOrder.deliveryCost ?? ""}
                   />
-                </div>
+                </Field>
               </div>
 
               {/* Courier, zone and weight are editable here so an order that
@@ -2395,8 +2383,7 @@ export function OrderManager({
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="eo-weight">Weight (kg)</Label>
+                  <Field name="weightKg" label="Weight (kg)">
                     <Input
                       id="eo-weight"
                       name="weightKg"
@@ -2407,7 +2394,7 @@ export function OrderManager({
                       value={editWeightKg}
                       onChange={(e) => setEditWeightKg(e.target.value)}
                     />
-                  </div>
+                  </Field>
                   <input
                     type="hidden"
                     name="courierId"
@@ -2464,8 +2451,7 @@ export function OrderManager({
                   delivery still hands money over — the one number the cancel
                   dialog asks for that nothing else can recover. */}
               {editOrder.status === "CANCELLED" && (
-                <div className="space-y-2">
-                  <Label htmlFor="eo-collected">Collected on a partial delivery</Label>
+                <Field name="cancelledCollected" label="Collected on a partial delivery">
                   <Input
                     id="eo-collected"
                     name="cancelledCollected"
@@ -2474,7 +2460,7 @@ export function OrderManager({
                     min="0"
                     defaultValue={editOrder.cancelledCollected}
                   />
-                </div>
+                </Field>
               )}
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
@@ -2492,8 +2478,7 @@ export function OrderManager({
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="eo-discount">Order discount</Label>
+                <Field name="discount" label="Order discount" required>
                   <Input
                     id="eo-discount"
                     name="discount"
@@ -2503,7 +2488,7 @@ export function OrderManager({
                     required
                     defaultValue={editOrder.discount}
                   />
-                </div>
+                </Field>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <PackagingCostField

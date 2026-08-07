@@ -776,10 +776,9 @@ export function TreasuryManager({
             <Field name="date" label="Date" required>
               <Input type="date" required defaultValue={new Date().toISOString().slice(0, 10)} />
             </Field>
-            <div className="space-y-2">
-              <Label htmlFor="dist-note">Note (optional)</Label>
+            <Field name="note" label="Note (optional)">
               <Input id="dist-note" name="note" />
-            </div>
+            </Field>
             {distAmountNum > 0 && (
               <div className="rounded-md bg-muted p-3 text-sm">
                 <div className="mb-2 font-medium">

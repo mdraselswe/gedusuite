@@ -17,6 +17,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Field } from "@/components/ui/field";
 
 export function DangerZone({ slug, workspaceName }: { slug: string; workspaceName: string }) {
   const router = useRouter();
@@ -68,10 +69,7 @@ export function DangerZone({ slug, workspaceName }: { slug: string; workspaceNam
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={onDelete} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="dz-confirm">
-                Type <span className="font-semibold">{workspaceName}</span> to confirm
-              </Label>
+            <Field name="dz-confirm" label={<>Type <span className="font-semibold">{workspaceName}</span> to confirm</>}>
               <Input
                 id="dz-confirm"
                 value={confirmName}
@@ -79,7 +77,7 @@ export function DangerZone({ slug, workspaceName }: { slug: string; workspaceNam
                 placeholder={workspaceName}
                 autoComplete="off"
               />
-            </div>
+            </Field>
             <DialogFooter className="gap-2">
               <Button type="button" variant="outline" onClick={() => setOpen(false)}>
                 Cancel

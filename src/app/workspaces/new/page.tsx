@@ -15,6 +15,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Field } from "@/components/ui/field";
 
 export default function NewWorkspacePage() {
   const router = useRouter();
@@ -48,14 +49,12 @@ export default function NewWorkspacePage() {
         </CardHeader>
         <CardContent>
           <form onSubmit={onSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="name">Business name</Label>
+            <Field name="name" label="Business name" required>
               <Input id="name" name="name" required placeholder="e.g. GeduShop" />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="themeColor">Theme color (optional)</Label>
+            </Field>
+            <Field name="themeColor" label="Theme color (optional)">
               <Input id="themeColor" name="themeColor" placeholder="#4f46e5" />
-            </div>
+            </Field>
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? "Creating…" : "Create workspace"}
             </Button>

@@ -41,6 +41,7 @@ import { useFilterBar, type FilterDef } from "@/components/ui/filter-bar";
 import { formatStock } from "@/lib/units";
 import { Package } from "lucide-react";
 import { formatMoney as money } from "@/lib/money";
+import { Field } from "@/components/ui/field";
 
 const ADD_NEW_CATEGORY = "__add_new__";
 
@@ -666,10 +667,9 @@ export function ProductManager({
             <DialogTitle>{editing ? "Edit product" : "Add product"}</DialogTitle>
           </DialogHeader>
           <form onSubmit={onSubmitProduct} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="p-name">Name</Label>
+            <Field name="p-name" label="Name" required>
               <Input id="p-name" value={name} onChange={(e) => setName(e.target.value)} required />
-            </div>
+            </Field>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label>Category</Label>
@@ -701,8 +701,7 @@ export function ProductManager({
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="p-threshold">Low-stock threshold</Label>
+              <Field name="p-threshold" label="Low-stock threshold">
                 <Input
                   id="p-threshold"
                   type="number"
@@ -710,7 +709,7 @@ export function ProductManager({
                   value={threshold}
                   onChange={(e) => setThreshold(e.target.value)}
                 />
-              </div>
+              </Field>
               <SkuBuilder
                 // Remounts per dialog opening, so the suggested number and
                 // prefix are recomputed for each product rather than carried
@@ -724,10 +723,9 @@ export function ProductManager({
                 // Three controls plus a preview don't fit a half-width cell.
                 className="sm:col-span-2"
               />
-              <div className="space-y-2">
-                <Label htmlFor="p-barcode">Barcode</Label>
+              <Field name="p-barcode" label="Barcode">
                 <Input id="p-barcode" value={barcode} onChange={(e) => setBarcode(e.target.value)} />
-              </div>
+              </Field>
               <div className="space-y-2">
                 <Label htmlFor="p-weight">Shipping weight (grams)</Label>
                 <Input
@@ -816,8 +814,7 @@ export function ProductManager({
                     onChange={(e) => updateDraft(0, { salePrice: e.target.value })}
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="p-cost">Cost</Label>
+                <Field name="p-cost" label="Cost">
                   <Input
                     id="p-cost"
                     type="number"
@@ -827,7 +824,7 @@ export function ProductManager({
                     value={draftVariants[0]?.unitCost ?? ""}
                     onChange={(e) => updateDraft(0, { unitCost: e.target.value })}
                   />
-                </div>
+                </Field>
                 <p className="col-span-2 text-xs text-muted-foreground">
                   Used as the default price when buying or selling this product. Leave blank to fill
                   it in at purchase/sale time.
@@ -1066,8 +1063,7 @@ export function ProductManager({
             <DialogTitle>Add category</DialogTitle>
           </DialogHeader>
           <form onSubmit={onCreateCategory} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="new-cat-name">Name</Label>
+            <Field name="new-cat-name" label="Name" required>
               <Input
                 id="new-cat-name"
                 value={newCategoryName}
@@ -1075,7 +1071,7 @@ export function ProductManager({
                 autoFocus
                 required
               />
-            </div>
+            </Field>
             <DialogFooter>
               <Button type="submit" disabled={categorySaving}>
                 {categorySaving ? "Saving…" : "Add category"}

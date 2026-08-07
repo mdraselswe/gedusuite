@@ -38,6 +38,7 @@ import { cn } from "@/lib/utils";
 import { roasVerdict, type CampaignResult } from "@/lib/boost-results";
 import { formatMoney as money } from "@/lib/money";
 import { Money } from "@/components/ui/money";
+import { Field } from "@/components/ui/field";
 
 type Spend = {
   id: string;
@@ -358,8 +359,7 @@ function ResultsCard({
 function AdSetFormFields({ adSet }: { adSet?: AdSet }) {
   return (
     <>
-      <div className="space-y-2">
-        <Label htmlFor="as-name">Ad set name</Label>
+      <Field name="name" label="Ad set name" required>
         <Input
           id="as-name"
           name="name"
@@ -367,10 +367,9 @@ function AdSetFormFields({ adSet }: { adSet?: AdSet }) {
           defaultValue={adSet?.name}
           placeholder="e.g. Dhaka 25-40 women"
         />
-      </div>
+      </Field>
       <div className="grid gap-3 sm:grid-cols-2">
-        <div className="space-y-2">
-          <Label htmlFor="as-start">Start date</Label>
+        <Field name="startDate" label="Start date" required>
           <Input
             id="as-start"
             name="startDate"
@@ -378,14 +377,12 @@ function AdSetFormFields({ adSet }: { adSet?: AdSet }) {
             required
             defaultValue={adSet?.startDate ?? todayLocal()}
           />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="as-end">End date (optional)</Label>
+        </Field>
+        <Field name="endDate" label="End date (optional)">
           <Input id="as-end" name="endDate" type="date" defaultValue={adSet?.endDate ?? ""} />
-        </div>
+        </Field>
       </div>
-      <div className="space-y-2">
-        <Label htmlFor="as-budget">Daily budget (optional)</Label>
+      <Field name="dailyBudget" label="Daily budget (optional)">
         <Input
           id="as-budget"
           name="dailyBudget"
@@ -395,11 +392,10 @@ function AdSetFormFields({ adSet }: { adSet?: AdSet }) {
           defaultValue={adSet?.dailyBudget ?? ""}
           placeholder="Facebook-e set kora per-day budget"
         />
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="as-notes">Notes (optional)</Label>
+      </Field>
+      <Field name="notes" label="Notes (optional)">
         <Input id="as-notes" name="notes" defaultValue={adSet?.notes ?? ""} />
-      </div>
+      </Field>
     </>
   );
 }
@@ -810,14 +806,12 @@ export function CampaignDetail({
             <DialogTitle>Edit campaign</DialogTitle>
           </DialogHeader>
           <form onSubmit={onSaveCampaign} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="bc-name">Campaign name</Label>
+            <Field name="name" label="Campaign name" required>
               <Input id="bc-name" name="name" required defaultValue={campaign.name} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="bc-objective">Objective (optional)</Label>
+            </Field>
+            <Field name="objective" label="Objective (optional)">
               <Input id="bc-objective" name="objective" defaultValue={campaign.objective ?? ""} />
-            </div>
+            </Field>
             <div className="space-y-2">
               <Label>Channel</Label>
               <ChannelSelect value={editChannel} onChange={setEditChannel} />
@@ -830,10 +824,9 @@ export function CampaignDetail({
               <Label>Status</Label>
               <StatusSelect value={editStatus} onChange={setEditStatus} />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="bc-notes">Notes (optional)</Label>
+            <Field name="notes" label="Notes (optional)">
               <Input id="bc-notes" name="notes" defaultValue={campaign.notes ?? ""} />
-            </div>
+            </Field>
             <DialogFooter>
               <Button type="submit" disabled={editLoading}>
                 {editLoading ? "Saving…" : "Save"}

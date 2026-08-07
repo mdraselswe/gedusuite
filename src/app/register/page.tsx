@@ -16,6 +16,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Field } from "@/components/ui/field";
 
 function RegisterForm() {
   const router = useRouter();
@@ -69,16 +70,13 @@ function RegisterForm() {
           <div className="absolute inset-x-0 top-1/2 -z-0 border-t" />
         </div>
         <form onSubmit={onSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="name">Name</Label>
+          <Field name="name" label="Name" required>
             <Input id="name" name="name" required autoComplete="name" />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
+          </Field>
+          <Field name="email" label="Email" required>
             <Input id="email" name="email" type="email" required autoComplete="email" />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
+          </Field>
+          <Field name="password" label="Password" required>
             <Input
               id="password"
               name="password"
@@ -87,7 +85,7 @@ function RegisterForm() {
               minLength={8}
               autoComplete="new-password"
             />
-          </div>
+          </Field>
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? "Creating…" : "Create account"}
           </Button>

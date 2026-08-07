@@ -16,6 +16,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { LoginIllustration } from "@/components/illustrations/login-illustration";
+import { Field } from "@/components/ui/field";
 
 function LoginForm() {
   const router = useRouter();
@@ -61,12 +62,10 @@ function LoginForm() {
           <div className="absolute inset-x-0 top-1/2 -z-0 border-t" />
         </div>
         <form onSubmit={onSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
+          <Field name="email" label="Email" required>
             <Input id="email" name="email" type="email" required autoComplete="email" />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
+          </Field>
+          <Field name="password" label="Password" required>
             <Input
               id="password"
               name="password"
@@ -74,7 +73,7 @@ function LoginForm() {
               required
               autoComplete="current-password"
             />
-          </div>
+          </Field>
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? "Signing in…" : "Sign in"}
           </Button>

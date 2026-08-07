@@ -40,6 +40,7 @@ import {
 import { Receipt } from "lucide-react";
 import { Money } from "@/components/ui/money";
 import { formatMoney as money } from "@/lib/money";
+import { Field, FormError, type FieldError } from "@/components/ui/field";
 
 type Item = {
   id: string;
@@ -116,6 +117,9 @@ export function InternalPurchaseManager({
   );
   const [paidByPartnerId, setPaidByPartnerId] = useState(NO_PARTNER);
   const [loading, setLoading] = useState(false);
+  // The last refusal, kept so the Field it names can show it. A toast alone
+  // left the message hovering over a form with no sign of which box it meant.
+  const [formError, setFormError] = useState<FieldError>(null);
   // Cost, quantity and spread are controlled so the per-month preview below
   // can react as they're typed. The rest of the form stays uncontrolled.
   const [costInput, setCostInput] = useState("");
@@ -223,7 +227,12 @@ export function InternalPurchaseManager({
       ? await updateInternalPurchase(slug, editing.id, fd)
       : await createInternalPurchase(slug, fd);
     setLoading(false);
-    if (!res.ok) return toast.error(res.error);
+    if (!res.ok) {
+      setFormError(res);
+      if (!res.field) toast.error(res.error);
+      return;
+    }
+    setFormError(null);
     // Only a fresh entry says anything about how this shop funds things now;
     // correcting an old row shouldn't change what the next new one defaults to.
     if (!editing) writeLastFundingSource(slug, "internal-purchase", fundingSource);
@@ -241,7 +250,12 @@ export function InternalPurchaseManager({
     });
     if (!ok) return;
     const res = await deleteInternalPurchase(slug, i.id);
-    if (!res.ok) return toast.error(res.error);
+    if (!res.ok) {
+      setFormError(res);
+      if (!res.field) toast.error(res.error);
+      return;
+    }
+    setFormError(null);
     toast.success("Deleted");
     router.refresh();
   }
@@ -359,14 +373,12 @@ export function InternalPurchaseManager({
             <DialogTitle>{editing ? "Edit entry" : "Add internal purchase"}</DialogTitle>
           </DialogHeader>
           <form key={editing?.id ?? "new"} onSubmit={onSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="ip-name">Item name</Label>
+            <Field name="itemName" error={formError} label="Item name" required>
               <Input id="ip-name" name="itemName" required defaultValue={editing?.itemName ?? ""} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="ip-desc">Description</Label>
+            </Field>
+            <Field name="description" error={formError} label="Description">
               <Textarea id="ip-desc" name="description" defaultValue={editing?.description ?? ""} />
-            </div>
+            </Field>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label>Category</Label>
@@ -431,8 +443,7 @@ export function InternalPurchaseManager({
                   </Select>
                 </div>
               )}
-              <div className="space-y-2">
-                <Label htmlFor="ip-cost">Unit cost</Label>
+              <Field name="cost" error={formError} label="Unit cost" required>
                 <Input
                   id="ip-cost"
                   name="cost"
@@ -443,9 +454,8 @@ export function InternalPurchaseManager({
                   value={costInput}
                   onChange={(e) => setCostInput(e.target.value)}
                 />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="ip-qty">Quantity</Label>
+              </Field>
+              <Field name="quantity" error={formError} label="Quantity" required>
                 <Input
                   id="ip-qty"
                   name="quantity"
@@ -455,11 +465,10 @@ export function InternalPurchaseManager({
                   value={qtyInput}
                   onChange={(e) => setQtyInput(e.target.value)}
                 />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="ip-date">Date</Label>
+              </Field>
+              <Field name="date" error={formError} label="Date" required>
                 <Input id="ip-date" name="date" type="date" required defaultValue={editing?.date} />
-              </div>
+              </Field>
               <div className="space-y-2 sm:col-span-2">
                 <Label htmlFor="ip-spread">Spread over (months)</Label>
                 <Input
@@ -478,6 +487,7 @@ export function InternalPurchaseManager({
                 </p>
               </div>
             </div>
+            <FormError error={formError} />
             <DialogFooter>
               <Button type="submit" disabled={loading}>
                 {loading ? "Saving…" : "Save"}

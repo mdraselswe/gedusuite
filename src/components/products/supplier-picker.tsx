@@ -18,6 +18,7 @@ import {
 import { AsyncCombobox, type ComboOption } from "@/components/ui/async-combobox";
 import { searchSuppliers } from "@/server/actions/search";
 import { createSupplier } from "@/server/actions/suppliers";
+import { Field } from "@/components/ui/field";
 
 /**
  * Supplier autocomplete + an inline "add supplier" shortcut, so a new
@@ -88,26 +89,21 @@ export function SupplierPicker({
             <DialogTitle>Add supplier</DialogTitle>
           </DialogHeader>
           <form onSubmit={onSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="qs-name">Name</Label>
+            <Field name="name" label="Name" required>
               <Input id="qs-name" name="name" required autoFocus />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="qs-phone">Phone</Label>
+            </Field>
+            <Field name="phone" label="Phone">
               <Input id="qs-phone" name="phone" />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="qs-alt-phone">Alternate phone</Label>
+            </Field>
+            <Field name="altPhone" label="Alternate phone">
               <Input id="qs-alt-phone" name="altPhone" />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="qs-address">Address</Label>
+            </Field>
+            <Field name="address" label="Address">
               <Input id="qs-address" name="address" />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="qs-notes">Notes</Label>
+            </Field>
+            <Field name="notes" label="Notes">
               <Textarea id="qs-notes" name="notes" />
-            </div>
+            </Field>
             <DialogFooter>
               <Button type="submit" disabled={loading}>
                 {loading ? "Saving…" : "Save"}
