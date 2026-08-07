@@ -4,9 +4,15 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAccess } from "@/lib/authz";
-import { InsufficientTreasury, assertTreasuryCovers, totalBusinessProfit } from "@/lib/finance";
+import {
+  InsufficientTreasury,
+  assertTreasuryCovers,
+  supplierDueTotal,
+  totalBusinessProfit,
+  treasuryBalance,
+} from "@/lib/finance";
 import { ConcurrentWrite, runSerializable } from "@/lib/tx";
-import { splitByShare } from "@/lib/profit-share";
+import { beyondDistributableProfit, splitByShare } from "@/lib/profit-share";
 
 const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
 
@@ -65,20 +71,54 @@ export async function createDistribution(
   // handed out is working capital, and the next restock is what pays for it.
   // Not blocked: withdrawing capital is a decision partners are allowed to
   // make. It just can't be made by accident any more.
-  const profit = await totalBusinessProfit(workspaceId);
-  const beyondProfit = round2(d.amount - Math.max(0, profit.netProfit));
-  if (beyondProfit > 0 && !d.confirmBeyondProfit) {
-    return {
-      ok: false,
-      confirm: true,
-      error:
-        profit.netProfit <= 0
-          ? `There is no distributable profit — the business is at ${profit.netProfit.toFixed(2)}. ` +
-            `All ${d.amount.toFixed(2)} of this would come out of capital and sales cash, ` +
-            `which is what pays for the next restock.`
-          : `Distributable profit is ${profit.netProfit.toFixed(2)}, so ${beyondProfit.toFixed(2)} ` +
-            `of this comes out of capital and sales cash rather than profit.`,
-    };
+  //
+  // Measured against what is LEFT of the profit, not against the lifetime
+  // total. The lifetime figure never moves when partners are paid, so the same
+  // 200,000 could be distributed in March and again in April with nothing
+  // saying a word — the second one being capital in all but name.
+  const [profit, supplierDue, treasury] = await Promise.all([
+    totalBusinessProfit(workspaceId),
+    // Only the total is needed here. businessCapitalSummary would answer it too,
+    // but it values every variant's stock and rebuilds every partner balance on
+    // the way — a lot of database for one number on a path someone is waiting on.
+    supplierDueTotal(workspaceId),
+    treasuryBalance(workspaceId),
+  ]);
+  const left = profit.distributableProfit;
+  const beyondProfit = beyondDistributableProfit(left, d.amount);
+
+  // Both reasons are gathered before anything is returned, and both go into the
+  // same confirmation. They used to be two early returns behind one flag, so
+  // confirming the first silently waived the second: someone warned about the
+  // supplier bill was never told the money wasn't profit either.
+  const warnings: string[] = [];
+  if (beyondProfit > 0) {
+    const alreadyOut =
+      profit.distributed > 0
+        ? ` The business has earned ${profit.netProfit.toFixed(2)} in total and ${profit.distributed.toFixed(2)} of that has already been distributed.`
+        : "";
+    warnings.push(
+      left <= 0
+        ? `There is no profit left to distribute — remaining distributable profit is ${left.toFixed(2)}. ` +
+          `All ${d.amount.toFixed(2)} of this would come out of capital and sales cash, ` +
+          `which is what pays for the next restock.${alreadyOut}`
+        : `Remaining distributable profit is ${left.toFixed(2)}, so ${beyondProfit.toFixed(2)} ` +
+          `of this comes out of capital and sales cash rather than profit.${alreadyOut}`,
+    );
+  }
+  // Money owed to a supplier is spoken for whatever the treasury balance says.
+  // Handing it to partners and then finding the bill is the failure this whole
+  // confirmation exists to prevent, one creditor further along.
+  const leftAfter = round2(treasury - d.amount);
+  if (supplierDue > 0 && leftAfter < supplierDue) {
+    warnings.push(
+      `${supplierDue.toFixed(2)} is owed to suppliers for goods bought on credit. ` +
+        `Taking ${d.amount.toFixed(2)} out leaves ${leftAfter.toFixed(2)} in the treasury, ` +
+        `which doesn't cover it.`,
+    );
+  }
+  if (warnings.length > 0 && !d.confirmBeyondProfit) {
+    return { ok: false, confirm: true, error: warnings.join(" ") };
   }
 
   // Normalization and the rounding remainder both live in splitByShare now —

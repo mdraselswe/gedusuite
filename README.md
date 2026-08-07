@@ -42,7 +42,10 @@ Recommended runtime variables:
 - `NEXTAUTH_URL` — production app URL
 - `GOOGLE_CLIENT_ID`
 - `GOOGLE_CLIENT_SECRET`
-- `BACKUP_CRON_SECRET`
+- `CRON_SECRET` — **required** for the scheduled backups. The cron endpoints
+  refuse every request (503) while it is unset, so an unconfigured deployment
+  has no open `/api/cron/*` routes. Must match the `Authorization: Bearer …`
+  header Vercel Cron sends.
 
 The Vercel build command is `npm run vercel-build` / `yarn vercel-build`.
 It runs `prisma generate` and `next build`.

@@ -32,7 +32,11 @@ import { type ComboOption } from "@/components/ui/async-combobox";
 import { SupplierPicker } from "@/components/products/supplier-picker";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { useFilterBar, type FilterDef } from "@/components/ui/filter-bar";
-import { readLastFundingSource, writeLastFundingSource } from "@/lib/last-funding-source";
+import {
+  readLastFundingSource,
+  writeLastFundingSource,
+  type FundingSource as SharedFundingSource,
+} from "@/lib/last-funding-source";
 import { Receipt } from "lucide-react";
 
 type Item = {
@@ -45,6 +49,8 @@ type Item = {
   paidBy: string | null;
   paidByPartnerId: string | null;
   paidFromTreasury: boolean;
+  /** Bought on account and still owed for. */
+  onCredit: boolean;
   cost: number;
   quantity: number;
   /** Months the cost covers, or null when it's charged in full on its date. */
@@ -52,12 +58,20 @@ type Item = {
   category: string;
 };
 type Perms = { canAdd: boolean; canEdit: boolean };
-type FundingSource = "NONE" | "PARTNER" | "TREASURY";
+// Deliberately the shared type rather than a second copy: a fourth funding
+// state added in one place and missed in the other is how a form silently stops
+// offering it.
+type FundingSource = SharedFundingSource;
 const NO_PARTNER = "__none__";
 
-function fundingSourceOf(i: { paidByPartnerId: string | null; paidFromTreasury: boolean }): FundingSource {
+function fundingSourceOf(i: {
+  paidByPartnerId: string | null;
+  paidFromTreasury: boolean;
+  onCredit: boolean;
+}): FundingSource {
   if (i.paidFromTreasury) return "TREASURY";
   if (i.paidByPartnerId) return "PARTNER";
+  if (i.onCredit) return "CREDIT";
   return "NONE";
 }
 
@@ -131,6 +145,7 @@ export function InternalPurchaseManager({
       options: [
         { value: "PARTNER", label: "A partner's money" },
         { value: "TREASURY", label: "Treasury" },
+        { value: "CREDIT", label: "On credit (unpaid)" },
         { value: "NONE", label: "Not recorded" },
       ],
       match: (i, v) => fundingSourceOf(i) === v,
@@ -282,7 +297,14 @@ export function InternalPurchaseManager({
               key: "funding",
               header: "Funding",
               hideable: true,
-              cell: (i) => (i.paidFromTreasury ? "Treasury" : i.paidBy ? `Partner: ${i.paidBy}` : "—"),
+              cell: (i) =>
+                i.paidFromTreasury
+                  ? "Treasury"
+                  : i.paidBy
+                    ? `Partner: ${i.paidBy}`
+                    : i.onCredit
+                      ? "On credit"
+                      : "—",
             },
             { key: "cost", header: "Cost", align: "right", hideable: true, sortValue: (i) => i.cost, cell: (i) => i.cost.toFixed(2) },
             {
@@ -376,6 +398,7 @@ export function InternalPurchaseManager({
                     <SelectItem value="NONE">Not tracked</SelectItem>
                     <SelectItem value="PARTNER">Partner</SelectItem>
                     <SelectItem value="TREASURY">Treasury</SelectItem>
+                    <SelectItem value="CREDIT">On credit (owed to supplier)</SelectItem>
                   </SelectContent>
                 </Select>
                 {fundingSource === "TREASURY" && (

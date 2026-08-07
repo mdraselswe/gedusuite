@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAccess } from "@/lib/authz";
+import { InsufficientTreasury, assertTreasuryCovers } from "@/lib/finance";
+import { ConcurrentWrite, runSerializable } from "@/lib/tx";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -48,17 +50,32 @@ export async function createTreasuryEntry(
     partnerId = partner.id;
   }
 
-  await prisma.treasuryEntry.create({
-    data: {
-      workspaceId,
-      type: d.type,
-      amount: d.amount,
-      source: d.source,
-      note: d.note?.trim() || null,
-      partnerId,
-      date: d.date,
-    },
-  });
+  // A hand-entered OUT spends the treasury exactly as a purchase does, and was
+  // the one path that never checked whether there was anything to spend. Every
+  // other one — purchases, boost spends, partner withdrawals, distributions —
+  // has refused to overdraw for a while; a 20,000 "Rent" against a balance of
+  // 5,000 simply took the treasury to −15,000 and said nothing.
+  try {
+    await runSerializable(async (tx) => {
+      if (d.type === "OUT") await assertTreasuryCovers(tx, workspaceId, d.amount);
+      await tx.treasuryEntry.create({
+        data: {
+          workspaceId,
+          type: d.type,
+          amount: d.amount,
+          source: d.source,
+          note: d.note?.trim() || null,
+          partnerId,
+          date: d.date,
+        },
+      });
+    });
+  } catch (e) {
+    if (e instanceof InsufficientTreasury || e instanceof ConcurrentWrite) {
+      return { ok: false, error: e.message };
+    }
+    throw e;
+  }
 
   revalidatePath(`/${slug}/treasury`);
   revalidatePath(`/${slug}/dashboard`);

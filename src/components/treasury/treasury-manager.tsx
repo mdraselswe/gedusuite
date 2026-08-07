@@ -10,7 +10,7 @@ import {
 } from "@/server/actions/treasury";
 import { markCashDeposited, unmarkCashDeposited } from "@/server/actions/cash-custody";
 import { createDistribution, deleteDistribution } from "@/server/actions/distributions";
-import { splitByShare } from "@/lib/profit-share";
+import { beyondDistributableProfit, splitByShare } from "@/lib/profit-share";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -73,7 +73,12 @@ type NotDeposited = {
   orderId: string;
   date: string;
   customerName: string;
+  /** What the treasury will receive — the courier's cut already taken off. */
   amount: number;
+  /** What the customer paid. */
+  gross: number;
+  /** Delivery cost + COD fee the courier keeps before remitting. */
+  courierCharges: number;
   paymentMethod: string;
   heldByName: string | null;
   isCourierCollection: boolean;
@@ -91,6 +96,9 @@ export function TreasuryManager({
   heldCash,
   notDeposited,
   distributableProfit,
+  netProfit,
+  alreadyDistributed,
+  supplierDues,
   canManage,
 }: {
   slug: string;
@@ -102,8 +110,14 @@ export function TreasuryManager({
   overdue: Overdue[];
   heldCash: HeldCash[];
   notDeposited: NotDeposited[];
-  /** What the business actually earned — the other half of "can we take money out?". */
+  /** What is LEFT to hand out — earnings less everything already distributed. */
   distributableProfit: number;
+  /** Lifetime earnings, shown so the remaining figure can be explained. */
+  netProfit: number;
+  /** Total of every distribution made so far. */
+  alreadyDistributed: number;
+  /** What is owed for goods bought on credit, by supplier. */
+  supplierDues: { supplierId: string | null; supplierName: string; amount: number; rows: number }[];
   canManage: boolean;
 }) {
   const router = useRouter();
@@ -119,7 +133,7 @@ export function TreasuryManager({
   const preview = splitByShare(sharePartners, distAmountNum);
   // How much of this isn't profit. Cash and profit are different questions and
   // only cash was ever asked; this is the other one, asked before it matters.
-  const beyondProfit = Math.round((distAmountNum - Math.max(0, distributableProfit)) * 100) / 100;
+  const beyondProfit = beyondDistributableProfit(distributableProfit, distAmountNum);
 
   async function onSubmitDistribution(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -165,7 +179,10 @@ export function TreasuryManager({
   const withCourier = notDeposited.filter((o) => o.isCourierCollection);
   const withMembers = notDeposited.filter((o) => !o.isCourierCollection);
   const courierTotal = withCourier.reduce((s, o) => s + o.amount, 0);
+  const courierGross = withCourier.reduce((s, o) => s + o.gross, 0);
+  const courierCharges = withCourier.reduce((s, o) => s + o.courierCharges, 0);
   const membersTotal = withMembers.reduce((s, o) => s + o.amount, 0);
+  const owedToSuppliers = supplierDues.reduce((s, r) => s + r.amount, 0);
 
   async function onMarkDeposited(orderId: string) {
     setDepositing(orderId);
@@ -339,6 +356,45 @@ export function TreasuryManager({
         </Card>
       )}
 
+      {/* The other direction: money in the treasury that is already spoken for.
+          Goods bought on terms are a bill that arrives whether or not anyone
+          remembered it when they last looked at the balance. */}
+      {supplierDues.length > 0 && (
+        <Card className="border-amber-500/40">
+          <CardHeader>
+            <CardTitle className="text-base text-amber-800 dark:text-amber-300">
+              Owed to suppliers — {owedToSuppliers.toFixed(2)}
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Bought on credit and not paid for yet. Settle one by editing the
+              purchase and changing its funding to Treasury or a partner — that writes
+              the payment and clears it from here.
+              {owedToSuppliers > balance && (
+                <span className="font-medium text-amber-800 dark:text-amber-300">
+                  {" "}
+                  The treasury balance ({balance.toFixed(2)}) does not cover this.
+                </span>
+              )}
+            </p>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-1 text-sm">
+              {supplierDues.map((r) => (
+                <div key={r.supplierId ?? "__none__"} className="flex justify-between gap-4">
+                  <span className="text-muted-foreground">
+                    {r.supplierName}{" "}
+                    <span className="text-xs">
+                      ({r.rows} item{r.rows === 1 ? "" : "s"})
+                    </span>
+                  </span>
+                  <span className="font-medium tabular-nums">{r.amount.toFixed(2)}</span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Paid, but the cash isn't confirmed in the treasury yet — either sitting
           with the courier (collected from the customer, not yet remitted) or
           with whichever team member collected it directly. */}
@@ -349,6 +405,13 @@ export function TreasuryManager({
               Cash with courier (paid, not yet remitted) — {courierTotal.toFixed(2)} across{" "}
               {withCourier.length} order(s)
             </CardTitle>
+            {courierCharges > 0 && (
+              <p className="text-xs text-muted-foreground">
+                Customers paid {courierGross.toFixed(2)}; the courier keeps{" "}
+                {courierCharges.toFixed(2)} in delivery and COD fees, so that is what
+                reaches the treasury.
+              </p>
+            )}
           </CardHeader>
           <CardContent>
             <DataTable
@@ -647,8 +710,17 @@ export function TreasuryManager({
                 >
                   {distributableProfit.toFixed(2)}
                 </span>{" "}
-                <span className="text-xs">— what the business actually earned</span>
+                <span className="text-xs">— what is still left to hand out</span>
               </p>
+              {/* Spelled out, because "distributable profit" going down after a
+                  payout is otherwise indistinguishable from the business having
+                  had a bad month. */}
+              {alreadyDistributed > 0 && (
+                <p className="text-xs">
+                  Earned {netProfit.toFixed(2)} in total, {alreadyDistributed.toFixed(2)}{" "}
+                  already distributed.
+                </p>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="dist-amount">Amount to distribute</Label>
@@ -693,6 +765,23 @@ export function TreasuryManager({
                 Amount exceeds current treasury balance ({balance.toFixed(2)}).
               </p>
             )}
+            {/* A treasury that can't cover the supplier bill after this payout
+                is the same failure as distributing capital, one creditor along
+                — and this one has a date on it. */}
+            {distAmountNum > 0 &&
+              distAmountNum <= balance &&
+              owedToSuppliers > 0 &&
+              balance - distAmountNum < owedToSuppliers && (
+                <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+                  <p className="font-medium text-amber-800 dark:text-amber-300">
+                    {owedToSuppliers.toFixed(2)} is owed to suppliers
+                  </p>
+                  <p className="mt-1 text-muted-foreground">
+                    This leaves {(balance - distAmountNum).toFixed(2)} in the treasury,
+                    which doesn&apos;t cover it. You&apos;ll be asked to confirm.
+                  </p>
+                </div>
+              )}
             {distAmountNum > 0 && distAmountNum <= balance && beyondProfit > 0 && (
               <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
                 <p className="font-medium text-amber-800 dark:text-amber-300">

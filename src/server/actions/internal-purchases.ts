@@ -24,9 +24,9 @@ const Schema = z.object({
   itemName: z.string().trim().min(1, "Item name is required").max(160),
   description: z.string().trim().max(500).optional().or(z.literal("")),
   supplierId: z.string().optional().or(z.literal("")),
-  // Funding source is one of three mutually exclusive states — driven by a
-  // single field instead of trying to infer exclusivity from two raw ones.
-  fundingSource: z.enum(["NONE", "PARTNER", "TREASURY"]).default("NONE"),
+  // Funding source is one of four mutually exclusive states — driven by a
+  // single field instead of trying to infer exclusivity from three raw ones.
+  fundingSource: z.enum(["NONE", "PARTNER", "TREASURY", "CREDIT"]).default("NONE"),
   paidByPartnerId: z.string().optional().or(z.literal("")),
   cost: z.coerce.number().nonnegative("Cost must be ≥ 0"),
   quantity: z.coerce.number().int().positive("Quantity must be > 0"),
@@ -107,6 +107,9 @@ export async function createInternalPurchase(
     paidByPartnerId = partner.id;
   }
   const paidFromTreasury = d.fundingSource === "TREASURY";
+  // Nothing has been paid yet — no treasury deduction, no partner credit, and
+  // a supplier due instead of consumed capital.
+  const onCredit = d.fundingSource === "CREDIT";
   const supplier = await resolveSupplier(workspaceId, d.supplierId);
 
   const cost = round2(d.cost * d.quantity);
@@ -125,6 +128,7 @@ export async function createInternalPurchase(
         supplierName: supplier?.name ?? null,
         paidByPartnerId,
         paidFromTreasury,
+        onCredit,
         cost: d.cost,
         quantity: d.quantity,
         category: d.category,
@@ -200,6 +204,9 @@ export async function updateInternalPurchase(
     paidByPartnerId = partner.id;
   }
   const paidFromTreasury = d.fundingSource === "TREASURY";
+  // Nothing has been paid yet — no treasury deduction, no partner credit, and
+  // a supplier due instead of consumed capital.
+  const onCredit = d.fundingSource === "CREDIT";
   const supplier = await resolveSupplier(workspaceId, d.supplierId);
   const newCost = round2(d.cost * d.quantity);
   const wasTreasuryFunded = existing.paidFromTreasury;
@@ -228,6 +235,7 @@ export async function updateInternalPurchase(
         supplierName: supplier?.name ?? null,
         paidByPartnerId,
         paidFromTreasury,
+        onCredit,
         cost: d.cost,
         quantity: d.quantity,
         category: d.category,

@@ -56,6 +56,30 @@ export function splitByShare<T extends ShareHolder>(partners: T[], amount: numbe
 }
 
 /**
+ * How much of a proposed distribution isn't profit.
+ *
+ * Zero or less means it's covered. `distributableProfit` is what's LEFT —
+ * earnings less everything already handed out — because the lifetime total
+ * never moves when partners are paid, and asking it twice gives the same
+ * answer twice. That is how the same 200,000 gets distributed in March and
+ * again in April with nothing objecting.
+ *
+ * Both ends are floored at zero. A business already overdrawn on its profit
+ * must not make the next payout look free, and a payout well inside the profit
+ * is not "negatively beyond" it — it's simply covered.
+ *
+ * Lives here rather than in finance.ts so the dialog that previews the warning
+ * and the server action that enforces it run the same line of code — finance.ts
+ * reaches for the database and can't be imported by a client component.
+ */
+export function beyondDistributableProfit(
+  distributableProfit: number,
+  amount: number,
+): number {
+  return round2(Math.max(0, amount - Math.max(0, distributableProfit)));
+}
+
+/**
  * Do the partners' percents already add up to 100? When they don't, the
  * normalization above quietly changes what each one is paid, and the screens
  * say so rather than showing two different percentages with no explanation.

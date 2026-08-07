@@ -37,7 +37,11 @@ import { SupplierPicker } from "@/components/products/supplier-picker";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { ANY_VALUE, UrlFilterBar, type FilterDef } from "@/components/ui/filter-bar";
 import { formatStock } from "@/lib/units";
-import { readLastFundingSource, writeLastFundingSource } from "@/lib/last-funding-source";
+import {
+  readLastFundingSource,
+  writeLastFundingSource,
+  type FundingSource as SharedFundingSource,
+} from "@/lib/last-funding-source";
 import { Columns3, MoreVertical, PackageOpen, X } from "lucide-react";
 
 // Local calendar date (not UTC) as a stable "today" default — must NOT depend
@@ -62,13 +66,18 @@ type PurchaseRow = {
   paidByPartnerId: string | null;
   paidBy: string | null;
   paidFromTreasury: boolean;
+  /** Bought on account and still owed for. */
+  onCredit: boolean;
   unitCost: number;
   salePrice: number | null;
   quantity: number;
   expiryDate: string | null;
 };
 type Perms = { canAdd: boolean; canEdit: boolean };
-type FundingSource = "NONE" | "PARTNER" | "TREASURY";
+// Deliberately the shared type rather than a second copy: a fourth funding
+// state added in one place and missed in the other is how a form silently stops
+// offering it.
+type FundingSource = SharedFundingSource;
 
 const ALL_SUPPLIERS = "__all__";
 const NO_PARTNER = "__none__";
@@ -92,9 +101,14 @@ const SORT_OPTIONS = [
   { value: "qty_asc", label: "Quantity: low → high" },
 ];
 
-function fundingSourceOf(p: { paidByPartnerId: string | null; paidFromTreasury: boolean }): FundingSource {
+function fundingSourceOf(p: {
+  paidByPartnerId: string | null;
+  paidFromTreasury: boolean;
+  onCredit: boolean;
+}): FundingSource {
   if (p.paidFromTreasury) return "TREASURY";
   if (p.paidByPartnerId) return "PARTNER";
+  if (p.onCredit) return "CREDIT";
   return "NONE";
 }
 
@@ -165,6 +179,7 @@ export function PurchaseManager({
       options: [
         { value: "PARTNER", label: "A partner's money" },
         { value: "TREASURY", label: "Treasury" },
+        { value: "CREDIT", label: "On credit (unpaid)" },
         { value: "NONE", label: "Not recorded" },
       ],
     },
@@ -458,6 +473,7 @@ export function PurchaseManager({
                       <SelectItem value="NONE">Not tracked</SelectItem>
                       <SelectItem value="PARTNER">Partner</SelectItem>
                       <SelectItem value="TREASURY">Treasury</SelectItem>
+                      <SelectItem value="CREDIT">On credit (owed to supplier)</SelectItem>
                     </SelectContent>
                   </Select>
                   {fundingSource === "TREASURY" && (
@@ -667,7 +683,13 @@ export function PurchaseManager({
                       key: "funding",
                       header: "Funding",
                       cell: (p: PurchaseRow) =>
-                        p.paidFromTreasury ? "Treasury" : p.paidBy ? `Partner: ${p.paidBy}` : "—",
+                        p.paidFromTreasury
+                          ? "Treasury"
+                          : p.paidBy
+                            ? `Partner: ${p.paidBy}`
+                            : p.onCredit
+                              ? "On credit"
+                              : "—",
                     },
                   ]
                 : []),
@@ -797,6 +819,7 @@ export function PurchaseManager({
                     <SelectItem value="NONE">Not tracked</SelectItem>
                     <SelectItem value="PARTNER">Partner</SelectItem>
                     <SelectItem value="TREASURY">Treasury</SelectItem>
+                    <SelectItem value="CREDIT">On credit (owed to supplier)</SelectItem>
                   </SelectContent>
                 </Select>
                 {editFundingSource === "TREASURY" && (

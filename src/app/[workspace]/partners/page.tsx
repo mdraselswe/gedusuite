@@ -239,6 +239,26 @@ export default async function PartnersPage({
             {capital.miscExpense.toFixed(2)}
           </CardContent>
         </Card>
+        {/* Goods taken on terms. A debt, not a cost anyone has borne — and
+            before this it appeared on no screen at all, so the money set aside
+            to pay it read as profit going spare. */}
+        {capital.supplierDue > 0 && (
+          <Card className="border-amber-500/40">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Owed to suppliers
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-xl font-bold tabular-nums text-amber-700 dark:text-amber-400">
+                {capital.supplierDue.toFixed(2)}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                bought on credit, not paid yet
+              </p>
+            </CardContent>
+          </Card>
+        )}
         {capital.totalCapitalWithdrawn > 0 && (
           <Card>
             <CardHeader className="pb-2">
@@ -268,7 +288,28 @@ export default async function PartnersPage({
             >
               {capital.totalRemaining.toFixed(2)}
             </div>
-            <p className="text-xs text-muted-foreground">of what partners put in</p>
+            {/* Buying stock spends capital without losing it. Without this line
+                a shop that turned 250,000 into goods reads as one that lost it. */}
+            {capital.inventoryValue > 0 ? (
+              <p className="text-xs text-muted-foreground">
+                unspent · plus {capital.inventoryValue.toFixed(2)} sitting as stock (
+                {capital.inventoryUnits} pcs) ={" "}
+                <span className="font-medium text-foreground">
+                  {capital.capitalPlusStock.toFixed(2)}
+                </span>{" "}
+                still the partners&apos;
+                {/* A figure that can be raised by typing should say so. */}
+                {capital.inventoryFromCorrections > 0 && (
+                  <>
+                    {" "}
+                    · {capital.inventoryFromCorrections.toFixed(2)} of the stock came from
+                    manual corrections, not purchases
+                  </>
+                )}
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground">of what partners put in</p>
+            )}
           </CardContent>
         </Card>
       </div>

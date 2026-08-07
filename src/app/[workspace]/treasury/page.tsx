@@ -9,6 +9,7 @@ import {
   cashHeldByMember,
   totalDue,
   paidNotDeposited,
+  supplierDues,
   totalBusinessProfit,
 } from "@/lib/finance";
 import { serverT } from "@/lib/session";
@@ -36,8 +37,19 @@ export default async function TreasuryPage({
   const workspaceId = access.workspaceId;
   const canManage = can(access.role, "treasury", "full", access.permissions);
 
-  const [balance, profit, entryCount, entries, partners, allDue, heldCash, due, notDeposited, distributions] =
-    await Promise.all([
+  const [
+    balance,
+    profit,
+    entryCount,
+    entries,
+    partners,
+    allDue,
+    heldCash,
+    due,
+    notDeposited,
+    distributions,
+    owedToSuppliers,
+  ] = await Promise.all([
       treasuryBalance(workspaceId),
       // Shown beside the balance when distributing: the treasury says what
       // cash is there, this says whether any of it was earned.
@@ -66,6 +78,8 @@ export default async function TreasuryPage({
         orderBy: { date: "desc" },
         take: 200, // client-side pagination in the table handles the rest
       }),
+      // What the balance above is already spoken for — see the card below.
+      supplierDues(workspaceId),
     ]);
 
   // Keep OVERDUE_PAYMENT notifications reconciled (7-day threshold).
@@ -133,7 +147,10 @@ export default async function TreasuryPage({
         distributions={distributionRows}
         overdue={allDue}
         heldCash={heldCash}
-        distributableProfit={profit.netProfit}
+        distributableProfit={profit.distributableProfit}
+        netProfit={profit.netProfit}
+        alreadyDistributed={profit.distributed}
+        supplierDues={owedToSuppliers}
         notDeposited={notDeposited}
         canManage={canManage}
       />

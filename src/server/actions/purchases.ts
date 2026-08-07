@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAccess } from "@/lib/authz";
-import { refreshInventoryAlerts } from "@/lib/inventory";
+import { refreshInventoryAlerts, variantStockMap } from "@/lib/inventory";
 import { InsufficientTreasury, assertTreasuryCovers } from "@/lib/finance";
 import { ConcurrentWrite, runSerializable } from "@/lib/tx";
 import { removePartnerCredit, syncPartnerCredit } from "@/lib/partner-credit";
@@ -30,9 +30,9 @@ function revalidateAll(slug: string) {
 const PurchaseSchema = z.object({
   productVariantId: z.string().min(1, "Select a product variant"),
   supplierId: z.string().optional().or(z.literal("")),
-  // Funding source is one of three mutually exclusive states — driven by a
-  // single field instead of trying to infer exclusivity from two raw ones.
-  fundingSource: z.enum(["NONE", "PARTNER", "TREASURY"]).default("NONE"),
+  // Funding source is one of four mutually exclusive states — driven by a
+  // single field instead of trying to infer exclusivity from three raw ones.
+  fundingSource: z.enum(["NONE", "PARTNER", "TREASURY", "CREDIT"]).default("NONE"),
   paidByPartnerId: z.string().optional().or(z.literal("")),
   date: z.coerce.date(),
   unitCost: z.coerce.number().nonnegative("Unit cost must be ≥ 0"),
@@ -94,6 +94,9 @@ export async function createPurchase(
   const supplierId = supplier?.id ?? null;
   const paidByPartnerId = d.fundingSource === "PARTNER" ? (partner?.id ?? null) : null;
   const paidFromTreasury = d.fundingSource === "TREASURY";
+  // Nothing has been paid yet — no treasury deduction, no partner credit, and
+  // a supplier due instead of consumed capital.
+  const onCredit = d.fundingSource === "CREDIT";
 
   const cost = round2(d.unitCost * d.quantity);
   const label = variantFullName(variant.product.name, variant.attributes);
@@ -111,6 +114,7 @@ export async function createPurchase(
         supplierId,
         paidByPartnerId,
         paidFromTreasury,
+        onCredit,
         date: d.date,
         unitCost: d.unitCost,
         salePrice: d.salePrice ?? null,
@@ -207,6 +211,9 @@ export async function updatePurchase(
 
   const paidByPartnerId = d.fundingSource === "PARTNER" ? (partner?.id ?? null) : null;
   const paidFromTreasury = d.fundingSource === "TREASURY";
+  // Nothing has been paid yet — no treasury deduction, no partner credit, and
+  // a supplier due instead of consumed capital.
+  const onCredit = d.fundingSource === "CREDIT";
   const newCost = round2(d.unitCost * d.quantity);
   const wasTreasuryFunded = existing.paidFromTreasury;
   const oldEntryAmount = existing.treasuryEntry ? Number(existing.treasuryEntry.amount) : 0;
@@ -236,6 +243,7 @@ export async function updatePurchase(
         supplierId: supplier?.id ?? null,
         paidByPartnerId,
         paidFromTreasury,
+        onCredit,
         date: d.date,
         unitCost: d.unitCost,
         salePrice: d.salePrice ?? null,
@@ -292,6 +300,21 @@ export async function updatePurchase(
   return { ok: true };
 }
 
+/**
+ * Remove a purchase, unless the stock it brought in has already been sold.
+ *
+ * Stock is derived — purchased minus sold plus returns — so deleting a lot
+ * whose pieces have left the shelf doesn't fail anywhere: the variant simply
+ * goes to a negative quantity, which is not a thing a shelf can do. Worse, the
+ * cost snapshot for the NEXT sale is read from the latest purchase, so removing
+ * one quietly re-prices every future sale of that variant against an older
+ * figure, or against nothing at all.
+ *
+ * Blocked rather than corrected, in the same spirit as the finance deletes: a
+ * purchase that has been sold out of is a fact, and the fix for a wrong one is
+ * to edit its cost or quantity, not to make the goods retrospectively never
+ * have arrived.
+ */
 export async function deletePurchase(
   slug: string,
   id: string,
@@ -299,6 +322,34 @@ export async function deletePurchase(
   const gate = await requireAccess(slug, "purchases", "edit");
   if (!gate.ok) return gate;
   const workspaceId = gate.access.workspaceId;
+
+  const existing = await prisma.purchase.findFirst({
+    where: { id, workspaceId },
+    select: {
+      quantity: true,
+      productVariantId: true,
+      productVariant: {
+        select: { attributes: true, product: { select: { name: true } } },
+      },
+    },
+  });
+  if (!existing) return { ok: true };
+
+  const stock = await variantStockMap(workspaceId, [existing.productVariantId]);
+  const onHand = stock.get(existing.productVariantId) ?? 0;
+  if (onHand < existing.quantity) {
+    const label = variantFullName(
+      existing.productVariant.product.name,
+      existing.productVariant.attributes,
+    );
+    return {
+      ok: false,
+      error:
+        `${existing.quantity} piece(s) of ${label} came in on this purchase but only ${onHand} ` +
+        `are still on the shelf — deleting it would leave the stock negative and change the ` +
+        `cost of future sales. Edit the purchase instead, or record a stock adjustment.`,
+    };
+  }
 
   await prisma.$transaction(async (tx) => {
     // Delete the linked treasury deduction first, if any — the FK is

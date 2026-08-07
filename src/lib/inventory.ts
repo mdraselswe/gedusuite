@@ -109,6 +109,87 @@ export async function variantStockMap(
   return map;
 }
 
+export type InventoryValue = {
+  /** Pieces on the shelf, across every variant. Negative stock is ignored. */
+  units: number;
+  /** What those pieces cost to buy. */
+  value: number;
+  /**
+   * How much of that value arrived through a hand-entered positive CORRECTION
+   * rather than a purchase — stock somebody said was there, that no money is
+   * recorded as having bought.
+   *
+   * Usually honest (a miscount being fixed) and left in the total for exactly
+   * that reason. Reported separately because it is also the one way to raise
+   * "capital still the partners'" by typing, and a figure nobody can trace back
+   * to a receipt should say so rather than blend in.
+   */
+  fromCorrections: number;
+};
+
+/**
+ * What the unsold stock is worth, at what it cost.
+ *
+ * The capital rollup treats every purchase as spending, which is true of the
+ * cash and false of the position: a shop that turned 250,000 of capital into
+ * 250,000 of stock has not lost anything, but "Remaining capital" said it had.
+ * This is the other side of that entry.
+ *
+ * Valued the same way a sale's cost snapshot is — last purchase price, then the
+ * catalogue cost, then nothing — so stock value and COGS can't tell different
+ * stories about the same variant. Negative stock (more sold than the purchase
+ * records account for) contributes zero rather than a negative asset; the
+ * paperwork is behind, and pretending it's a liability doesn't help anyone.
+ */
+export async function inventoryValue(workspaceId: string): Promise<InventoryValue> {
+  const [stock, variants, corrections] = await Promise.all([
+    variantStockMap(workspaceId),
+    prisma.productVariant.findMany({
+      where: { product: { workspaceId } },
+      select: {
+        id: true,
+        unitCost: true,
+        purchases: {
+          where: { workspaceId },
+          orderBy: { date: "desc" },
+          take: 1,
+          select: { unitCost: true },
+        },
+      },
+    }),
+    // Only the ones that ADD stock. A negative correction takes value away and
+    // needs no flagging — nobody inflates a balance by writing stock off.
+    prisma.stockAdjustment.groupBy({
+      by: ["productVariantId"],
+      where: { workspaceId, type: "CORRECTION", delta: { gt: 0 } },
+      _sum: { delta: true },
+    }),
+  ]);
+  const addedByHand = new Map(
+    corrections.map((c) => [c.productVariantId, c._sum.delta ?? 0]),
+  );
+
+  let units = 0;
+  let value = 0;
+  let fromCorrections = 0;
+  for (const v of variants) {
+    const onHand = Math.max(0, stock.get(v.id) ?? 0);
+    if (onHand === 0) continue;
+    const unitCost = v.purchases[0]
+      ? Number(v.purchases[0].unitCost)
+      : v.unitCost != null
+        ? Number(v.unitCost)
+        : 0;
+    units += onHand;
+    value += onHand * unitCost;
+    // Capped at what's actually on the shelf: pieces added by hand and since
+    // sold aren't sitting in the value any more.
+    fromCorrections += Math.min(onHand, addedByHand.get(v.id) ?? 0) * unitCost;
+  }
+  const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+  return { units, value: round2(value), fromCorrections: round2(fromCorrections) };
+}
+
 export type InventoryAlert = {
   type: "LOW_STOCK" | "EXPIRY";
   message: string;
@@ -159,6 +240,7 @@ export async function computeInventoryAlerts(
     select: {
       id: true,
       expiryDate: true,
+      productVariantId: true,
       productVariant: {
         select: {
           attributes: true,
@@ -169,6 +251,12 @@ export async function computeInventoryAlerts(
   });
 
   for (const pu of expiring) {
+    // Nothing left of the variant means the lot is gone — sold, or written off
+    // once it turned. Stock isn't tracked per lot, so this is the closest the
+    // data can get to "that batch is no longer on the shelf", and it is the
+    // difference between an alert that clears itself and one that sits in the
+    // list for months after the goods went in the bin.
+    if ((stock.get(pu.productVariantId) ?? 0) <= 0) continue;
     const label = pu.productVariant.product.name + variantSuffix(pu.productVariant.attributes);
     const d = pu.expiryDate!.toISOString().slice(0, 10);
     alerts.push({

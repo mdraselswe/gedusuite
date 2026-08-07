@@ -25,17 +25,23 @@ const round2 = (v: number): number => Math.round((v + Number.EPSILON) * 100) / 1
 export type OrderTotals = {
   grossRevenue: number; // full ordered quantity × price, before returns/discounts
   itemDiscounts: number; // scaled to the quantity still kept
-  orderDiscount: number;
+  orderDiscount: number; // likewise scaled — a returned unit takes its share of the discount with it
   refunds: number; // total cash refunded (reported separately, not re-subtracted)
   netRevenue: number; // effective revenue after discounts, on kept quantities
   cogs: number; // cost of kept quantities
+  /**
+   * What this order's packaging cost, as a note. NOT in netProfit — the
+   * polybags were bought as an internal purchase, and that purchase is already
+   * an operating expense. Charging both put the same 5,000 of packaging
+   * through the accounts twice.
+   */
   packagingCost: number;
   giftCost: number;
   deliveryCharge: number;
   deliveryCost: number; // actual amount paid to the courier
   deliveryMargin: number; // deliveryCharge − deliveryCost; can be + or −
   codFeeCost: number; // the courier's percentage fee on the collected amount
-  netProfit: number; // PRD: sale − cost − packaging − discount − gift, plus/minus delivery margin, less the courier's COD fee
+  netProfit: number; // sale − cost − discount − gift, plus/minus delivery margin, less the courier's COD fee
   customerTotal: number; // owed for kept goods incl. delivery
   returnedUnits: number;
 };
@@ -76,7 +82,13 @@ export function computeOrderTotals(order: OrderWithTotals): OrderTotals {
     returnedUnits += returnedQty;
   }
 
-  const orderDiscount = n(order.discount);
+  // Scaled to what the customer kept, exactly as a line discount is. An order
+  // discount is a reduction on the goods, so returning the goods takes the
+  // reduction with them — left at full size on a fully returned order it
+  // survived as a standalone negative, and the order reported a loss equal to
+  // the discount on a sale that had been completely undone.
+  const keptFraction = grossRevenue > 0 ? effectiveRevenue / grossRevenue : 0;
+  const orderDiscount = n(order.discount) * keptFraction;
   const packagingCost = n(order.packagingCost);
   const giftCost = n(order.giftCost);
   const deliveryCharge = n(order.deliveryCharge);
@@ -87,8 +99,15 @@ export function computeOrderTotals(order: OrderWithTotals): OrderTotals {
   const codFeeCost = order.codFeeCost != null ? n(order.codFeeCost) : 0;
 
   const netRevenue = effectiveRevenue - itemDiscounts - orderDiscount;
-  const netProfit =
-    netRevenue - cogs - packagingCost - giftCost + deliveryMargin - codFeeCost;
+  // packagingCost is deliberately absent. Packaging material is bought as an
+  // internal purchase, and every internal purchase is already charged to
+  // profit as an operating expense — so subtracting a per-order share as well
+  // put the same polybags through the accounts twice: 5,000 spent on bags
+  // showed up as 5,000 of opex plus 5,000 spread across 500 orders. The
+  // internal purchase is the one that has real money behind it, so that is the
+  // one that counts; this figure stays on the order as a note about how much
+  // packaging a particular parcel used.
+  const netProfit = netRevenue - cogs - giftCost + deliveryMargin - codFeeCost;
   const customerTotal = netRevenue + deliveryCharge;
 
   return {
@@ -112,6 +131,7 @@ export function computeOrderTotals(order: OrderWithTotals): OrderTotals {
 
 /** What a cancelled order still cost, broken down. */
 export type CancelledCost = {
+  /** Reported, not charged — see the note on OrderTotals.packagingCost. */
   packagingCost: number;
   giftCost: number;
   /** What the courier charged for the failed trip. */
@@ -158,6 +178,9 @@ export function cancelledOrderCost(order: {
     giftCost: round2(giftCost),
     deliveryCost: round2(deliveryCost),
     collected: round2(collected),
-    total: round2(packagingCost + giftCost + deliveryCost - collected),
+    // Packaging is out of the total for the same reason it's out of netProfit:
+    // the bags were expensed when they were bought. Kept in the breakdown so a
+    // cancellation still says what it consumed.
+    total: round2(giftCost + deliveryCost - collected),
   };
 }

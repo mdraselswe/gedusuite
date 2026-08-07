@@ -68,6 +68,9 @@ const TAB_SPECS: TabSpec[] = [
       { key: "status", label: "Status" },
       { key: "paymentMethod", label: "Payment method" },
       { key: "paymentStatus", label: "Payment status" },
+      // Without them a PARTIAL row in the backup says only that "some" of the
+      // money arrived — which is the state the app itself used to be in.
+      { key: "amountPaid", label: "Paid so far", currency: true },
       { key: "deliveryCharge", label: "Delivery", currency: true },
       { key: "packagingCost", label: "Packaging", currency: true },
       { key: "giftCost", label: "Gift", currency: true },

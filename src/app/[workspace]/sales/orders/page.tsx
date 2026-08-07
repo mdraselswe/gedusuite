@@ -4,6 +4,7 @@ import { serverT } from "@/lib/session";
 import { can } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
 import { computeOrderTotals } from "@/lib/orders";
+import { amountOutstanding } from "@/lib/order-cash";
 import { OrderManager } from "@/components/sales/order-manager";
 import { variantFullName } from "@/lib/variants";
 import { Pagination, parsePage } from "@/components/ui/pagination";
@@ -200,6 +201,10 @@ export default async function OrdersPage({
       deliveryType: o.deliveryType,
       courierTrackingId: o.courierTrackingId,
       paymentStatus: o.paymentStatus,
+      amountPaid: Number(o.amountPaid),
+      // What is still owed after any advance — the number the list should show,
+      // rather than the invoice total on an order that is half settled.
+      amountDue: amountOutstanding(o, totals),
       paymentMethod: o.paymentMethod,
       source: o.source,
       boostCampaignId: o.boostCampaignId,

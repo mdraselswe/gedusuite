@@ -168,7 +168,11 @@ export default async function DashboardPage({
         name: p.user.name ?? p.user.email,
         percent: Number(p.profitSharePercent),
       })),
-      profit.netProfit,
+      // What is left to hand out, not the lifetime total. Splitting netProfit
+      // showed a partner the same "your share" every month however much of it
+      // they had already been paid — a figure that only ever went up, for money
+      // that had already left.
+      profit.distributableProfit,
     );
     const visible = new Set(scoped.map((p) => p.userId));
     partnerShares = cuts
@@ -297,7 +301,14 @@ export default async function DashboardPage({
         <Card className="animate-in fade-in-0 slide-in-from-bottom-2 fill-mode-both duration-300 delay-300">
           <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
             <CardTitle className="text-base">
-              Partner profit share — distributable profit {profit.netProfit.toFixed(2)}
+              Partner profit share — {profit.distributableProfit.toFixed(2)} still to
+              distribute
+              {profit.distributed > 0 && (
+                <span className="ml-1 font-normal text-muted-foreground">
+                  (earned {profit.netProfit.toFixed(2)}, paid out{" "}
+                  {profit.distributed.toFixed(2)})
+                </span>
+              )}
             </CardTitle>
             <Link
               href={`/${slug}/partners`}

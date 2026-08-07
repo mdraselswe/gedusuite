@@ -434,7 +434,12 @@ export function ReportView({
       {report.partnerShares.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Partner profit share</CardTitle>
+            {/* This range's earnings split by share — not an amount owed.
+                Whether any of it is still to be paid is the treasury page's
+                question, which nets off every distribution ever made. */}
+            <CardTitle className="text-base">
+              Partner profit share — what this period earned
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <DataTable

@@ -97,11 +97,6 @@ export function ProductDetailView({
     { label: "Cost of goods sold", value: -totals.cogs },
     { label: "Gross margin", value: totals.grossMargin, strong: true },
     {
-      label: "Packaging (allocated)",
-      value: -totals.packagingCost,
-      note: "share of each order's packaging cost",
-    },
-    {
       label: "Gifts (allocated)",
       value: -totals.giftCost,
       note: "free items given away with those orders",
@@ -117,6 +112,19 @@ export function ProductDetailView({
       note: "charged to the customer minus paid to the courier",
     },
     { label: "Net profit", value: totals.netProfit, strong: true },
+    // Below the line on purpose: the packaging material was expensed when it
+    // was bought, so charging a share here as well counted the same bags
+    // twice. Still shown, because how much packaging a product eats is worth
+    // knowing even when it isn't subtracted here.
+    ...(totals.packagingCost > 0
+      ? [
+          {
+            label: "Packaging used (not charged here)",
+            value: -totals.packagingCost,
+            note: "already counted as an internal purchase when the material was bought",
+          },
+        ]
+      : []),
   ];
 
   return (

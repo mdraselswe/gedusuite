@@ -77,6 +77,10 @@ type OrderRow = {
   deliveryType: string;
   courierTrackingId: string | null;
   paymentStatus: string;
+  /** Only meaningful while paymentStatus is PARTIAL. */
+  amountPaid: number;
+  /** Customer total less whatever has been paid towards it. */
+  amountDue: number;
   paymentMethod: string;
   source: string | null;
   boostCampaignId: string | null;
@@ -187,7 +191,7 @@ function PackagingCostField({
   required?: boolean;
 }) {
   const amount = parseFloat(value);
-  const warn = Number.isFinite(amount) && amount > 0;
+  const entered = Number.isFinite(amount) && amount > 0;
   return (
     <div className="space-y-2">
       <Label htmlFor={id}>Packaging cost</Label>
@@ -201,13 +205,16 @@ function PackagingCostField({
         required={required}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className={warn ? "border-amber-500/60" : undefined}
       />
-      {warn ? (
-        <p className="text-xs text-amber-700 dark:text-amber-400">
-          Counted twice? Packaging bought in bulk is normally logged once under
-          Internal purchases, and that whole amount already comes off profit. Leave
-          this at 0 unless this parcel&apos;s packaging was bought separately.
+      {/* This used to warn that entering a figure here double-counted the
+          packaging, which it did — profit subtracted both this and the whole
+          internal purchase that bought the material. The subtraction is gone
+          now, so the field is a record of what a parcel used rather than a
+          trap, and it says so plainly. */}
+      {entered ? (
+        <p className="text-xs text-muted-foreground">
+          Recorded for this order, not charged to profit again — the material is
+          already an expense from when it was bought under Internal purchases.
         </p>
       ) : (
         hint && <p className="text-xs text-muted-foreground">{hint}</p>
@@ -377,6 +384,11 @@ export function OrderManager({
   // type, so the value is state now — seeded whenever the dialog opens.
   const [cancelPackaging, setCancelPackaging] = useState("0");
   const [cancelSaving, setCancelSaving] = useState(false);
+  // The order awaiting a "how much of it have they paid?" answer. PARTIAL is
+  // the one status that means nothing without a number attached.
+  const [partPaying, setPartPaying] = useState<OrderRow | null>(null);
+  const [partPaidAmount, setPartPaidAmount] = useState("");
+  const [partPaySaving, setPartPaySaving] = useState(false);
   const [items, setItems] = useState<ItemDraft[]>([emptyItem()]);
   const [gifts, setGifts] = useState<GiftDraft[]>([]);
   const [customer, setCustomer] = useState<ComboOption | null>(null);
@@ -385,6 +397,8 @@ export function OrderManager({
   const [deliveryType, setDeliveryType] = useState("SELF");
   const [paymentMethod, setPaymentMethod] = useState("CASH");
   const [paymentStatus, setPaymentStatus] = useState("UNPAID");
+  /** Only submitted for PARTIAL — see the "Paid so far" field. */
+  const [amountPaid, setAmountPaid] = useState("");
   const [deliveryCharge, setDeliveryCharge] = useState("0");
   const [deliveryCost, setDeliveryCost] = useState("");
   const [courierId, setCourierId] = useState<string>(
@@ -564,6 +578,7 @@ export function OrderManager({
     setDeliveryType("SELF");
     setPaymentMethod("CASH");
     setPaymentStatus("UNPAID");
+    setAmountPaid("");
     setDeliveryCharge("0");
     setDeliveryCost("");
     setCourierId(couriers.find((c) => c.isDefault)?.id ?? NONE);
@@ -808,9 +823,36 @@ export function OrderManager({
   }
 
   async function onPaymentStatusChange(orderId: string, newStatus: string) {
+    // "Some of it" is not an amount, and every due figure needs one. Ask now,
+    // while whoever took the money is still standing there.
+    if (newStatus === "PARTIAL") {
+      const order = orders.find((o) => o.id === orderId);
+      if (order) {
+        setPartPaidAmount(order.amountPaid > 0 ? String(order.amountPaid) : "");
+        setPartPaying(order);
+        return;
+      }
+    }
     const res = await updatePaymentStatus(slug, orderId, newStatus);
     if (!res.ok) return toast.error(res.error);
     toast.success(`Payment → ${newStatus}`);
+    router.refresh();
+  }
+
+  async function onConfirmPartial(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!partPaying) return;
+    setPartPaySaving(true);
+    const res = await updatePaymentStatus(
+      slug,
+      partPaying.id,
+      "PARTIAL",
+      parseFloat(partPaidAmount) || 0,
+    );
+    setPartPaySaving(false);
+    if (!res.ok) return toast.error(res.error);
+    toast.success("Partial payment recorded");
+    setPartPaying(null);
     router.refresh();
   }
 
@@ -1070,6 +1112,13 @@ export function OrderManager({
                   <span className="whitespace-nowrap text-muted-foreground">
                     · {formatEnum(o.paymentMethod)}
                   </span>
+                  {/* A part-paid order that shows only "PARTIAL" tells nobody
+                      what is still owed, which is the only part that matters. */}
+                  {o.paymentStatus === "PARTIAL" && (
+                    <span className="whitespace-nowrap text-xs text-muted-foreground">
+                      {o.amountPaid.toFixed(2)} paid · {o.amountDue.toFixed(2)} due
+                    </span>
+                  )}
                   {o.totals.returnedUnits > 0 && (
                     <Badge variant="outline">{o.totals.returnedUnits} returned</Badge>
                   )}
@@ -1881,6 +1930,32 @@ export function OrderManager({
                           </SelectContent>
                         </Select>
                       </div>
+                      {/* PARTIAL without a figure is just a word: the whole
+                          order stays on the due list and the advance is money
+                          the app has never heard of. */}
+                      {paymentStatus === "PARTIAL" && (
+                        <div className="space-y-2">
+                          <Label htmlFor="o-paid">Paid so far</Label>
+                          <Input
+                            id="o-paid"
+                            name="amountPaid"
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            inputMode="decimal"
+                            required
+                            value={amountPaid}
+                            onChange={(e) => setAmountPaid(e.target.value)}
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            Still due{" "}
+                            {Math.max(
+                              0,
+                              preview.customerTotal - (parseFloat(amountPaid) || 0),
+                            ).toFixed(2)}
+                          </p>
+                        </div>
+                      )}
                       <PackagingCostField
                         id="o-pack"
                         value={packagingCost}
@@ -2071,6 +2146,60 @@ export function OrderManager({
                 </Button>
                 <Button type="submit" variant="destructive" disabled={cancelSaving}>
                   {cancelSaving ? "Cancelling…" : "Cancel the order"}
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Partial-payment dialog. PARTIAL used to be a status with no figure
+          behind it, so a 3,000 advance on a 5,000 order left the app chasing
+          the whole 5,000 and holding the 3,000 nowhere at all. */}
+      <Dialog open={!!partPaying} onOpenChange={(o) => !o && setPartPaying(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>How much has been paid?</DialogTitle>
+          </DialogHeader>
+          {partPaying && (
+            <form key={partPaying.id} onSubmit={onConfirmPartial} className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                {partPaying.customerName}&apos;s order comes to{" "}
+                {partPaying.totals.customerTotal.toFixed(2)}. Enter what they have
+                handed over so far — the rest stays on the due list.
+              </p>
+              <div className="space-y-2">
+                <Label htmlFor="pp-amount">Paid so far</Label>
+                <Input
+                  id="pp-amount"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  inputMode="decimal"
+                  required
+                  autoFocus
+                  value={partPaidAmount}
+                  onChange={(e) => setPartPaidAmount(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Still due{" "}
+                  {Math.max(
+                    0,
+                    partPaying.totals.customerTotal - (parseFloat(partPaidAmount) || 0),
+                  ).toFixed(2)}
+                </p>
+              </div>
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setPartPaying(null)}
+                  disabled={partPaySaving}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={partPaySaving}>
+                  {partPaySaving ? "Saving…" : "Record payment"}
                 </Button>
               </DialogFooter>
             </form>

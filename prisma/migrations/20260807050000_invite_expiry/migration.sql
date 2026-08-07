@@ -1,0 +1,11 @@
+-- Invites stop being valid forever.
+--
+-- The token is a bearer credential handed out over WhatsApp: whoever holds it
+-- and controls the invited email address becomes a member with the role it
+-- carries. Nothing ever aged one out, so an invite sent six months ago and
+-- long forgotten was still a live way into the workspace.
+--
+-- Nullable, and existing rows are left null on purpose: acceptInvite treats
+-- null as "no expiry", so nothing already sent out is broken by this
+-- migration. New invites get a date set when they are created.
+ALTER TABLE "Invite" ADD COLUMN "expiresAt" TIMESTAMP(3);

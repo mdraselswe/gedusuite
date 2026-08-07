@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { sharesAreNormalized, splitByShare } from "@/lib/profit-share";
+import {
+  beyondDistributableProfit,
+  sharesAreNormalized,
+  splitByShare,
+} from "@/lib/profit-share";
 
 const sum = (cuts: { amount: number }[]) =>
   Math.round(cuts.reduce((s, c) => s + c.amount, 0) * 100) / 100;
@@ -76,5 +80,30 @@ describe("sharesAreNormalized", () => {
   it("is false when the shares don't reach 100 or overshoot it", () => {
     expect(sharesAreNormalized([{ percent: 60 }, { percent: 30 }])).toBe(false);
     expect(sharesAreNormalized([{ percent: 80 }, { percent: 80 }])).toBe(false);
+  });
+});
+
+describe("beyondDistributableProfit", () => {
+  it("is zero when the profit covers it", () => {
+    expect(beyondDistributableProfit(200000, 150000)).toBe(0);
+    expect(beyondDistributableProfit(200000, 200000)).toBe(0);
+  });
+
+  it("counts the whole second payout once the first used up the profit", () => {
+    // 200,000 earned, 150,000 already distributed. The lifetime figure hasn't
+    // moved, so measuring against it would wave this through unchallenged —
+    // 100,000 of capital out of the door with nothing said.
+    const left = 200000 - 150000;
+    expect(beyondDistributableProfit(left, 150000)).toBe(100000);
+  });
+
+  it("treats everything as capital when nothing is left", () => {
+    expect(beyondDistributableProfit(0, 5000)).toBe(5000);
+  });
+
+  it("doesn't let an existing overdraft subsidise the next payout", () => {
+    // Already 5,000 past what was earned: the next 5,000 is all capital too,
+    // not "covered" by the negative.
+    expect(beyondDistributableProfit(-5000, 5000)).toBe(5000);
   });
 });

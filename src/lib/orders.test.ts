@@ -82,12 +82,22 @@ describe("computeOrderTotals", () => {
     expect(lost.netProfit).toBe(360);
   });
 
-  it("subtracts packaging, gifts, the order discount and the COD fee", () => {
+  it("subtracts gifts, the order discount and the COD fee", () => {
     const t = computeOrderTotals(
       order({ packagingCost: 25, giftCost: 40, discount: 100, codFeeCost: 12 }, [line()]),
     );
     expect(t.netRevenue).toBe(900);
-    expect(t.netProfit).toBe(900 - 600 - 25 - 40 - 12);
+    expect(t.netProfit).toBe(900 - 600 - 40 - 12);
+  });
+
+  it("reports packaging without charging it", () => {
+    // The material was bought as an internal purchase and is already an
+    // operating expense there. Charging a per-order share too put the same
+    // 5,000 of polybags through the accounts as 10,000.
+    const withPack = computeOrderTotals(order({ packagingCost: 25 }, [line()]));
+    const without = computeOrderTotals(order({}, [line()]));
+    expect(withPack.packagingCost).toBe(25);
+    expect(withPack.netProfit).toBe(without.netProfit);
   });
 
   it("keeps the delivery charge out of revenue but inside what the customer owes", () => {
@@ -104,14 +114,52 @@ describe("computeOrderTotals", () => {
     );
     expect(t.netRevenue).toBe(0);
     expect(t.cogs).toBe(0);
-    expect(t.netProfit).toBe(-30); // the packaging is still spent
+    // Zero, not −30: the packaging was expensed when the bags were bought.
+    expect(t.netProfit).toBe(0);
+  });
+
+  it("takes the order discount away with the goods on a full return", () => {
+    // A discount is a reduction on the sale. Undo the sale and the reduction
+    // goes too — left at full size it survived as a standalone negative and
+    // invented a 100 loss on an order that never happened.
+    const t = computeOrderTotals(
+      order({ discount: 100 }, [
+        line({ quantity: 2, returns: [{ quantity: 2, refundAmount: 1000 }] }),
+      ]),
+    );
+    expect(t.orderDiscount).toBe(0);
+    expect(t.netRevenue).toBe(0);
+    expect(t.netProfit).toBe(0);
+    expect(t.customerTotal).toBe(0);
+  });
+
+  it("keeps the order discount in proportion on a partial return", () => {
+    // 2 pieces at 500 with 100 off the order; one comes back, so half the
+    // discount belongs to the half that stayed.
+    const t = computeOrderTotals(
+      order({ discount: 100 }, [
+        line({ quantity: 2, returns: [{ quantity: 1, refundAmount: 500 }] }),
+      ]),
+    );
+    expect(t.orderDiscount).toBe(50);
+    expect(t.netRevenue).toBe(450);
+    expect(t.netProfit).toBe(150); // 450 revenue − 300 cost
+  });
+
+  it("leaves the order discount alone when nothing came back", () => {
+    const t = computeOrderTotals(order({ discount: 100 }, [line({ quantity: 2 })]));
+    expect(t.orderDiscount).toBe(100);
+    expect(t.netRevenue).toBe(900);
   });
 });
 
 describe("cancelledOrderCost", () => {
-  it("counts packaging, gift and the courier's return charge", () => {
+  it("counts the gift and the courier's return charge", () => {
     const c = cancelledOrderCost({ packagingCost: 25, giftCost: 40, deliveryCost: 60 });
-    expect(c.total).toBe(125);
+    // Packaging is reported but not charged — the bags were expensed when they
+    // were bought, here as everywhere else.
+    expect(c.packagingCost).toBe(25);
+    expect(c.total).toBe(100);
   });
 
   it("treats a missing delivery cost as zero, not as the delivery charge", () => {
@@ -119,7 +167,7 @@ describe("cancelledOrderCost", () => {
     // never shipped was never billed for.
     const c = cancelledOrderCost({ packagingCost: 25, giftCost: 0, deliveryCost: null });
     expect(c.deliveryCost).toBe(0);
-    expect(c.total).toBe(25);
+    expect(c.total).toBe(0);
   });
 
   it("nets off what the customer paid anyway on a partial delivery", () => {
@@ -129,7 +177,7 @@ describe("cancelledOrderCost", () => {
       deliveryCost: 60,
       cancelledCollected: 100,
     });
-    expect(c.total).toBe(-15); // ended up ahead
+    expect(c.total).toBe(-40); // ended up ahead
   });
 
   it("is free when nothing was packed or shipped", () => {

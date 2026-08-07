@@ -18,9 +18,9 @@
  * unlikely to be run the same way.
  */
 
-export type FundingSource = "NONE" | "PARTNER" | "TREASURY";
+export type FundingSource = "NONE" | "PARTNER" | "TREASURY" | "CREDIT";
 
-const VALID: readonly FundingSource[] = ["NONE", "PARTNER", "TREASURY"];
+const VALID: readonly FundingSource[] = ["NONE", "PARTNER", "TREASURY", "CREDIT"];
 
 const key = (workspace: string, form: string) => `funding:${workspace}:${form}`;
 

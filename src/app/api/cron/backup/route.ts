@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { denyCron } from "@/lib/cron-auth";
 import { buildSnapshot } from "@/lib/backup";
 
 const KEEP = 10;
@@ -8,13 +9,8 @@ const KEEP = 10;
 // Scheduled JSON backup for every workspace that opted in (BackupSetting.autoJson).
 // Wired to Vercel Cron in vercel.json. Protected by CRON_SECRET.
 export async function GET(req: NextRequest) {
-  const secret = process.env.CRON_SECRET;
-  if (secret) {
-    const auth = req.headers.get("authorization");
-    if (auth !== `Bearer ${secret}`) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-  }
+  const denied = denyCron(req);
+  if (denied) return denied;
 
   const settings = await prisma.backupSetting.findMany({
     where: { autoJson: true },

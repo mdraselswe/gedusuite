@@ -4,10 +4,16 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAccess } from "@/lib/authz";
-import { OutOfStock, variantStockMap, STOCK_CONSUMING_STATUSES } from "@/lib/inventory";
+import {
+  OutOfStock,
+  refreshInventoryAlerts,
+  variantStockMap,
+  STOCK_CONSUMING_STATUSES,
+} from "@/lib/inventory";
 import { ConcurrentWrite, runSerializable } from "@/lib/tx";
 import { variantFullName } from "@/lib/variants";
-import { blockedByDepositedCash, syncOrderCashEntry } from "@/lib/order-cash";
+import { blockedByDepositedCash, depositAmount, syncOrderCashEntry } from "@/lib/order-cash";
+import { computeOrderTotals } from "@/lib/orders";
 import { isOrderSource } from "@/lib/order-source";
 import { quoteCourier } from "@/lib/courier";
 import type { OrderStatus, PaymentStatus } from "@prisma/client";
@@ -63,6 +69,11 @@ const OrderSchema = z.object({
   courierTrackingId: z.string().trim().max(100).optional().or(z.literal("")),
   paymentMethod: z.enum(["CASH", "BKASH", "NAGAD", "COURIER_COLLECTION", "OTHER"]),
   paymentStatus: z.enum(["PAID", "UNPAID", "PARTIAL"]),
+  /** Only read when paymentStatus is PARTIAL — how much the advance was. */
+  amountPaid: z.preprocess(
+    (v) => (v === "" || v == null ? undefined : v),
+    z.coerce.number().nonnegative().optional(),
+  ),
   packagingCost: z.coerce.number().nonnegative().default(0),
   giftCost: z.coerce.number().nonnegative().default(0),
   discount: z.coerce.number().nonnegative().default(0),
@@ -241,6 +252,7 @@ export async function createOrder(
     courierTrackingId: formData.get("courierTrackingId") ?? undefined,
     paymentMethod: formData.get("paymentMethod"),
     paymentStatus: formData.get("paymentStatus"),
+    amountPaid: formData.get("amountPaid") ?? undefined,
     packagingCost: formData.get("packagingCost") ?? 0,
     giftCost: formData.get("giftCost") ?? 0,
     discount: formData.get("discount") ?? 0,
@@ -360,6 +372,22 @@ export async function createOrder(
   const itemCount = d.items.reduce((s, it) => s + it.quantity, 0);
   const notifMessage = `New order — ${customer?.name ?? "Walk-in"} · ৳${customerTotal.toFixed(2)} (${itemCount} item${itemCount > 1 ? "s" : ""})`;
 
+  // An advance can't be more than the order, and only means anything while the
+  // order is part-paid — PAID already means all of it, UNPAID means none.
+  let amountPaid = 0;
+  if (d.paymentStatus === "PARTIAL") {
+    if (!d.amountPaid || d.amountPaid <= 0) {
+      return { ok: false, error: "Enter how much the customer has paid so far" };
+    }
+    if (round2(d.amountPaid) >= customerTotal) {
+      return {
+        ok: false,
+        error: `That covers the whole order (${customerTotal.toFixed(2)}) — mark it paid instead`,
+      };
+    }
+    amountPaid = round2(d.amountPaid);
+  }
+
   const courierQuote = await quoteForOrder(workspaceId, {
     courierId: d.courierId || undefined,
     courierZoneId: d.courierZoneId || undefined,
@@ -396,6 +424,7 @@ export async function createOrder(
         courierTrackingId: d.courierTrackingId?.trim() || null,
         paymentMethod: d.paymentMethod,
         paymentStatus: d.paymentStatus,
+        amountPaid,
         packagingCost: d.packagingCost,
         giftCost,
         discount: d.discount,
@@ -429,6 +458,12 @@ export async function createOrder(
     }
     throw e;
   }
+
+  // Selling is how stock actually leaves, and it was the one path that never
+  // recomputed the alerts: a purchase or a stock adjustment refreshed them,
+  // a sale did not. Six pieces sold down to two sat there silently until
+  // somebody happened to save an unrelated purchase.
+  await refreshInventoryAlerts(workspaceId);
 
   revalidatePath(`/${slug}/sales/orders`);
   revalidatePath(`/${slug}/couriers`);
@@ -716,6 +751,10 @@ export async function updateOrderStatus(
     throw e;
   }
 
+  // A status change moves stock in both directions — confirming consumes it,
+  // cancelling puts it back — so the alerts have to be recomputed either way.
+  await refreshInventoryAlerts(workspaceId);
+
   revalidatePath(`/${slug}/sales/orders`);
   revalidatePath(`/${slug}/treasury`);
   revalidatePath(`/${slug}/couriers`);
@@ -731,11 +770,16 @@ export async function updateOrderStatus(
  * Update whether an order's payment has been collected — e.g. UNPAID -> PAID
  * once COD/courier-collection cash actually comes in. Doesn't touch stock;
  * unlike order status, payment status has no effect on inventory.
+ *
+ * PARTIAL now carries the figure with it. Without one the status said only
+ * that "some" of the money had arrived, which no report could do anything with
+ * — so the whole order stayed on the due list and the advance existed nowhere.
  */
 export async function updatePaymentStatus(
   slug: string,
   orderId: string,
   paymentStatus: string,
+  amountPaid?: number,
 ): Promise<ActionResult> {
   const gate = await requireAccess(slug, "sales", "edit");
   if (!gate.ok) return gate;
@@ -746,22 +790,72 @@ export async function updatePaymentStatus(
 
   const order = await prisma.order.findFirst({
     where: { id: orderId, workspaceId },
-    select: { id: true, cashInTreasury: true },
+    include: { items: { include: { returns: true } } },
   });
   if (!order) return { ok: false, error: "Order not found" };
 
-  // Taking an order back off PAID says the money isn't collected after all,
+  // Going all the way back to UNPAID says nothing was collected after all,
   // which can't be true while the treasury holds a confirmed deposit for it.
   // Blocked rather than silently unwound: deleting a treasury entry is not
   // something a payment dropdown should do behind someone's back.
-  if (paymentStatus !== "PAID") {
+  //
+  // PARTIAL is a different matter now that it carries a figure — the deposit
+  // is recomputed from it below, the same way a recorded return shrinks it.
+  // There is a real number to move to, so there is nothing to refuse.
+  if (paymentStatus === "UNPAID") {
     const blocked = blockedByDepositedCash(order, "unpay");
     if (blocked) return { ok: false, error: blocked };
   }
 
-  await prisma.order.update({
-    where: { id: orderId },
-    data: { paymentStatus: paymentStatus as PaymentStatus },
+  // A settled or untouched order carries no partial figure — cleared rather
+  // than left lying around, so nothing downstream has to guess whether a
+  // stale number still means anything.
+  const totals = computeOrderTotals(order);
+  let paid = 0;
+  if (paymentStatus === "PARTIAL") {
+    const total = totals.customerTotal;
+    if (amountPaid == null || !Number.isFinite(amountPaid) || amountPaid <= 0) {
+      return { ok: false, error: "Enter how much the customer has paid so far" };
+    }
+    if (round2(amountPaid) >= total) {
+      return {
+        ok: false,
+        error: `That covers the whole order (${total.toFixed(2)}) — mark it paid instead`,
+      };
+    }
+    paid = round2(amountPaid);
+  }
+
+  // Saying less was collected than the treasury is already holding for this
+  // order takes money out of the balance — and a payment dropdown quietly
+  // shrinking a confirmed deposit is the same thing blockedByDepositedCash
+  // refuses to do for UNPAID, one step smaller. Going UP is unambiguous (more
+  // money arrived) and syncs below without a word.
+  if (order.cashInTreasury) {
+    const banked = depositAmount(order, totals).net;
+    const next = depositAmount(
+      { ...order, paymentStatus, amountPaid: paid },
+      totals,
+    ).net;
+    if (next < banked) {
+      return {
+        ok: false,
+        error:
+          `The treasury holds ${banked.toFixed(2)} for this order, and this would drop it to ` +
+          `${next.toFixed(2)}. Undo the deposit on the order first — that removes the treasury ` +
+          `entry — then set the payment and mark it deposited again.`,
+      };
+    }
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.order.update({
+      where: { id: orderId },
+      data: { paymentStatus: paymentStatus as PaymentStatus, amountPaid: paid },
+    });
+    // How much has been collected is precisely what a deposited entry holds,
+    // so changing one has to move the other.
+    await syncOrderCashEntry(tx, workspaceId, orderId);
   });
 
   revalidatePath(`/${slug}/sales/orders`);
@@ -837,6 +931,25 @@ export async function createReturn(
     return { ok: false, error: "Return quantity exceeds remaining quantity" };
   }
 
+  // What these units were actually sold for, their share of the line discount
+  // taken off. A refund is reported rather than subtracted — the returned unit
+  // already drops out of revenue AND cost, so subtracting the cash again would
+  // count the return twice — and that is exactly why an over-refund was
+  // invisible: 5,000 handed back on a 500 item was accepted and showed up in no
+  // total anywhere. Bounded here, at the only place that knows the line.
+  const lineValue =
+    (Number(item.unitPrice) - Number(item.discount) / Math.max(1, item.quantity)) * d.quantity;
+  const maxRefund = round2(Math.max(0, lineValue));
+  if (round2(d.refundAmount) > maxRefund) {
+    return {
+      ok: false,
+      error:
+        `A refund of ${round2(d.refundAmount).toFixed(2)} is more than these ${d.quantity} unit(s) ` +
+        `were sold for (${maxRefund.toFixed(2)}). Enter what was actually handed back, or record ` +
+        `the extra as a treasury payment so it shows up somewhere.`,
+    };
+  }
+
   await prisma.$transaction(async (tx) => {
     await tx.return.create({
       data: {
@@ -853,6 +966,9 @@ export async function createReturn(
     // money that never reached the treasury can't leave it.
     await syncOrderCashEntry(tx, workspaceId, item.orderId);
   });
+
+  // Returned goods go back on the shelf, which can clear a low-stock alert.
+  await refreshInventoryAlerts(workspaceId);
 
   revalidatePath(`/${slug}/sales/orders`);
   revalidatePath(`/${slug}/treasury`);

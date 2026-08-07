@@ -1,0 +1,14 @@
+-- What the customer has actually handed over.
+--
+-- PARTIAL has been a payment status with no number behind it since the day it
+-- was added. A 3,000 advance on a 5,000 order left the app reporting the full
+-- 5,000 as due, refusing to let the 3,000 into the treasury (marking cash
+-- deposited requires PAID), and leaving it out of every "collected" figure —
+-- so the money existed in the shop and nowhere in the accounts.
+--
+-- Defaults to zero and is deliberately NOT backfilled. Everything reads it
+-- only when the status is PARTIAL: PAID still means the whole customer total,
+-- UNPAID still means nothing collected. Every existing row therefore behaves
+-- exactly as it did, including the PARTIAL ones — which go on reporting their
+-- full total as due until somebody types the figure in.
+ALTER TABLE "Order" ADD COLUMN "amountPaid" DECIMAL(12,2) NOT NULL DEFAULT 0;

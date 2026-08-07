@@ -11,6 +11,9 @@ import type { Role } from "@prisma/client";
 
 const ROLES = ["OWNER", "PARTNER", "MANAGER", "STAFF"] as const;
 
+/** How long an invite link stays usable. */
+export const INVITE_TTL_DAYS = 14;
+
 const InviteSchema = z.object({
   slug: z.string().min(1),
   email: z.string().trim().toLowerCase().email("Enter a valid email"),
@@ -62,6 +65,10 @@ export async function inviteMember(formData: FormData): Promise<InviteResult> {
   }
 
   const token = randomBytes(24).toString("hex");
+  // A fortnight is long enough for someone to get round to it and short enough
+  // that a link left in a chat thread stops being a way in. Re-inviting issues
+  // a fresh token and a fresh window, so nothing is lost by it lapsing.
+  const expiresAt = new Date(Date.now() + INVITE_TTL_DAYS * 86_400_000);
   await prisma.invite.upsert({
     where: { email_workspaceId: { email, workspaceId } },
     create: {
@@ -70,8 +77,9 @@ export async function inviteMember(formData: FormData): Promise<InviteResult> {
       role: role as Role,
       token,
       invitedBy: user.id,
+      expiresAt,
     },
-    update: { role: role as Role, token, invitedBy: user.id, acceptedAt: null },
+    update: { role: role as Role, token, invitedBy: user.id, acceptedAt: null, expiresAt },
   });
 
   revalidatePath(`/${slug}/settings/team`);
@@ -168,6 +176,14 @@ export async function acceptInvite(token: string): Promise<AcceptResult> {
   });
   if (!invite || invite.acceptedAt) {
     return { ok: false, error: "This invite is invalid or has already been used" };
+  }
+  // Null means an invite issued before invites had an end date — left valid
+  // rather than retroactively cancelled on people mid-onboarding.
+  if (invite.expiresAt && invite.expiresAt.getTime() < Date.now()) {
+    return {
+      ok: false,
+      error: "This invite has expired. Ask the workspace owner to send a new one.",
+    };
   }
   if (invite.email.toLowerCase() !== (user.email ?? "").toLowerCase()) {
     return {

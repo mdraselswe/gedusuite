@@ -1,5 +1,7 @@
 import type { Prisma } from "@prisma/client";
-import { computeOrderTotals } from "@/lib/orders";
+import { computeOrderTotals, type OrderTotals } from "@/lib/orders";
+
+const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
 
 /**
  * Keeping an order's deposited cash in step with the order.
@@ -25,7 +27,12 @@ type NotedOrder = {
 };
 
 /** How the deposit reads in the treasury list. */
-export function cashEntryNote(order: NotedOrder, returnedUnits: number): string {
+export function cashEntryNote(
+  order: NotedOrder,
+  returnedUnits: number,
+  /** What the courier kept before remitting, when it collected the money. */
+  courierCharges = 0,
+): string {
   const holder = order.heldBy ? (order.heldBy.user.name ?? order.heldBy.user.email) : null;
   return [
     order.customer?.name ? `Order for ${order.customer.name}` : "Walk-in order",
@@ -33,9 +40,115 @@ export function cashEntryNote(order: NotedOrder, returnedUnits: number): string 
     // Says why the figure is lower than the invoice, rather than leaving
     // someone to work it out from two screens.
     returnedUnits > 0 ? `net of ${returnedUnits} returned unit(s)` : null,
+    courierCharges > 0 ? `after ${courierCharges.toFixed(2)} courier charges` : null,
   ]
     .filter(Boolean)
     .join(", ");
+}
+
+/** What an order actually puts into the treasury, and what never got there. */
+export type DepositAmount = {
+  /** What the customer handed over. */
+  gross: number;
+  /** Delivery cost + COD fee the courier kept out of it before remitting. */
+  courierCharges: number;
+  /** gross − courierCharges, floored at zero: what the business receives. */
+  net: number;
+};
+
+/** Enough of an order to work out what reaches the treasury. */
+type DepositableOrder = {
+  status: string;
+  paymentMethod: string;
+  paymentStatus: string;
+  amountPaid?: Prisma.Decimal | number | null;
+  cancelledCollected?: Prisma.Decimal | number | null;
+  deliveryCost?: Prisma.Decimal | number | null;
+};
+
+/** Just enough to answer "how much has the customer paid". */
+type SettleableOrder = Pick<
+  DepositableOrder,
+  "status" | "paymentStatus" | "amountPaid" | "cancelledCollected"
+>;
+
+/**
+ * What the customer has actually handed over so far.
+ *
+ * PAID is taken to mean the whole customer total whatever `amountPaid` holds —
+ * that is what makes every order predating the column behave as it did, and it
+ * keeps a PAID order fully settled when a later return lowers what was owed.
+ * `amountPaid` is only consulted for PARTIAL, and clamped to the total: a typo
+ * must not create a customer who has overpaid into the treasury.
+ *
+ * A cancelled order sold nothing, so the only money in play is whatever was
+ * collected on the doorstep of a refused parcel.
+ */
+export function amountCollected(
+  order: SettleableOrder,
+  totals: Pick<OrderTotals, "customerTotal">,
+): number {
+  if (order.status === "CANCELLED") return round2(Number(order.cancelledCollected ?? 0));
+  if (order.paymentStatus === "PAID") return totals.customerTotal;
+  if (order.paymentStatus !== "PARTIAL") return 0;
+  return round2(
+    Math.min(totals.customerTotal, Math.max(0, Number(order.amountPaid ?? 0))),
+  );
+}
+
+/**
+ * What the customer still owes. Zero on a cancelled order — there is nothing
+ * left to collect on a sale that didn't happen, whatever was paid towards it.
+ */
+export function amountOutstanding(
+  order: SettleableOrder,
+  totals: Pick<OrderTotals, "customerTotal">,
+): number {
+  if (order.status === "CANCELLED") return 0;
+  return round2(Math.max(0, totals.customerTotal - amountCollected(order, totals)));
+}
+
+/**
+ * How much of an order's money the business actually ends up holding.
+ *
+ * A courier does not hand over what it collected — it hands over what is left
+ * after its delivery charge and its percentage fee. The treasury used to be
+ * credited with the full invoice anyway, so every COD order quietly added the
+ * courier's cut to a balance that never contained it: a 960 parcel at 65
+ * delivery and 8.45 COD fee put 960 in the treasury when 886.55 arrived. The
+ * courier balance page has always netted these off (that is how it knows what
+ * to expect from Steadfast); this is the same arithmetic, applied to the money
+ * once it lands.
+ *
+ * Only COURIER_COLLECTION is netted. When the customer paid by bKash or handed
+ * cash to somebody, the business really did receive the whole amount — paying
+ * a rider afterwards is a separate movement, and inventing an outflow here
+ * would take it out of the treasury twice.
+ *
+ * Floored at zero: a refused parcel can cost more to return than it collected,
+ * and a negative "deposit" is not a thing. The loss is already carried by
+ * cancelledOrderCost, which is where it belongs.
+ */
+export function depositAmount(
+  order: DepositableOrder,
+  totals: Pick<OrderTotals, "customerTotal" | "deliveryCost" | "codFeeCost">,
+): DepositAmount {
+  const cancelled = order.status === "CANCELLED";
+  // What was collected, not what was invoiced: a part-paid order banks the
+  // part that was paid.
+  const gross = amountCollected(order, totals);
+
+  // computeOrderTotals reads a null deliveryCost as "same as the charge",
+  // which is right for a delivered order and wrong for a cancelled one — see
+  // cancelledOrderCost. Nothing was quoted, so nothing was charged.
+  const deliveryCost =
+    cancelled && order.deliveryCost == null ? 0 : totals.deliveryCost;
+  const courierCharges =
+    order.paymentMethod === "COURIER_COLLECTION"
+      ? round2(deliveryCost + totals.codFeeCost)
+      : 0;
+
+  return { gross, courierCharges, net: round2(Math.max(0, gross - courierCharges)) };
 }
 
 /** "Courier remittance" when the courier collected it, otherwise a plain sale. */
@@ -66,13 +179,20 @@ export async function syncOrderCashEntry(
   if (!order || !order.cashInTreasury) return;
 
   const totals = computeOrderTotals(order);
-  // A cancelled order sold nothing. Whatever the customer handed over anyway —
-  // usually just the shipping on a refused parcel — is the only part of it the
-  // business still holds.
-  const amount =
-    order.status === "CANCELLED"
-      ? Number(order.cancelledCollected ?? 0)
-      : totals.customerTotal;
+  const deposit = depositAmount(order, totals);
+  const amount = deposit.net;
+
+  // An order whose status says nothing has been collected, with money already
+  // banked against it, is a contradiction — most often a PARTIAL row nobody has
+  // typed the figure onto yet. Recomputing from it would read "collected
+  // nothing" and delete a deposit for cash that genuinely arrived, from a
+  // routine edit somewhere else entirely. Left alone for a person to resolve,
+  // the same way blockedByDepositedCash leaves the other unresolvable cases.
+  const unrecorded =
+    deposit.gross <= 0 &&
+    order.status !== "CANCELLED" &&
+    order.paymentStatus !== "PAID";
+  if (unrecorded) return;
 
   if (amount <= 0) {
     // The flag clears with the entry, so the order stops claiming a deposit it
@@ -89,7 +209,7 @@ export async function syncOrderCashEntry(
     data: {
       amount,
       source: cashEntrySource(order.paymentMethod),
-      note: cashEntryNote(order, totals.returnedUnits),
+      note: cashEntryNote(order, totals.returnedUnits, deposit.courierCharges),
     },
   });
 }

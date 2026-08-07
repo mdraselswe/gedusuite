@@ -83,9 +83,11 @@ export default async function PurchasesPage({
       ? { paidByPartnerId: { not: null } }
       : listFilters.funding === "TREASURY"
         ? { paidFromTreasury: true }
-        : listFilters.funding === "NONE"
-          ? { paidByPartnerId: null, paidFromTreasury: false }
-          : {};
+        : listFilters.funding === "CREDIT"
+          ? { onCredit: true }
+          : listFilters.funding === "NONE"
+            ? { paidByPartnerId: null, paidFromTreasury: false, onCredit: false }
+            : {};
   const sort: PurchaseSort = sp.sort && sp.sort in SORTS ? (sp.sort as PurchaseSort) : "date_desc";
   const access = await workspaceAccess(slug);
   if (!access) redirect("/");
@@ -181,6 +183,7 @@ export default async function PurchasesPage({
       ? (pu.paidByPartner.user.name ?? pu.paidByPartner.user.email)
       : null,
     paidFromTreasury: pu.paidFromTreasury,
+    onCredit: pu.onCredit,
     unitCost: Number(pu.unitCost),
     salePrice: pu.salePrice != null ? Number(pu.salePrice) : null,
     quantity: pu.quantity,

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireAccess } from "@/lib/authz";
 import { computeOrderTotals } from "@/lib/orders";
-import { cashEntryNote, cashEntrySource } from "@/lib/order-cash";
+import { cashEntryNote, cashEntrySource, depositAmount } from "@/lib/order-cash";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -33,8 +33,11 @@ export async function markCashDeposited(
     },
   });
   if (!order) return { ok: false, error: "Order not found" };
-  if (order.paymentStatus !== "PAID") {
-    return { ok: false, error: "Order isn't marked PAID yet" };
+  // PARTIAL counts: an advance is real money somebody is holding, and refusing
+  // to let it into the treasury until the order settled meant it sat outside
+  // the accounts entirely, sometimes for weeks.
+  if (order.paymentStatus === "UNPAID") {
+    return { ok: false, error: "Nothing has been collected on this order yet" };
   }
   // A cancelled order can still be PAID — the customer paid before refusing it.
   // Depositing its full total would put a sale that didn't happen into the
@@ -50,9 +53,22 @@ export async function markCashDeposited(
   }
 
   const totals = computeOrderTotals(order);
-  const amount = totals.customerTotal;
+  // What the business receives, not what the customer paid: on a COD order the
+  // courier keeps its delivery charge and percentage fee before remitting, and
+  // crediting the treasury with the difference was money it never held.
+  const deposit = depositAmount(order, totals);
+  const amount = deposit.net;
+  if (amount <= 0) {
+    return {
+      ok: false,
+      error:
+        deposit.gross <= 0
+          ? "No amount has been recorded as collected on this order yet."
+          : "The courier's charges cover everything it collected on this order, so nothing reaches the treasury.",
+    };
+  }
   const source = cashEntrySource(order.paymentMethod);
-  const note = cashEntryNote(order, totals.returnedUnits);
+  const note = cashEntryNote(order, totals.returnedUnits, deposit.courierCharges);
 
   await prisma.$transaction([
     prisma.order.update({ where: { id: orderId }, data: { cashInTreasury: true } }),

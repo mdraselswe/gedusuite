@@ -4,6 +4,7 @@ import { workspaceAccess } from "@/lib/authz";
 import { can } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
 import { computeOrderTotals } from "@/lib/orders";
+import { amountCollected, amountOutstanding } from "@/lib/order-cash";
 import { DownloadInvoicePdfButton } from "@/components/invoice-actions";
 import { variantFullName } from "@/lib/variants";
 import {
@@ -143,6 +144,18 @@ export default async function InvoicePage({
             <span>Total</span>
             <span>{totals.customerTotal.toFixed(2)}</span>
           </div>
+          {/* A part-paid invoice that shows only the total is the one document
+              most likely to be argued over. Print what was paid and what is
+              left, so the customer and the shop read the same figure. */}
+          {order.paymentStatus === "PARTIAL" && Number(order.amountPaid) > 0 && (
+            <>
+              <Row label="Paid" value={amountCollected(order, totals)} />
+              <div className="flex justify-between font-medium">
+                <span>Balance due</span>
+                <span>{amountOutstanding(order, totals).toFixed(2)}</span>
+              </div>
+            </>
+          )}
           <div className="flex justify-between text-muted-foreground">
             <span>Payment</span>
             <span>

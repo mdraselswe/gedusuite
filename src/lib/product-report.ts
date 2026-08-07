@@ -221,7 +221,10 @@ export function allocateOrderLines(order: AllocatableOrder): Map<string, Allocat
       giftCost,
       codFeeCost,
       deliveryMargin,
-      netProfit: revenue - cogs - packagingCost - giftCost - codFeeCost + deliveryMargin,
+      // Packaging is allocated and reported but not charged — see the note on
+      // OrderTotals.packagingCost. Subtracting it here as well as counting the
+      // packaging-material purchase in opex was the same money twice.
+      netProfit: revenue - cogs - giftCost - codFeeCost + deliveryMargin,
     });
   }
   return out;
@@ -469,8 +472,9 @@ export async function buildProductReport(
   orderRows.sort((a, b) => b.date.localeCompare(a.date));
 
   const grossMargin = revenue - cogs;
-  const netProfit =
-    grossMargin - packagingCost - giftCost - codFeeCost + deliveryMargin;
+  // Packaging out, for the same reason as everywhere else: the material was
+  // expensed when it was bought.
+  const netProfit = grossMargin - giftCost - codFeeCost + deliveryMargin;
 
   const purchaseQty = purchases.reduce((s, p) => s + p.quantity, 0);
   const purchaseSpend = purchases.reduce((s, p) => s + Number(p.unitCost) * p.quantity, 0);

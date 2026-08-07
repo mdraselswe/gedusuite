@@ -66,6 +66,7 @@ export default async function InternalPurchasesPage({
     paidBy: i.paidByPartner ? (i.paidByPartner.user.name ?? i.paidByPartner.user.email) : null,
     paidByPartnerId: i.paidByPartnerId,
     paidFromTreasury: i.paidFromTreasury,
+    onCredit: i.onCredit,
     cost: Number(i.cost),
     quantity: i.quantity,
     spreadMonths: i.spreadMonths,

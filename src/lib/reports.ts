@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { cancelledOrderCost, computeOrderTotals } from "@/lib/orders";
+import { allocateOrderLines } from "@/lib/product-report";
+import { amountCollected } from "@/lib/order-cash";
 import { splitByShare } from "@/lib/profit-share";
 import { dhakaDayEnd, dhakaDayKey, dhakaDayStart, dhakaDaysAgo, dhakaToday } from "@/lib/dhaka-time";
 import { amortizeAll } from "@/lib/amortize";
@@ -79,8 +81,8 @@ export type Report = {
   // `percent` is what the partner's record says; `effectivePercent` is what
   // they're actually paid on once shares are normalized to their own total.
   partnerShares: { name: string; percent: number; effectivePercent: number; amount: number }[];
-  // Money actually collected (paymentStatus PAID only — UNPAID/PARTIAL isn't
-  // "collected" yet), grouped by how the customer paid. Sorted by amount desc.
+  // Money actually collected — a settled order in full, a part-paid one for
+  // its advance — grouped by how the customer paid. Sorted by amount desc.
   collectedByMethod: PaymentMethodTotal[];
   // Which channel the orders came from — count, revenue and profit each.
   // Cancelled orders are already excluded upstream, so this counts real sales.
@@ -111,9 +113,13 @@ export async function buildReport(
     },
     orderBy: { date: "asc" },
   });
-
   const orders = allOrders.filter((o) => o.status !== "CANCELLED");
   const cancelled = allOrders.filter((o) => o.status === "CANCELLED");
+
+  // Sums to the same profit the KPI shows, so a reader can add the product
+  // table up and land on the header figure. Sold orders only — a cancelled one
+  // has no lines to split, and its cost is allocated separately below.
+  const allocations = new Map(orders.map((o) => [o.id, allocateOrderLines(o)]));
 
   let revenue = 0;
   let profit = 0;
@@ -150,24 +156,32 @@ export async function buildReport(
     src.profit += t.netProfit;
     sourceMap.set(srcKey, src);
 
-    if (o.paymentStatus === "PAID") {
+    // What has actually come in, which now includes an advance on a part-paid
+    // order — money the shop is holding, and previously counted nowhere.
+    const collected = amountCollected(o, t);
+    if (collected > 0) {
       const m = methodMap.get(o.paymentMethod) ?? { amount: 0, orders: 0 };
-      m.amount += t.customerTotal;
+      m.amount += collected;
       m.orders += 1;
       methodMap.set(o.paymentMethod, m);
     }
 
+    // Per-line revenue and profit come from the same allocation the product
+    // pages use, not from price − cost. That shortcut ignored every discount
+    // and every order-level cost, so the product table claimed a margin the
+    // KPI above it disagreed with — on a 1,000 order with 100 off, by exactly
+    // the 100 nobody could find.
+    const lines = allocations.get(o.id);
     for (const it of o.items) {
-      const returned = it.returns.reduce((a, r) => a + r.quantity, 0);
-      const eq = Math.max(0, it.quantity - returned);
-      if (eq === 0) continue;
+      const alloc = lines?.get(it.id);
+      if (!alloc || alloc.keptUnits === 0) continue;
       const pid = it.productVariant.product.id;
       const a =
         productMap.get(pid) ??
         { productId: pid, name: it.productVariant.product.name, qty: 0, revenue: 0, profit: 0 };
-      a.qty += eq;
-      a.revenue += Number(it.unitPrice) * eq;
-      a.profit += (Number(it.unitPrice) - Number(it.unitCost)) * eq;
+      a.qty += alloc.keptUnits;
+      a.revenue += alloc.revenue;
+      a.profit += alloc.netProfit;
       productMap.set(pid, a);
     }
   }

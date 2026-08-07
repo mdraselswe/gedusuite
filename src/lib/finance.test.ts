@@ -11,20 +11,36 @@ import { describe, expect, it } from "vitest";
  */
 function remainingCapital(input: {
   invested: number;
-  spend: { amount: number; paidFromTreasury: boolean }[];
+  spend: { amount: number; paidFromTreasury: boolean; onCredit?: boolean }[];
   miscExpense: number;
-}): { totalExpenses: number; treasuryFundedSpend: number; capitalSpend: number; remaining: number } {
+  /** Unsold stock at cost — spent capital that is still an asset. */
+  inventoryValue?: number;
+}): {
+  totalExpenses: number;
+  treasuryFundedSpend: number;
+  supplierDue: number;
+  capitalSpend: number;
+  remaining: number;
+  capitalPlusStock: number;
+} {
   const totalExpenses =
     input.spend.reduce((s, x) => s + x.amount, 0) + input.miscExpense;
   const treasuryFundedSpend = input.spend
     .filter((x) => x.paidFromTreasury)
     .reduce((s, x) => s + x.amount, 0);
-  const capitalSpend = totalExpenses - treasuryFundedSpend;
+  // Owed, not spent: nobody's money has left for these yet.
+  const supplierDue = input.spend
+    .filter((x) => x.onCredit)
+    .reduce((s, x) => s + x.amount, 0);
+  const capitalSpend = totalExpenses - treasuryFundedSpend - supplierDue;
+  const remaining = input.invested - capitalSpend;
   return {
     totalExpenses,
     treasuryFundedSpend,
+    supplierDue,
     capitalSpend,
-    remaining: input.invested - capitalSpend,
+    remaining,
+    capitalPlusStock: remaining + (input.inventoryValue ?? 0),
   };
 }
 
@@ -149,5 +165,59 @@ describe("remaining capital vs total spend", () => {
       miscExpense: 0,
     });
     expect(r.remaining).toBe(-3000);
+  });
+});
+
+describe("goods bought on credit", () => {
+  it("takes no capital, because nobody has paid for them yet", () => {
+    // 50,000 of stock on terms used to read as 50,000 of partner capital gone.
+    const r = remainingCapital({
+      invested: 100000,
+      spend: [{ amount: 50000, paidFromTreasury: false, onCredit: true }],
+      miscExpense: 0,
+    });
+    expect(r.totalExpenses).toBe(50000); // the goods arrived
+    expect(r.supplierDue).toBe(50000); // and are owed for
+    expect(r.capitalSpend).toBe(0);
+    expect(r.remaining).toBe(100000); // nothing of anyone's has left
+  });
+
+  it("moves to capital once the bill is paid from a partner's pocket", () => {
+    // Settling is the same row with its funding changed, so the two states
+    // have to agree on the total and disagree on who bore it.
+    const r = remainingCapital({
+      invested: 100000,
+      spend: [{ amount: 50000, paidFromTreasury: false, onCredit: false }],
+      miscExpense: 0,
+    });
+    expect(r.supplierDue).toBe(0);
+    expect(r.capitalSpend).toBe(50000);
+    expect(r.remaining).toBe(50000);
+  });
+});
+
+describe("capital that turned into stock", () => {
+  it("is not lost, and says so", () => {
+    // The figure that frightened everyone: 300,000 in, 250,000 of it now
+    // sitting on the shelf, reported as 50,000 "remaining" with no mention of
+    // where the rest went.
+    const r = remainingCapital({
+      invested: 300000,
+      spend: [{ amount: 250000, paidFromTreasury: false }],
+      miscExpense: 0,
+      inventoryValue: 250000,
+    });
+    expect(r.remaining).toBe(50000);
+    expect(r.capitalPlusStock).toBe(300000);
+  });
+
+  it("shows the real loss once the stock is sold below cost", () => {
+    const r = remainingCapital({
+      invested: 300000,
+      spend: [{ amount: 250000, paidFromTreasury: false }],
+      miscExpense: 0,
+      inventoryValue: 0,
+    });
+    expect(r.capitalPlusStock).toBe(50000);
   });
 });

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { denyCron } from "@/lib/cron-auth";
 import { buildSnapshot, computeBackupSummary } from "@/lib/backup";
 import { syncSnapshotForUser, uploadJsonBackupToDrive } from "@/lib/google";
 import { clientForConnection } from "@/lib/google-personal";
@@ -11,13 +12,8 @@ import { encrypt } from "@/lib/crypto";
 // just triggered on a schedule instead of a click. Wired to Vercel Cron in
 // vercel.json. Protected by CRON_SECRET.
 export async function GET(req: NextRequest) {
-  const secret = process.env.CRON_SECRET;
-  if (secret) {
-    const auth = req.headers.get("authorization");
-    if (auth !== `Bearer ${secret}`) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-  }
+  const denied = denyCron(req);
+  if (denied) return denied;
 
   const connections = await prisma.userGoogleConnection.findMany({
     where: { workspaceId: { not: null } },

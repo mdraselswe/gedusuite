@@ -1,6 +1,8 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { cancelledOrderCost, computeOrderTotals } from "@/lib/orders";
+import { amountOutstanding, depositAmount } from "@/lib/order-cash";
+import { inventoryValue } from "@/lib/inventory";
 import { amortizeAll } from "@/lib/amortize";
 
 export const OVERDUE_DAYS = 7;
@@ -157,9 +159,36 @@ export type BusinessCapitalSummary = {
    * takings — so spending it uses up no partner's capital.
    */
   treasuryFundedSpend: number;
-  /** totalExpenses − treasuryFundedSpend: what partner capital actually paid for. */
+  /**
+   * Bought on account and not paid for yet — what the shop owes its suppliers.
+   *
+   * Not a cost that has been borne, so it takes no capital and leaves no
+   * treasury entry; it is a debt, and until this existed it was invisible.
+   * Stock taken on terms was read as spent partner capital, and the money set
+   * aside to settle the bill looked like profit anyone could take out.
+   */
+  supplierDue: number;
+  /** totalExpenses − treasuryFundedSpend − supplierDue: what capital paid for. */
   capitalSpend: number;
   totalRemaining: number; // netInvested − capitalSpend
+  /** Unsold stock at what it cost — spent capital that is still an asset. */
+  inventoryValue: number;
+  /** Pieces on the shelf behind that figure. */
+  inventoryUnits: number;
+  /**
+   * The slice of inventoryValue that came from hand-entered positive stock
+   * corrections rather than purchases — see InventoryValue.fromCorrections.
+   */
+  inventoryFromCorrections: number;
+  /**
+   * totalRemaining + inventoryValue: capital that hasn't been consumed, whether
+   * it's sitting as cash or as goods.
+   *
+   * "Remaining capital" alone answers a cash question and reads as a health
+   * one. Buy 250,000 of stock with 300,000 of capital and it drops to 50,000
+   * with nothing to say the other 250,000 is on the shelf rather than gone.
+   */
+  capitalPlusStock: number;
 };
 
 /**
@@ -183,16 +212,16 @@ export type BusinessCapitalSummary = {
 export async function businessCapitalSummary(
   workspaceId: string,
 ): Promise<BusinessCapitalSummary> {
-  const [balances, purchases, internalPurchases, miscRows, boostRows, treasuryBoost] =
+  const [balances, purchases, internalPurchases, miscRows, boostRows, treasuryBoost, stock] =
     await Promise.all([
       partnerBalances(workspaceId),
       prisma.purchase.findMany({
         where: { workspaceId },
-        select: { unitCost: true, quantity: true, paidFromTreasury: true },
+        select: { unitCost: true, quantity: true, paidFromTreasury: true, onCredit: true },
       }),
       prisma.internalPurchase.findMany({
         where: { workspaceId },
-        select: { cost: true, quantity: true, paidFromTreasury: true },
+        select: { cost: true, quantity: true, paidFromTreasury: true, onCredit: true },
       }),
       prisma.partnerTxn.aggregate({
         where: { workspaceId, type: "EXPENSE" },
@@ -206,6 +235,8 @@ export async function businessCapitalSummary(
         where: { workspaceId, paidFromTreasury: true },
         _sum: { amount: true },
       }),
+      // The asset side of all that purchasing — see capitalPlusStock.
+      inventoryValue(workspaceId),
     ]);
 
   let totalInvested = 0;
@@ -240,7 +271,18 @@ export async function businessCapitalSummary(
       .filter((ip) => ip.paidFromTreasury)
       .reduce((s, ip) => s + Number(ip.cost) * ip.quantity, 0) +
     Number(treasuryBoost._sum.amount ?? 0);
-  const capitalSpend = totalExpenses - treasuryFundedSpend;
+  // Owed, not spent. Nobody's money has left for these yet, so they can't come
+  // off partner capital — but the debt is real, which is why it's reported
+  // rather than simply ignored.
+  const supplierDue =
+    purchases
+      .filter((p) => p.onCredit)
+      .reduce((s, p) => s + Number(p.unitCost) * p.quantity, 0) +
+    internalPurchases
+      .filter((ip) => ip.onCredit)
+      .reduce((s, ip) => s + Number(ip.cost) * ip.quantity, 0);
+  const capitalSpend = totalExpenses - treasuryFundedSpend - supplierDue;
+  const totalRemaining = netInvested - capitalSpend;
 
   return {
     totalInvested: round2(totalInvested),
@@ -252,9 +294,113 @@ export async function businessCapitalSummary(
     miscExpense: round2(miscExpense),
     totalExpenses: round2(totalExpenses),
     treasuryFundedSpend: round2(treasuryFundedSpend),
+    supplierDue: round2(supplierDue),
     capitalSpend: round2(capitalSpend),
-    totalRemaining: round2(netInvested - capitalSpend),
+    totalRemaining: round2(totalRemaining),
+    inventoryValue: stock.value,
+    inventoryUnits: stock.units,
+    inventoryFromCorrections: stock.fromCorrections,
+    capitalPlusStock: round2(totalRemaining + stock.value),
   };
+}
+
+export type SupplierDue = {
+  /** Null for rows bought on credit with no supplier recorded. */
+  supplierId: string | null;
+  supplierName: string;
+  amount: number;
+  /** How many unpaid rows make it up — stock and internal purchases together. */
+  rows: number;
+};
+
+/**
+ * Everything still owed for goods bought on credit, as one number.
+ *
+ * The cheap form of the question, for the paths that only need the total —
+ * businessCapitalSummary reaches for every partner balance and values the whole
+ * shelf on its way to the same figure. Only unpaid rows are read, and there are
+ * never many of those.
+ */
+export async function supplierDueTotal(workspaceId: string): Promise<number> {
+  const [purchases, internals] = await Promise.all([
+    prisma.purchase.findMany({
+      where: { workspaceId, onCredit: true },
+      select: { unitCost: true, quantity: true },
+    }),
+    prisma.internalPurchase.findMany({
+      where: { workspaceId, onCredit: true },
+      select: { cost: true, quantity: true },
+    }),
+  ]);
+  return round2(
+    purchases.reduce((s, p) => s + Number(p.unitCost) * p.quantity, 0) +
+      internals.reduce((s, ip) => s + Number(ip.cost) * ip.quantity, 0),
+  );
+}
+
+/**
+ * What is owed to each supplier, biggest first.
+ *
+ * Everything still marked as bought on credit. Settling a bill is the existing
+ * edit — switch the row's funding to Treasury or Partner — so a supplier drops
+ * off this list exactly when the money is recorded as leaving.
+ */
+export async function supplierDues(workspaceId: string): Promise<SupplierDue[]> {
+  const [purchases, internals] = await Promise.all([
+    prisma.purchase.findMany({
+      where: { workspaceId, onCredit: true },
+      select: {
+        unitCost: true,
+        quantity: true,
+        supplierId: true,
+        supplier: { select: { name: true } },
+      },
+    }),
+    prisma.internalPurchase.findMany({
+      where: { workspaceId, onCredit: true },
+      select: {
+        cost: true,
+        quantity: true,
+        supplierId: true,
+        supplierName: true,
+        supplier: { select: { name: true } },
+      },
+    }),
+  ]);
+
+  const map = new Map<string, SupplierDue>();
+  const add = (supplierId: string | null, name: string | null, amount: number) => {
+    const key = supplierId ?? "__none__";
+    const row =
+      map.get(key) ??
+      map
+        .set(key, {
+          supplierId,
+          // A bill nobody attributed is still a bill. Named rather than hidden,
+          // so the total on the card and the rows under it always agree.
+          supplierName: name ?? "No supplier recorded",
+          amount: 0,
+          rows: 0,
+        })
+        .get(key)!;
+    row.amount += amount;
+    row.rows += 1;
+  };
+
+  for (const p of purchases) {
+    add(p.supplierId, p.supplier?.name ?? null, Number(p.unitCost) * p.quantity);
+  }
+  for (const ip of internals) {
+    add(
+      ip.supplierId,
+      ip.supplier?.name ?? ip.supplierName,
+      Number(ip.cost) * ip.quantity,
+    );
+  }
+
+  return [...map.values()]
+    .map((r) => ({ ...r, amount: round2(r.amount) }))
+    .sort((a, b) => b.amount - a.amount);
 }
 
 /**
@@ -341,8 +487,21 @@ export type BusinessProfit = {
    */
   prepaidExpenses: number;
   operatingExpenses: number;
-  /** tradingProfit − operatingExpenses. What profit shares are paid on. */
+  /** tradingProfit − operatingExpenses. Everything the business has earned. */
   netProfit: number;
+  /** Profit already paid out to partners, across every distribution ever made. */
+  distributed: number;
+  /**
+   * netProfit − distributed: what is left to hand out.
+   *
+   * The number every "your share" figure and every distribution check has to
+   * use. netProfit on its own is a lifetime total and does not go down when
+   * partners are paid, so asking it twice gives the same answer twice — which
+   * is how the same profit gets distributed a second time with nothing
+   * objecting. Can go negative, and says so: that means more has been taken
+   * out than the business earned.
+   */
+  distributableProfit: number;
 };
 
 /**
@@ -368,7 +527,7 @@ export type BusinessProfit = {
  * taking the total on trust.
  */
 export async function totalBusinessProfit(workspaceId: string): Promise<BusinessProfit> {
-  const [orders, adSpendAgg, internalPurchases, miscAgg, writeOffs] = await Promise.all([
+  const [orders, adSpendAgg, internalPurchases, miscAgg, writeOffs, distributedAgg] = await Promise.all([
     prisma.order.findMany({
       where: { workspaceId },
       include: { items: { include: { returns: true } } },
@@ -403,6 +562,13 @@ export async function totalBusinessProfit(workspaceId: string): Promise<Business
         },
       },
     }),
+    // What has already been handed out. Every share figure in the app is
+    // "profit minus this" — without it the same profit is offered again every
+    // time somebody looks.
+    prisma.profitDistribution.aggregate({
+      where: { workspaceId },
+      _sum: { totalAmount: true },
+    }),
   ]);
 
   const tradingProfit = orders.reduce(
@@ -428,6 +594,8 @@ export async function totalBusinessProfit(workspaceId: string): Promise<Business
   const miscExpense = Number(miscAgg._sum.amount ?? 0);
   const stockLoss = writeOffs.reduce((s, a) => s + Math.abs(Math.min(0, a.delta)) * writeOffUnitCost(a), 0);
   const operatingExpenses = adSpend + internalPurchaseSpend + miscExpense + stockLoss;
+  const netProfit = round2(tradingProfit - operatingExpenses);
+  const distributed = round2(Number(distributedAgg._sum.totalAmount ?? 0));
 
   return {
     tradingProfit: round2(tradingProfit),
@@ -437,7 +605,9 @@ export async function totalBusinessProfit(workspaceId: string): Promise<Business
     stockLoss: round2(stockLoss),
     prepaidExpenses: internal.prepaid,
     operatingExpenses: round2(operatingExpenses),
-    netProfit: round2(tradingProfit - operatingExpenses),
+    netProfit,
+    distributed,
+    distributableProfit: round2(netProfit - distributed),
   };
 }
 
@@ -474,14 +644,23 @@ export async function overdueOrders(
   });
 
   const now = Date.now();
-  return orders.map((o) => ({
-    orderId: o.id,
-    date: o.date.toISOString().slice(0, 10),
-    daysOverdue: Math.floor((now - o.date.getTime()) / 86_400_000),
-    amount: computeOrderTotals(o).customerTotal,
-    customerName: o.customer?.name ?? "Walk-in",
-    heldByName: o.heldBy ? (o.heldBy.user.name ?? o.heldBy.user.email) : null,
-  }));
+  return (
+    orders
+      .map((o) => ({
+        orderId: o.id,
+        date: o.date.toISOString().slice(0, 10),
+        daysOverdue: Math.floor((now - o.date.getTime()) / 86_400_000),
+        // What is still owed, not what was invoiced. A 5,000 order with a
+        // 3,000 advance was chased for the whole 5,000, and the customer who
+        // had paid most of it looked like the one who had paid nothing.
+        amount: amountOutstanding(o, computeOrderTotals(o)),
+        customerName: o.customer?.name ?? "Walk-in",
+        heldByName: o.heldBy ? (o.heldBy.user.name ?? o.heldBy.user.email) : null,
+      }))
+      // A PARTIAL order settled to the last taka owes nothing and doesn't
+      // belong on an overdue list, whatever its status column still says.
+      .filter((o) => o.amount > 0)
+  );
 }
 
 export type HeldCash = {
@@ -514,7 +693,9 @@ export async function cashHeldByMember(workspaceId: string): Promise<HeldCash[]>
   const map = new Map<string, HeldCash>();
   for (const o of orders) {
     if (!o.heldByMembershipId || !o.heldBy) continue;
-    const amount = computeOrderTotals(o).customerTotal;
+    // Still to collect, so a part-paid order counts for the part outstanding.
+    const amount = amountOutstanding(o, computeOrderTotals(o));
+    if (amount <= 0) continue;
     const existing = map.get(o.heldByMembershipId);
     if (existing) {
       existing.amount = round2(existing.amount + amount);
@@ -537,14 +718,23 @@ export async function totalDue(workspaceId: string): Promise<number> {
     where: { workspaceId, status: { not: "CANCELLED" }, paymentStatus: { in: ["UNPAID", "PARTIAL"] } },
     include: { items: { include: { returns: true } } },
   });
-  return round2(orders.reduce((s, o) => s + computeOrderTotals(o).customerTotal, 0));
+  // Net of anything already paid towards each one — the whole point of a
+  // PARTIAL status, and the one thing it never did.
+  return round2(
+    orders.reduce((s, o) => s + amountOutstanding(o, computeOrderTotals(o)), 0),
+  );
 }
 
 export type PaidNotDeposited = {
   orderId: string;
   date: string;
   customerName: string;
+  /** What will actually reach the treasury — a courier's cut already removed. */
   amount: number;
+  /** What the customer paid. Equal to `amount` unless a courier collected it. */
+  gross: number;
+  /** Delivery cost + COD fee the courier keeps out of what it collected. */
+  courierCharges: number;
   paymentMethod: string;
   heldByName: string | null;
   isCourierCollection: boolean;
@@ -564,7 +754,11 @@ export async function paidNotDeposited(workspaceId: string): Promise<PaidNotDepo
     where: {
       workspaceId,
       status: { not: "CANCELLED" },
-      paymentStatus: "PAID",
+      // PARTIAL too: an advance is money the business is holding just as much
+      // as a settled order's is. Restricting this to PAID left every advance
+      // out of the "cash not yet in the treasury" list, which is exactly the
+      // list somebody checks to find out where the money is.
+      paymentStatus: { in: ["PAID", "PARTIAL"] },
       cashInTreasury: false,
     },
     include: {
@@ -574,15 +768,26 @@ export async function paidNotDeposited(workspaceId: string): Promise<PaidNotDepo
     },
     orderBy: { date: "asc" },
   });
-  return orders.map((o) => ({
-    orderId: o.id,
-    date: o.date.toISOString().slice(0, 10),
-    customerName: o.customer?.name ?? "Walk-in",
-    amount: computeOrderTotals(o).customerTotal,
-    paymentMethod: o.paymentMethod,
-    heldByName: o.heldBy ? (o.heldBy.user.name ?? o.heldBy.user.email) : null,
-    isCourierCollection: o.paymentMethod === "COURIER_COLLECTION",
-  }));
+  return orders
+    .map((o) => {
+      // What the courier will hand over, not what it collected — otherwise this
+      // card promises the treasury money the courier is keeping.
+      const deposit = depositAmount(o, computeOrderTotals(o));
+      return {
+        orderId: o.id,
+        date: o.date.toISOString().slice(0, 10),
+        customerName: o.customer?.name ?? "Walk-in",
+        amount: deposit.net,
+        gross: deposit.gross,
+        courierCharges: deposit.courierCharges,
+        paymentMethod: o.paymentMethod,
+        heldByName: o.heldBy ? (o.heldBy.user.name ?? o.heldBy.user.email) : null,
+        isCourierCollection: o.paymentMethod === "COURIER_COLLECTION",
+      };
+    })
+    // A PARTIAL order nobody has typed an amount onto has collected nothing
+    // yet, so there is no cash of its to be waiting for.
+    .filter((o) => o.amount > 0);
 }
 
 /** Reconcile OVERDUE_PAYMENT notifications with the current overdue set. */

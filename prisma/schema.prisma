@@ -103,6 +103,10 @@ model Invite {
   token       String    @unique
   invitedBy   String // userId of the inviter
   acceptedAt  DateTime?
+  // Invites are shared over WhatsApp and never come back, so a token with no
+  // end date is a standing offer of a role. One from six months ago worked
+  // exactly as well as one from this morning.
+  expiresAt   DateTime?
   createdAt   DateTime  @default(now())
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -246,6 +250,12 @@ model Purchase {
   productVariantId String
   paidByPartnerId  String? // which partner's money funded this purchase (optional)
   paidFromTreasury Boolean   @default(false) // funded from the shared treasury instead of a partner (mutually exclusive with paidByPartnerId)
+  // Taken on credit and not paid for yet — the goods are here, the money is
+  // still owed to the supplier. Mutually exclusive with the two above, and the
+  // one funding state the app had no way to record: stock bought on terms
+  // looked exactly like stock somebody forgot to tag, so a real liability
+  // showed up as spent partner capital and nowhere as a debt.
+  onCredit         Boolean   @default(false)
   date             DateTime  @default(now())
   unitCost         Decimal   @db.Decimal(12, 2)
   salePrice        Decimal?  @db.Decimal(12, 2) // intended per-unit selling price, noted at purchase time
@@ -435,6 +445,15 @@ model Order {
   courierTrackingId  String? // the courier's own order/consignment number (deliveryType=COURIER); shown on the invoice instead of the internal id
   paymentMethod      PaymentMethod @default(CASH)
   paymentStatus      PaymentStatus @default(UNPAID)
+  // How much of the order the customer has actually handed over. PARTIAL was
+  // a status with no number behind it: an advance of 3,000 on a 5,000 order
+  // left the app reporting the whole 5,000 as due and the 3,000 sitting
+  // nowhere at all — not against the due, not in the treasury.
+  //
+  // Only read when paymentStatus is PARTIAL. PAID means the whole customer
+  // total whatever this says, which is what keeps every order that predates
+  // the column behaving exactly as it did.
+  amountPaid         Decimal       @default(0) @db.Decimal(12, 2)
   packagingCost      Decimal       @default(0) @db.Decimal(12, 2)
   giftCost           Decimal       @default(0) @db.Decimal(12, 2)
   discount           Decimal       @default(0) @db.Decimal(12, 2) // order-level discount
@@ -666,6 +685,8 @@ model InternalPurchase {
   category         ExpenseCategory @default(OTHER)
   paidByPartnerId  String? // which partner's money funded this purchase (optional)
   paidFromTreasury Boolean         @default(false) // funded from the shared treasury instead of a partner (mutually exclusive with paidByPartnerId)
+  /** Bought on account and still owed for — see Purchase.onCredit. */
+  onCredit         Boolean         @default(false)
   // How many months this cost covers, so it can be charged to them rather than
   // all to the month it was paid in. A year of hosting bought in April is not
   // an April expense; a bus fare is. Null = charge it in full on `date`, which
@@ -940,6 +961,32 @@ model OrderLead {
   @@unique([workspaceId, source, externalId]) // webhook retries can't duplicate a lead
   @@index([workspaceId, callStatus])
   @@index([workspaceId, orderedAt])
+}
+
+// One row per offline mutation the server has seen, keyed by an id the client
+// generates BEFORE it first tries to send.
+//
+// The outbox replays anything it didn't get an answer for — and "no answer"
+// includes the case where the write committed and the connection dropped on
+// the way back. Without this the replay re-ran it: a second purchase, a second
+// treasury deduction, a second partner credit, for one purchase that happened
+// once. The row is written before the handler runs, so the unique constraint
+// is what rejects the duplicate rather than a check anyone can race.
+//
+// Deliberately standalone — plain workspaceId, no relation — for the same
+// reason as OrderLead: restoreSnapshot deletes rows inside one transaction and
+// an FK from here would make every restore fail.
+model ProcessedMutation {
+  /** Client-generated, globally unique, stable across retries of the same write. */
+  requestId   String   @id
+  workspaceId String?
+  actionType  String
+  /** Null while the handler is still running; set once it returns. */
+  ok          Boolean?
+  error       String?
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
 }
 
 // Remembers when the call list last pulled from WooCommerce, so opening the
