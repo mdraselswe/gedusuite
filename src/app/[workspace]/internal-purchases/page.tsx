@@ -8,6 +8,7 @@ import { serverT } from "@/lib/session";
 import { Pagination, parsePage } from "@/components/ui/pagination";
 import { PageHeader } from "@/components/ui/page-header";
 import { ClipboardList } from "lucide-react";
+import { Money } from "@/components/ui/money";
 
 const PAGE_SIZE = 50;
 
@@ -89,7 +90,7 @@ export default async function InternalPurchasesPage({
         title={(await serverT())("internalPurchases")}
         action={
           <span className="text-sm text-muted-foreground">
-            Total spend: <span className="font-semibold">{totalSpend.toFixed(2)}</span>
+            Total spend: <span className="font-semibold"><Money value={totalSpend} /></span>
           </span>
         }
       />

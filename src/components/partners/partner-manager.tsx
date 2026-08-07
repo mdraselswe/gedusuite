@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/select";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { Handshake } from "lucide-react";
+import { Money } from "@/components/ui/money";
 
 type PartnerRow = {
   id: string;
@@ -163,7 +164,7 @@ export function PartnerManager({
               align: "right",
               hideable: true,
               sortValue: (p) => p.netCapital,
-              cell: (p) => p.netCapital.toFixed(2),
+              cell: (p) => <Money value={p.netCapital} />,
             },
             {
               key: "takenBack",
@@ -171,7 +172,7 @@ export function PartnerManager({
               align: "right",
               hideable: true,
               sortValue: (p) => p.capitalWithdrawn,
-              cell: (p) => (p.capitalWithdrawn > 0 ? p.capitalWithdrawn.toFixed(2) : "—"),
+              cell: (p) => (p.capitalWithdrawn > 0 ? <Money value={p.capitalWithdrawn} /> : "—"),
             },
             {
               key: "expenses",
@@ -179,7 +180,7 @@ export function PartnerManager({
               align: "right",
               hideable: true,
               sortValue: (p) => p.expenses,
-              cell: (p) => p.expenses.toFixed(2),
+              cell: (p) => <Money value={p.expenses} />,
             },
             {
               key: "remaining",
@@ -189,7 +190,7 @@ export function PartnerManager({
               sortValue: (p) => p.remaining,
               cell: (p) => (
                 <span className={p.remaining < 0 ? "text-destructive" : undefined}>
-                  {p.remaining.toFixed(2)}
+                  <Money value={p.remaining} />
                 </span>
               ),
             },
@@ -199,14 +200,14 @@ export function PartnerManager({
               align: "right",
               hideable: true,
               sortValue: (p) => p.depositedToTreasury,
-              cell: (p) => p.depositedToTreasury.toFixed(2),
+              cell: (p) => <Money value={p.depositedToTreasury} />,
             },
             {
               key: "profitShare",
               header: "Profit share",
               align: "right",
               sortValue: (p) => p.profitShareAmount,
-              cell: (p) => p.profitShareAmount.toFixed(2),
+              cell: (p) => <Money value={p.profitShareAmount} />,
             },
             {
               key: "actions",

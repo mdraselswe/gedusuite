@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { computeOrderTotals } from "@/lib/orders";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CustomerOrdersTable } from "@/components/customers/customer-orders-table";
+import { Money } from "@/components/ui/money";
 
 export default async function CustomerDetailPage({
   params,
@@ -82,7 +83,7 @@ export default async function CustomerDetailPage({
             <CardContent
               className={`text-2xl font-bold ${totalProfit < 0 ? "text-destructive" : "text-emerald-600 dark:text-emerald-400"}`}
             >
-              {totalProfit.toFixed(2)}
+              <Money value={totalProfit} />
             </CardContent>
           </Card>
         )}
@@ -92,7 +93,7 @@ export default async function CustomerDetailPage({
               Lifetime value
             </CardTitle>
           </CardHeader>
-          <CardContent className="text-2xl font-bold">{lifetime.toFixed(2)}</CardContent>
+          <CardContent className="text-2xl font-bold"><Money value={lifetime} /></CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
@@ -103,7 +104,7 @@ export default async function CustomerDetailPage({
           <CardContent
             className={`text-2xl font-bold ${outstanding > 0 ? "text-destructive" : ""}`}
           >
-            {outstanding.toFixed(2)}
+            <Money value={outstanding} />
           </CardContent>
         </Card>
       </div>

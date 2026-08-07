@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { ShoppingBag } from "lucide-react";
+import { Money } from "@/components/ui/money";
 
 type Row = {
   id: string;
@@ -47,7 +48,7 @@ export function CustomerOrdersTable({
             key: "total",
             header: "Total",
             align: "right",
-            cell: (o) => o.customerTotal.toFixed(2),
+            cell: (o) => <Money value={o.customerTotal} />,
           },
           ...(canViewProfit
             ? [
@@ -55,7 +56,7 @@ export function CustomerOrdersTable({
                   key: "profit",
                   header: "Profit",
                   align: "right" as const,
-                  cell: (o: Row) => o.netProfit.toFixed(2),
+                  cell: (o: Row) => <Money value={o.netProfit} />,
                 },
               ]
             : []),

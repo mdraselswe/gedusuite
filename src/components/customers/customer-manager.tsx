@@ -22,6 +22,7 @@ import {
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { useFilterBar, type FilterDef } from "@/components/ui/filter-bar";
 import { Users, AlertTriangle } from "lucide-react";
+import { Money } from "@/components/ui/money";
 
 type Customer = {
   id: string;
@@ -95,7 +96,7 @@ export function CustomerManager({
       <span className="text-muted-foreground">
         Due{" "}
         <span className="font-semibold text-foreground tabular-nums">
-          {shown.reduce((s, c) => s + c.outstanding, 0).toFixed(2)}
+          <Money value={shown.reduce((s, c) => s + c.outstanding, 0)} />
         </span>
       </span>
     ),
@@ -171,7 +172,7 @@ export function CustomerManager({
             Dues only
           </Button>
           <span className="text-sm text-muted-foreground">
-            Total due: <span className="font-semibold">{totalDue.toFixed(2)}</span>
+            Total due: <span className="font-semibold"><Money value={totalDue} /></span>
           </span>
           {bar}
         </div>
@@ -245,7 +246,7 @@ export function CustomerManager({
               cell: (c) =>
                 c.outstanding > 0 ? (
                   <span className="font-semibold text-destructive">
-                    {c.outstanding.toFixed(2)}
+                    <Money value={c.outstanding} />
                   </span>
                 ) : (
                   "—"

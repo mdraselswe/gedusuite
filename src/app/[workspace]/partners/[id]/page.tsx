@@ -7,6 +7,7 @@ import { partnerBalances } from "@/lib/finance";
 import { derivedSource } from "@/lib/partner-credit";
 import { PartnerTxnManager } from "@/components/partners/partner-txn-manager";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Money } from "@/components/ui/money";
 
 export default async function PartnerDetailPage({
   params,
@@ -82,7 +83,7 @@ export default async function PartnerDetailPage({
             <CardHeader className="pb-2">
               <CardTitle className="text-xs font-medium text-muted-foreground">{label}</CardTitle>
             </CardHeader>
-            <CardContent className="text-lg font-bold">{val.toFixed(2)}</CardContent>
+            <CardContent className="text-lg font-bold"><Money value={val} /></CardContent>
           </Card>
         ))}
       </div>

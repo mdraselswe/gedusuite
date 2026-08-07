@@ -25,9 +25,9 @@ import { DataTable, type Column } from "@/components/ui/data-table";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { formatMoney as money } from "@/lib/money";
 
-const money = (n: number) => n.toFixed(2);
-const signed = (n: number) => `${n < 0 ? "−" : ""}${Math.abs(n).toFixed(2)}`;
+const signed = (n: number) => money(n, { signed: true });
 
 /** Green when it earned, red when it lost — profit is never just a number. */
 function profitClass(n: number) {

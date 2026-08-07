@@ -30,6 +30,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { EmptyState } from "@/components/ui/empty-state";
+import { formatMoney as money } from "@/lib/money";
 
 type Source = { kind: SourceKind; id: string; date: string; label: string; amount: number };
 type Manual = { id: string; date: string; purpose: string | null; amount: number };
@@ -42,8 +43,6 @@ export type ReconcileGroup = {
   /** Hand-typed INVESTMENT entries not yet tied to any purchase. */
   manual: Manual[];
 };
-
-const money = (n: number) => n.toFixed(2);
 const key = (s: Source) => `${s.kind}:${s.id}`;
 const sum = (ns: number[]) => Math.round(ns.reduce((a, b) => a + b, 0) * 100) / 100;
 

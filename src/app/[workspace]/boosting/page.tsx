@@ -12,6 +12,7 @@ import {
   roasVerdict,
   toAttributable,
 } from "@/lib/boost-results";
+import { Money } from "@/components/ui/money";
 
 export default async function BoostingPage({
   params,
@@ -148,13 +149,13 @@ export default async function BoostingPage({
             <span>
               This month:{" "}
               <span className="text-lg font-bold text-foreground">
-                {round2(monthSpend).toFixed(2)}
+                <Money value={round2(monthSpend)} />
               </span>
             </span>
             <span>
               All time:{" "}
               <span className="text-lg font-bold text-foreground">
-                {round2(totalSpendAll).toFixed(2)}
+                <Money value={round2(totalSpendAll)} />
               </span>
             </span>
           </div>

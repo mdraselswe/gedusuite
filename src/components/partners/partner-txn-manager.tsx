@@ -22,6 +22,7 @@ import { useFilterBar, type FilterDef } from "@/components/ui/filter-bar";
 import type { DerivedKind } from "@/lib/partner-credit";
 import { MANUAL, SOURCE_OPTIONS, totalsByType } from "@/lib/partner-ledger-filters";
 import { ArrowLeftRight } from "lucide-react";
+import { Money } from "@/components/ui/money";
 
 type Txn = {
   id: string;
@@ -89,7 +90,7 @@ export function PartnerTxnManager({
       [...totalsByType(shown)].map(([type, total]) => (
         <span key={type} className="text-muted-foreground">
           {LABEL[type] ?? type}{" "}
-          <span className="font-semibold text-foreground tabular-nums">{total.toFixed(2)}</span>
+          <span className="font-semibold text-foreground tabular-nums"><Money value={total} /></span>
         </span>
       )),
   });
@@ -233,7 +234,7 @@ export function PartnerTxnManager({
                 header: "Amount",
                 sortValue: (t) => t.amount,
                 align: "right",
-                cell: (t) => t.amount.toFixed(2),
+                cell: (t) => <Money value={t.amount} />,
               },
               ...(canDelete
                 ? [

@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { cn } from "@/lib/utils";
+import { formatMoney as money } from "@/lib/money";
 
 type Parcel = {
   id: string;
@@ -33,7 +34,6 @@ export type CourierAccount = {
   inTransitValue: number;
 };
 
-const money = (v: number) => v.toFixed(2);
 
 /**
  * Expected balance against the courier's own figure.

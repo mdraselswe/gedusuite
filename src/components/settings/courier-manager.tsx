@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/select";
 import { quoteCourier } from "@/lib/courier";
 import { cn } from "@/lib/utils";
+import { Money } from "@/components/ui/money";
 
 export type CourierZoneRow = { id: string; name: string; rate: number };
 export type CourierRow = {
@@ -238,13 +239,13 @@ export function CourierManager({
               <div className="flex flex-wrap gap-x-6 gap-y-1">
                 {c.zones.map((z) => (
                   <span key={z.id}>
-                    {z.name} <span className="font-medium tabular-nums">{z.rate.toFixed(2)}</span>
+                    {z.name} <span className="font-medium tabular-nums"><Money value={z.rate} /></span>
                   </span>
                 ))}
               </div>
               <div className="flex flex-wrap gap-x-6 gap-y-1 text-muted-foreground">
                 <span>
-                  Up to {c.baseWeightKg}kg, then +{c.extraKgRate.toFixed(2)}/kg
+                  Up to {c.baseWeightKg}kg, then +<Money value={c.extraKgRate} />/kg
                 </span>
                 <span>
                   COD fee {c.codFeePercent}% —{" "}
@@ -466,8 +467,8 @@ export function CourierManager({
                 <span className="font-medium">Example</span> — a 0.5kg parcel to{" "}
                 {previewZone?.name || "that zone"} collecting ৳960:{" "}
                 <span className="font-medium tabular-nums">
-                  {preview.deliveryCharge.toFixed(2)} delivery + {preview.codFee.toFixed(2)} COD fee
-                  = {preview.total.toFixed(2)}
+                  <Money value={preview.deliveryCharge} /> delivery + <Money value={preview.codFee} /> COD fee
+                  = <Money value={preview.total} />
                 </span>
               </p>
             )}

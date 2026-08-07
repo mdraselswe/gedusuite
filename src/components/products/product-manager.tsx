@@ -40,6 +40,7 @@ import { SkuBuilder } from "@/components/products/sku-builder";
 import { useFilterBar, type FilterDef } from "@/components/ui/filter-bar";
 import { formatStock } from "@/lib/units";
 import { Package } from "lucide-react";
+import { formatMoney as money } from "@/lib/money";
 
 const ADD_NEW_CATEGORY = "__add_new__";
 
@@ -178,7 +179,6 @@ function draftPayload(d: VariantDraft, names: string[]) {
   };
 }
 
-const money = (n: number) => `৳${n % 1 === 0 ? n : n.toFixed(2)}`;
 
 export function ProductManager({
   slug,

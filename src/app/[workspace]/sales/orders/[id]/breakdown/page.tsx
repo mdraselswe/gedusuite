@@ -14,6 +14,8 @@ import {
 } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { variantFullName } from "@/lib/variants";
+import { Money } from "@/components/ui/money";
+import { formatMoney as money } from "@/lib/money";
 
 export default async function OrderBreakdownPage({
   params,
@@ -103,11 +105,11 @@ export default async function OrderBreakdownPage({
                     </TableCell>
                     <TableCell className="text-right">{it.quantity}</TableCell>
                     <TableCell className="text-right">{returned || "—"}</TableCell>
-                    <TableCell className="text-right">{Number(it.unitPrice).toFixed(2)}</TableCell>
-                    <TableCell className="text-right">{Number(it.unitCost).toFixed(2)}</TableCell>
-                    <TableCell className="text-right">{Number(it.discount).toFixed(2)}</TableCell>
-                    <TableCell className="text-right">{lineRevenue.toFixed(2)}</TableCell>
-                    <TableCell className="text-right">{lineCogs.toFixed(2)}</TableCell>
+                    <TableCell className="text-right"><Money value={Number(it.unitPrice)} /></TableCell>
+                    <TableCell className="text-right"><Money value={Number(it.unitCost)} /></TableCell>
+                    <TableCell className="text-right"><Money value={Number(it.discount)} /></TableCell>
+                    <TableCell className="text-right"><Money value={lineRevenue} /></TableCell>
+                    <TableCell className="text-right"><Money value={lineCogs} /></TableCell>
                   </TableRow>
                 );
               })}
@@ -141,9 +143,9 @@ export default async function OrderBreakdownPage({
                       )}
                     </TableCell>
                     <TableCell className="text-right">{g.quantity}</TableCell>
-                    <TableCell className="text-right">{Number(g.unitCost).toFixed(2)}</TableCell>
+                    <TableCell className="text-right"><Money value={Number(g.unitCost)} /></TableCell>
                     <TableCell className="text-right">
-                      {(Number(g.unitCost) * g.quantity).toFixed(2)}
+                      <Money value={(Number(g.unitCost) * g.quantity)} />
                     </TableCell>
                   </TableRow>
                 ))}
@@ -167,18 +169,18 @@ export default async function OrderBreakdownPage({
           <Row label="Packaging cost" value={-totals.packagingCost} />
           <Row label="Gift cost" value={-totals.giftCost} />
           <Row
-            label={`Delivery margin (charge ${totals.deliveryCharge.toFixed(2)} − cost ${totals.deliveryCost.toFixed(2)})`}
+            label={`Delivery margin (charge ${money(totals.deliveryCharge)} − cost ${money(totals.deliveryCost)})`}
             value={totals.deliveryMargin}
           />
           <div className="flex justify-between border-t pt-2 text-base font-bold">
             <span>Net profit</span>
-            <span>{totals.netProfit.toFixed(2)}</span>
+            <span><Money value={totals.netProfit} /></span>
           </div>
           <div className="h-2" />
           <Row label="Delivery charge (billed to customer)" value={totals.deliveryCharge} />
           <div className="flex justify-between border-t pt-2 text-base font-bold">
             <span>Customer total</span>
-            <span>{totals.customerTotal.toFixed(2)}</span>
+            <span><Money value={totals.customerTotal} /></span>
           </div>
           {totals.refunds > 0 && <Row label="Refunded to customer" value={-totals.refunds} />}
           {totals.returnedUnits > 0 && (
@@ -224,7 +226,7 @@ function Row({
   return (
     <div className={`flex justify-between ${bold ? "font-semibold" : ""}`}>
       <span className="text-muted-foreground">{label}</span>
-      <span>{typeof value === "number" ? value.toFixed(2) : value}</span>
+      <span>{typeof value === "number" ? <Money value={value} /> : value}</span>
     </div>
   );
 }

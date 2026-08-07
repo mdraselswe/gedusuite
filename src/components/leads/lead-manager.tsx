@@ -58,6 +58,7 @@ import {
   type LeadFulfilment,
 } from "@/lib/lead-fulfilment";
 import { cn } from "@/lib/utils";
+import { Money } from "@/components/ui/money";
 
 type Lead = {
   id: string;
@@ -287,7 +288,7 @@ export function LeadManager({
       <span className="text-muted-foreground">
         Total{" "}
         <span className="font-semibold text-foreground tabular-nums">
-          {shown.reduce((s, l) => s + l.total, 0).toFixed(2)}
+          <Money value={shown.reduce((s, l) => s + l.total, 0)} />
         </span>
       </span>
     ),
@@ -571,7 +572,7 @@ export function LeadManager({
       header: "Total",
       align: "right",
       sortValue: (l) => l.total,
-      cell: (l) => l.total.toFixed(2),
+      cell: (l) => <Money value={l.total} />,
     },
     {
       key: "status",
@@ -905,7 +906,7 @@ export function LeadManager({
                       setTotal(String(suggestedTotal));
                     }}
                   >
-                    Use {suggestedTotal.toFixed(2)} from the items
+                    Use <Money value={suggestedTotal} /> from the items
                   </button>
                 )}
               </div>
@@ -982,7 +983,7 @@ export function LeadManager({
                           )}
                         </span>
                         <span className="shrink-0 text-sm font-medium tabular-nums">
-                          {o.total.toFixed(2)}
+                          <Money value={o.total} />
                         </span>
                       </button>
                     </li>

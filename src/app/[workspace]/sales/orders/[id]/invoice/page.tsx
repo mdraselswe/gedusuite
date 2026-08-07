@@ -15,6 +15,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Money } from "@/components/ui/money";
 
 export default async function InvoicePage({
   params,
@@ -121,9 +122,9 @@ export default async function InvoicePage({
                       )}
                     </TableCell>
                     <TableCell className="text-right">{eq}</TableCell>
-                    <TableCell className="text-right">{Number(it.unitPrice).toFixed(2)}</TableCell>
+                    <TableCell className="text-right"><Money value={Number(it.unitPrice)} /></TableCell>
                     <TableCell className="text-right">
-                      {(Number(it.unitPrice) * eq).toFixed(2)}
+                      <Money value={(Number(it.unitPrice) * eq)} />
                     </TableCell>
                   </TableRow>
                 );
@@ -138,11 +139,11 @@ export default async function InvoicePage({
           {/* Delivery always shows — a zero/absent charge prints as "Free". */}
           <div className="flex justify-between">
             <span className="text-muted-foreground">Delivery</span>
-            <span>{totals.deliveryCharge > 0 ? totals.deliveryCharge.toFixed(2) : "Free"}</span>
+            <span>{totals.deliveryCharge > 0 ? <Money value={totals.deliveryCharge} /> : "Free"}</span>
           </div>
           <div className="flex justify-between border-t pt-2 text-base font-bold">
             <span>Total</span>
-            <span>{totals.customerTotal.toFixed(2)}</span>
+            <span><Money value={totals.customerTotal} /></span>
           </div>
           {/* A part-paid invoice that shows only the total is the one document
               most likely to be argued over. Print what was paid and what is
@@ -152,7 +153,7 @@ export default async function InvoicePage({
               <Row label="Paid" value={amountCollected(order, totals)} />
               <div className="flex justify-between font-medium">
                 <span>Balance due</span>
-                <span>{amountOutstanding(order, totals).toFixed(2)}</span>
+                <span><Money value={amountOutstanding(order, totals)} /></span>
               </div>
             </>
           )}
@@ -173,7 +174,7 @@ function Row({ label, value }: { label: string; value: number }) {
   return (
     <div className="flex justify-between">
       <span className="text-muted-foreground">{label}</span>
-      <span>{value.toFixed(2)}</span>
+      <span><Money value={value} /></span>
     </div>
   );
 }

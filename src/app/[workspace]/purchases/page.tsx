@@ -9,6 +9,7 @@ import { variantFullName } from "@/lib/variants";
 import { Pagination, parsePage } from "@/components/ui/pagination";
 import { PageHeader } from "@/components/ui/page-header";
 import { ShoppingCart } from "lucide-react";
+import { Money } from "@/components/ui/money";
 
 const PAGE_SIZE = 50;
 
@@ -204,7 +205,7 @@ export default async function PurchasesPage({
         title={(await serverT())("purchases")}
         action={
           <span className="text-sm text-muted-foreground">
-            Total spend: <span className="font-semibold">{totalSpend.toFixed(2)}</span>
+            Total spend: <span className="font-semibold"><Money value={totalSpend} /></span>
           </span>
         }
       />

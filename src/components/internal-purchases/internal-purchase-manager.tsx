@@ -38,6 +38,8 @@ import {
   type FundingSource as SharedFundingSource,
 } from "@/lib/last-funding-source";
 import { Receipt } from "lucide-react";
+import { Money } from "@/components/ui/money";
+import { formatMoney as money } from "@/lib/money";
 
 type Item = {
   id: string;
@@ -127,7 +129,7 @@ export function InternalPurchaseManager({
     if (!Number.isFinite(months) || months < 1) return null;
     const total = (parseFloat(costInput) || 0) * (parseInt(qtyInput, 10) || 1);
     if (total <= 0) return `Charged evenly across ${months} month(s).`;
-    return `${(total / months).toFixed(2)} a month for ${months} month(s), from the date above.`;
+    return `${money(total / months)} a month for ${months} month(s), from the date above.`;
   })();
   const filters: FilterDef<Item>[] = [
     {
@@ -180,7 +182,7 @@ export function InternalPurchaseManager({
       <span className="text-muted-foreground">
         Spent{" "}
         <span className="font-semibold text-foreground tabular-nums">
-          {shown.reduce((s, i) => s + i.cost * i.quantity, 0).toFixed(2)}
+          <Money value={shown.reduce((s, i) => s + i.cost * i.quantity, 0)} />
         </span>
       </span>
     ),
@@ -306,7 +308,7 @@ export function InternalPurchaseManager({
                       ? "On credit"
                       : "—",
             },
-            { key: "cost", header: "Cost", align: "right", hideable: true, sortValue: (i) => i.cost, cell: (i) => i.cost.toFixed(2) },
+            { key: "cost", header: "Cost", align: "right", hideable: true, sortValue: (i) => i.cost, cell: (i) => <Money value={i.cost} /> },
             {
               key: "spread",
               header: "Spread",
@@ -326,7 +328,7 @@ export function InternalPurchaseManager({
               header: "Total",
               align: "right",
               sortValue: (i) => i.cost * i.quantity,
-              cell: (i) => (i.cost * i.quantity).toFixed(2),
+              cell: (i) => <Money value={i.cost * i.quantity} />,
             },
             ...(perms.canEdit
               ? [
@@ -403,7 +405,7 @@ export function InternalPurchaseManager({
                 </Select>
                 {fundingSource === "TREASURY" && (
                   <p className="text-xs text-muted-foreground">
-                    Treasury balance: {treasuryBalance.toFixed(2)}
+                    Treasury balance: <Money value={treasuryBalance} />
                     {editing?.paidFromTreasury ? " (excluding this entry's current amount)" : ""}
                   </p>
                 )}

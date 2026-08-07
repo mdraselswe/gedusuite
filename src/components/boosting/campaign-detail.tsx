@@ -36,6 +36,8 @@ import { BoostStatusBadge } from "@/components/boosting/boost-status-badge";
 import { ORDER_SOURCES, ORDER_SOURCE_LABEL, orderSourceLabel } from "@/lib/order-source";
 import { cn } from "@/lib/utils";
 import { roasVerdict, type CampaignResult } from "@/lib/boost-results";
+import { formatMoney as money } from "@/lib/money";
+import { Money } from "@/components/ui/money";
 
 type Spend = {
   id: string;
@@ -152,7 +154,6 @@ function ResultsCard({
   channel: string | null;
 }) {
   const estimated = result.basis === "ESTIMATED";
-  const money = (v: number) => v.toFixed(2);
   const verdict = roasVerdict(result);
 
   // Everything except the headline. ROAS carries its own break-even line, so
@@ -336,13 +337,13 @@ function ResultsCard({
                     key: "revenue",
                     header: "Revenue",
                     align: "right",
-                    cell: (c) => <span className="font-medium">{c.revenue.toFixed(2)}</span>,
+                    cell: (c) => <span className="font-medium"><Money value={c.revenue} /></span>,
                   },
                   {
                     key: "profit",
                     header: "Profit",
                     align: "right",
-                    cell: (c) => c.profit.toFixed(2),
+                    cell: (c) => <Money value={c.profit} />,
                   },
                 ] as Column<CampaignResult["byChannel"][number]>[]
               }
@@ -513,9 +514,9 @@ function AdSetCard({
           <span>
             {adSet.startDate} → {adSet.endDate ?? "running"}
           </span>
-          {adSet.dailyBudget !== null && <span>Daily budget: {adSet.dailyBudget.toFixed(2)}</span>}
+          {adSet.dailyBudget !== null && <span>Daily budget: <Money value={adSet.dailyBudget} /></span>}
           <span>
-            Spent: <span className="font-medium text-foreground">{adSet.totalSpent.toFixed(2)}</span>
+            Spent: <span className="font-medium text-foreground"><Money value={adSet.totalSpent} /></span>
           </span>
           {overBudgetDays > 0 && (
             <span className="font-medium text-destructive">
@@ -614,9 +615,9 @@ function AdSetCard({
                   return (
                     <span
                       className={over ? "font-medium text-destructive" : "font-medium"}
-                      title={over ? `Day total ${dayTotals.get(s.date)?.toFixed(2)} exceeds daily budget` : undefined}
+                      title={over ? `Day total ${money(dayTotals.get(s.date) ?? 0)} exceeds daily budget` : undefined}
                     >
-                      {s.amount.toFixed(2)}
+                      <Money value={s.amount} />
                       {over && " ↑"}
                     </span>
                   );
@@ -758,7 +759,7 @@ export function CampaignDetail({
             </div>
             <div>
               <div className="text-muted-foreground">Total spent</div>
-              <div className="text-lg font-bold">{campaign.totalSpent.toFixed(2)}</div>
+              <div className="text-lg font-bold"><Money value={campaign.totalSpent} /></div>
             </div>
             <div>
               <div className="text-muted-foreground">Notes</div>

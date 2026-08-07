@@ -29,6 +29,7 @@ import { useFilterBar, type FilterDef } from "@/components/ui/filter-bar";
 import { BoostStatusBadge } from "@/components/boosting/boost-status-badge";
 import { ORDER_SOURCES, ORDER_SOURCE_LABEL, orderSourceLabel } from "@/lib/order-source";
 import { cn } from "@/lib/utils";
+import { Money } from "@/components/ui/money";
 
 type CampaignRow = {
   id: string;
@@ -119,7 +120,7 @@ export function BoostingManager({
       <span className="text-muted-foreground">
         Spent{" "}
         <span className="font-semibold text-foreground tabular-nums">
-          {shown.reduce((s, c) => s + c.totalSpent, 0).toFixed(2)}
+          <Money value={shown.reduce((s, c) => s + c.totalSpent, 0)} />
         </span>
       </span>
     ),
@@ -235,7 +236,7 @@ export function BoostingManager({
               header: "Total spent",
               align: "right",
               sortValue: (c) => c.totalSpent,
-              cell: (c) => <span className="font-medium">{c.totalSpent.toFixed(2)}</span>,
+              cell: (c) => <span className="font-medium"><Money value={c.totalSpent} /></span>,
             },
             {
               key: "orders",
@@ -251,7 +252,7 @@ export function BoostingManager({
               align: "right",
               hideable: true,
               sortValue: (c) => c.revenue,
-              cell: (c) => (c.basis === "NONE" ? "—" : c.revenue.toFixed(2)),
+              cell: (c) => (c.basis === "NONE" ? "—" : <Money value={c.revenue} />),
             },
             {
               key: "margin",
@@ -322,7 +323,7 @@ export function BoostingManager({
                         : "text-destructive",
                     )}
                   >
-                    {c.profitAfterAds.toFixed(2)}
+                    <Money value={c.profitAfterAds} />
                   </span>
                 ),
             },

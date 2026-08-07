@@ -2,6 +2,7 @@
 
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { Users } from "lucide-react";
+import { Money } from "@/components/ui/money";
 
 type Row = { name: string; percent: number; amount: number };
 
@@ -21,7 +22,7 @@ export function PartnerShareTable({ rows }: { rows: Row[] }) {
             key: "amount",
             header: "Share amount",
             align: "right",
-            cell: (p) => p.amount.toFixed(2),
+            cell: (p) => <Money value={p.amount} />,
           },
         ] as Column<Row>[]
       }

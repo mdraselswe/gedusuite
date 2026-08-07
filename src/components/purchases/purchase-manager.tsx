@@ -43,6 +43,7 @@ import {
   type FundingSource as SharedFundingSource,
 } from "@/lib/last-funding-source";
 import { Columns3, MoreVertical, PackageOpen, X } from "lucide-react";
+import { Money } from "@/components/ui/money";
 
 // Local calendar date (not UTC) as a stable "today" default — must NOT depend
 // on props/state that change after mount (e.g. the newest purchase's date),
@@ -478,7 +479,7 @@ export function PurchaseManager({
                   </Select>
                   {fundingSource === "TREASURY" && (
                     <p className="text-xs text-muted-foreground">
-                      Treasury balance: {treasuryBalance.toFixed(2)}
+                      Treasury balance: <Money value={treasuryBalance} />
                     </p>
                   )}
                 </div>
@@ -699,7 +700,7 @@ export function PurchaseManager({
                       key: "unitCost",
                       header: "Unit cost",
                       align: "right" as const,
-                      cell: (p: PurchaseRow) => p.unitCost.toFixed(2),
+                      cell: (p: PurchaseRow) => <Money value={p.unitCost} />,
                     },
                   ]
                 : []),
@@ -709,7 +710,7 @@ export function PurchaseManager({
                       key: "salePrice",
                       header: "Sale price",
                       align: "right" as const,
-                      cell: (p: PurchaseRow) => (p.salePrice != null ? p.salePrice.toFixed(2) : "—"),
+                      cell: (p: PurchaseRow) => (p.salePrice != null ? <Money value={p.salePrice} /> : "—"),
                     },
                   ]
                 : []),
@@ -718,7 +719,7 @@ export function PurchaseManager({
                 key: "total",
                 header: "Total",
                 align: "right",
-                cell: (p) => <span className="font-medium">{(p.unitCost * p.quantity).toFixed(2)}</span>,
+                cell: (p) => <span className="font-medium"><Money value={(p.unitCost * p.quantity)} /></span>,
               },
               ...(visibleCols.has("expiry")
                 ? [{ key: "expiry", header: "Expiry", cell: (p: PurchaseRow) => p.expiryDate ?? "—" }]
@@ -824,7 +825,7 @@ export function PurchaseManager({
                 </Select>
                 {editFundingSource === "TREASURY" && (
                   <p className="text-xs text-muted-foreground">
-                    Treasury balance: {treasuryBalance.toFixed(2)}
+                    Treasury balance: <Money value={treasuryBalance} />
                     {editing?.paidFromTreasury ? " (excluding this entry's current amount)" : ""}
                   </p>
                 )}

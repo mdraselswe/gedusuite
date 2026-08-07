@@ -58,6 +58,8 @@ import { quoteCourier, breakEvenDeliveryCharge, type CourierRules } from "@/lib/
 import { Columns3, Plus, ShoppingCart, Trash2, MoreVertical, X } from "lucide-react";
 import { formatStock } from "@/lib/units";
 import { cn } from "@/lib/utils";
+import { Money } from "@/components/ui/money";
+import { formatMoney } from "@/lib/money";
 
 type VariantOption = { id: string; label: string; stock: number };
 type OrderItem = {
@@ -261,13 +263,6 @@ function formatEnum(value: string) {
     .split("_")
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
-}
-
-function formatMoney(value: number) {
-  return `৳${value.toLocaleString("en-US", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
 }
 
 /** Inline click-to-edit courier order/consignment number — usually unknown
@@ -1116,7 +1111,7 @@ export function OrderManager({
                       what is still owed, which is the only part that matters. */}
                   {o.paymentStatus === "PARTIAL" && (
                     <span className="whitespace-nowrap text-xs text-muted-foreground">
-                      {o.amountPaid.toFixed(2)} paid · {o.amountDue.toFixed(2)} due
+                      <Money value={o.amountPaid} /> paid · <Money value={o.amountDue} /> due
                     </span>
                   )}
                   {o.totals.returnedUnits > 0 && (
@@ -1182,7 +1177,7 @@ export function OrderManager({
               key: "total",
               header: "Total",
               align: "right",
-              cell: (o) => o.totals.customerTotal.toFixed(2),
+              cell: (o) => <Money value={o.totals.customerTotal} />,
             },
             ...(showColumn("profit")
               ? [
@@ -1190,7 +1185,7 @@ export function OrderManager({
                     key: "profit",
                     header: "Profit",
                     align: "right" as const,
-                    cell: (o: OrderRow) => o.totals.netProfit.toFixed(2),
+                    cell: (o: OrderRow) => <Money value={o.totals.netProfit} />,
                   },
                 ]
               : []),
@@ -1255,7 +1250,7 @@ export function OrderManager({
                 <div className="font-medium">From the call list</div>
                 <div className="text-muted-foreground">
                   {fromLead.itemsText || "No items were written down"}
-                  {fromLead.total > 0 && ` · agreed total ${fromLead.total.toFixed(2)}`}
+                  {fromLead.total > 0 && ` · agreed total ${formatMoney(fromLead.total)}`}
                 </div>
                 {fromLead.address && (
                   <div className="text-muted-foreground">{fromLead.address}</div>
@@ -1815,22 +1810,22 @@ export function OrderManager({
                               >
                                 Courier keeps{" "}
                                 <span className="font-medium tabular-nums">
-                                  {courierQuote.total.toFixed(2)}
+                                  <Money value={courierQuote.total} />
                                 </span>{" "}
-                                — {courierQuote.deliveryCharge.toFixed(2)} delivery
+                                — <Money value={courierQuote.deliveryCharge} /> delivery
                                 {courierQuote.weightCharge > 0 &&
-                                  ` (incl. ${courierQuote.weightCharge.toFixed(2)} weight)`}{" "}
-                                + {courierQuote.codFee.toFixed(2)} COD fee.
+                                  ` (incl. ${formatMoney(courierQuote.weightCharge)} weight)`}{" "}
+                                + <Money value={courierQuote.codFee} /> COD fee.
                                 {deliveryShortfall > 0 ? (
                                   <>
                                     {" "}
                                     You&apos;re charging{" "}
                                     <span className="font-medium tabular-nums">
-                                      {deliveryShortfall.toFixed(2)}
+                                      <Money value={deliveryShortfall} />
                                     </span>{" "}
                                     too little
                                     {breakEven !== null && (
-                                      <> — {breakEven.toFixed(2)} breaks even</>
+                                      <> — <Money value={breakEven} /> breaks even</>
                                     )}
                                     .
                                   </>
@@ -1949,10 +1944,12 @@ export function OrderManager({
                           />
                           <p className="text-xs text-muted-foreground">
                             Still due{" "}
-                            {Math.max(
-                              0,
-                              preview.customerTotal - (parseFloat(amountPaid) || 0),
-                            ).toFixed(2)}
+                            <Money
+                              value={Math.max(
+                                0,
+                                preview.customerTotal - (parseFloat(amountPaid) || 0),
+                              )}
+                            />
                           </p>
                         </div>
                       )}
@@ -2165,7 +2162,7 @@ export function OrderManager({
             <form key={partPaying.id} onSubmit={onConfirmPartial} className="space-y-4">
               <p className="text-sm text-muted-foreground">
                 {partPaying.customerName}&apos;s order comes to{" "}
-                {partPaying.totals.customerTotal.toFixed(2)}. Enter what they have
+                <Money value={partPaying.totals.customerTotal} />. Enter what they have
                 handed over so far — the rest stays on the due list.
               </p>
               <div className="space-y-2">
@@ -2183,10 +2180,12 @@ export function OrderManager({
                 />
                 <p className="text-xs text-muted-foreground">
                   Still due{" "}
-                  {Math.max(
-                    0,
-                    partPaying.totals.customerTotal - (parseFloat(partPaidAmount) || 0),
-                  ).toFixed(2)}
+                  <Money
+                    value={Math.max(
+                      0,
+                      partPaying.totals.customerTotal - (parseFloat(partPaidAmount) || 0),
+                    )}
+                  />
                 </p>
               </div>
               <DialogFooter>
@@ -2422,10 +2421,10 @@ export function OrderManager({
                     <p className="rounded-md border bg-muted/40 p-3 text-sm sm:col-span-3">
                       Courier keeps{" "}
                       <span className="font-medium tabular-nums">
-                        {editCourierQuote.total.toFixed(2)}
+                        <Money value={editCourierQuote.total} />
                       </span>{" "}
-                      — {editCourierQuote.deliveryCharge.toFixed(2)} delivery +{" "}
-                      {editCourierQuote.codFee.toFixed(2)} COD fee. Saving recalculates it
+                      — <Money value={editCourierQuote.deliveryCharge} /> delivery +{" "}
+                      <Money value={editCourierQuote.codFee} /> COD fee. Saving recalculates it
                       from these rates.
                     </p>
                   )}
