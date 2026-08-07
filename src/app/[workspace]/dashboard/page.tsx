@@ -12,8 +12,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PartnerShareTable } from "@/components/dashboard/partner-share-table";
 import { PageHeader } from "@/components/ui/page-header";
 import { buttonVariants } from "@/components/ui/button";
-import { sectionColorClasses, type SectionColor } from "@/lib/section-colors";
-import { cn } from "@/lib/utils";
+import { StatGrid, StatTile } from "@/components/ui/stat-tile";
+import { Money } from "@/components/ui/money";
+import { toneForBalance } from "@/lib/money";
 import {
   LayoutDashboard,
   Users,
@@ -27,50 +28,6 @@ import {
   ArrowRight,
 } from "lucide-react";
 
-function StatCard({
-  icon,
-  color,
-  label,
-  value,
-  sub,
-  href,
-  delay,
-}: {
-  icon: React.ReactNode;
-  color: SectionColor;
-  label: string;
-  value: string;
-  sub?: string;
-  href?: string;
-  delay: number;
-}) {
-  const body = (
-    <Card
-      className={cn(
-        "animate-in fade-in-0 slide-in-from-bottom-2 fill-mode-both gap-3 duration-300",
-        href && "transition-all hover:border-primary/40 hover:shadow-md hover:shadow-primary/5",
-      )}
-      style={{ animationDelay: `${delay}ms` }}
-    >
-      <CardHeader className="flex flex-row items-center gap-3 space-y-0 pb-0">
-        <span
-          className={cn(
-            "flex size-9 shrink-0 items-center justify-center rounded-xl [&_svg]:size-4",
-            sectionColorClasses[color],
-          )}
-        >
-          {icon}
-        </span>
-        <CardTitle className="text-sm font-medium text-muted-foreground">{label}</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="text-2xl font-bold tracking-tight tabular-nums">{value}</div>
-        {sub && <div className="mt-0.5 text-xs text-muted-foreground">{sub}</div>}
-      </CardContent>
-    </Card>
-  );
-  return href ? <Link href={href}>{body}</Link> : body;
-}
 
 export default async function DashboardPage({
   params,
@@ -227,7 +184,7 @@ export default async function DashboardPage({
             <div className="font-semibold text-amber-800 dark:text-amber-300">
               {lowStock.length} low-stock · {expiring.length} expiring soon ·{" "}
               {overdue.length} overdue payment(s)
-              {totalOverdue > 0 && ` (${totalOverdue.toFixed(2)})`}
+              {totalOverdue > 0 && <> (<Money value={totalOverdue} />)</>}
             </div>
             <ul className="list-inside list-disc text-amber-900/90 dark:text-amber-200/90">
               {alerts.slice(0, 5).map((a) => (
@@ -235,7 +192,7 @@ export default async function DashboardPage({
               ))}
               {overdue.slice(0, 3).map((o) => (
                 <li key={o.orderId}>
-                  Overdue: {o.customerName} owes {o.amount.toFixed(2)} ({o.daysOverdue}d)
+                  Overdue: {o.customerName} owes <Money value={o.amount} /> ({o.daysOverdue}d)
                   {o.heldByName ? ` — held by ${o.heldByName}` : ""}
                 </li>
               ))}
@@ -244,69 +201,66 @@ export default async function DashboardPage({
         </div>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <StatGrid>
         {canViewReports && (
-          <StatCard
+          <StatTile
             icon={<Receipt />}
             color="emerald"
             label="Sales this month"
-            value={monthRevenue.toFixed(2)}
+            value={monthRevenue}
             sub={`${monthOrders.length} order${monthOrders.length === 1 ? "" : "s"}`}
             href={`/${slug}/sales/orders`}
-            delay={nextDelay()}
           />
         )}
         {canViewReports && (
-          <StatCard
+          <StatTile
             icon={<TrendingUp />}
             color="teal"
             label="Profit this month"
-            value={monthProfit.toFixed(2)}
+            value={monthProfit}
+            tone={toneForBalance(monthProfit)}
             href={`/${slug}/reports`}
-            delay={nextDelay()}
           />
         )}
         {canViewTreasury && (
-          <StatCard
+          <StatTile
             icon={<Wallet />}
             color="amber"
             label="Treasury balance"
-            value={treasury.toFixed(2)}
+            value={treasury}
+            tone={toneForBalance(treasury)}
             href={`/${slug}/treasury`}
-            delay={nextDelay()}
           />
         )}
         {canViewBoosting && (
-          <StatCard
+          <StatTile
             icon={<Megaphone />}
             color="sky"
             label="Ad spend this month"
-            value={monthAdSpend.toFixed(2)}
+            value={monthAdSpend}
             href={`/${slug}/boosting`}
-            delay={nextDelay()}
           />
         )}
         {!canViewReports && (
-          <StatCard
+          <StatTile
             icon={<Users />}
             color="pink"
             label="Team members"
             value={String(memberCount)}
-            delay={nextDelay()}
           />
         )}
-      </div>
+      </StatGrid>
 
       {canViewPartners && partnerShares.length > 0 && (
         <Card className="animate-in fade-in-0 slide-in-from-bottom-2 fill-mode-both duration-300 delay-300">
           <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
             <CardTitle className="text-base">
-              Partner profit share — {profit.distributableProfit.toFixed(2)} still to
-              distribute
+              Partner profit share — <Money value={profit.distributableProfit} /> still
+              to distribute
               {profit.distributed > 0 && (
                 <span className="ml-1 font-normal text-muted-foreground">
-                  (earned {profit.netProfit.toFixed(2)}, paid out{" "}
-                  {profit.distributed.toFixed(2)})
+                  (earned <Money value={profit.netProfit} />, paid out{" "}
+                  <Money value={profit.distributed} />)
                 </span>
               )}
             </CardTitle>

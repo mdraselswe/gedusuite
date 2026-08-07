@@ -16,6 +16,8 @@ import { serverT } from "@/lib/session";
 import { TreasuryManager } from "@/components/treasury/treasury-manager";
 import { Pagination, parsePage } from "@/components/ui/pagination";
 import { PageHeader } from "@/components/ui/page-header";
+import { Money } from "@/components/ui/money";
+import { toneForBalance } from "@/lib/money";
 import { Wallet } from "lucide-react";
 
 const PAGE_SIZE = 50;
@@ -130,10 +132,16 @@ export default async function TreasuryPage({
         action={
           <div className="flex gap-4 text-sm text-muted-foreground">
             <span>
-              Balance: <span className="text-lg font-bold text-foreground">{balance.toFixed(2)}</span>
+              Balance:{" "}
+              <Money
+                value={balance}
+                tone={toneForBalance(balance)}
+                className="text-lg font-bold"
+              />
             </span>
             <span>
-              Due: <span className="text-lg font-bold text-destructive">{due.toFixed(2)}</span>
+              Due:{" "}
+              <Money value={due} tone={due > 0 ? "negative" : "muted"} className="text-lg font-bold" />
             </span>
           </div>
         }

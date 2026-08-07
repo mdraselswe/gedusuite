@@ -11,6 +11,9 @@ import {
 import { markCashDeposited, unmarkCashDeposited } from "@/server/actions/cash-custody";
 import { createDistribution, deleteDistribution } from "@/server/actions/distributions";
 import { beyondDistributableProfit, splitByShare } from "@/lib/profit-share";
+import { Money } from "@/components/ui/money";
+import { InfoNote } from "@/components/ui/info-note";
+import { toneForBalance } from "@/lib/money";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -269,15 +272,15 @@ export function TreasuryManager({
       return (
         <>
           <span className="text-muted-foreground">
-            In <span className="font-semibold text-foreground tabular-nums">{inSum.toFixed(2)}</span>
+            In <span className="font-semibold text-foreground tabular-nums"><Money value={inSum} /></span>
           </span>
           <span className="text-muted-foreground">
-            Out <span className="font-semibold text-foreground tabular-nums">{outSum.toFixed(2)}</span>
+            Out <span className="font-semibold text-foreground tabular-nums"><Money value={outSum} /></span>
           </span>
           <span className="text-muted-foreground">
             Net{" "}
             <span className="font-semibold text-foreground tabular-nums">
-              {(inSum - outSum).toFixed(2)}
+              <Money value={(inSum - outSum)} />
             </span>
           </span>
         </>
@@ -325,7 +328,7 @@ export function TreasuryManager({
         <Card>
           <CardHeader>
             <CardTitle className="text-base">
-              Outstanding dues by team member — {heldCash.reduce((s, h) => s + h.amount, 0).toFixed(2)}{" "}
+              Outstanding dues by team member — <Money value={heldCash.reduce((s, h) => s + h.amount, 0)} />{" "}
               across {heldCash.reduce((s, h) => s + h.orderCount, 0)} order(s)
             </CardTitle>
           </CardHeader>
@@ -347,7 +350,7 @@ export function TreasuryManager({
                     key: "amount",
                     header: "Amount due",
                     align: "right",
-                    cell: (h) => <span className="font-medium">{h.amount.toFixed(2)}</span>,
+                    cell: (h) => <span className="font-medium"><Money value={h.amount} /></span>,
                   },
                 ] as Column<HeldCash>[]
               }
@@ -363,19 +366,35 @@ export function TreasuryManager({
         <Card className="border-amber-500/40">
           <CardHeader>
             <CardTitle className="text-base text-amber-800 dark:text-amber-300">
-              Owed to suppliers — {owedToSuppliers.toFixed(2)}
+              Owed to suppliers — <Money value={owedToSuppliers} />
             </CardTitle>
-            <p className="text-xs text-muted-foreground">
-              Bought on credit and not paid for yet. Settle one by editing the
-              purchase and changing its funding to Treasury or a partner — that writes
-              the payment and clears it from here.
-              {owedToSuppliers > balance && (
-                <span className="font-medium text-amber-800 dark:text-amber-300">
-                  {" "}
-                  The treasury balance ({balance.toFixed(2)}) does not cover this.
-                </span>
-              )}
-            </p>
+            {/* The one thing that must be read stays visible; the how-to folds
+                away. Before this both were one paragraph and neither got read. */}
+            {owedToSuppliers > balance ? (
+              <InfoNote
+                tone="warn"
+                title={
+                  <>
+                    The treasury balance (<Money value={balance} />) doesn&apos;t cover
+                    this
+                  </>
+                }
+              >
+                <p>
+                  Settle a bill by editing the purchase and changing its funding to
+                  Treasury or a partner — that writes the payment and clears it from
+                  here.
+                </p>
+              </InfoNote>
+            ) : (
+              <InfoNote title="How to settle one of these">
+                <p>
+                  Edit the purchase and change its funding from Credit to Treasury or a
+                  partner. That writes the payment exactly as it would have been at the
+                  time, and the row drops off this list.
+                </p>
+              </InfoNote>
+            )}
           </CardHeader>
           <CardContent>
             <div className="space-y-1 text-sm">
@@ -387,7 +406,7 @@ export function TreasuryManager({
                       ({r.rows} item{r.rows === 1 ? "" : "s"})
                     </span>
                   </span>
-                  <span className="font-medium tabular-nums">{r.amount.toFixed(2)}</span>
+                  <span className="font-medium tabular-nums"><Money value={r.amount} /></span>
                 </div>
               ))}
             </div>
@@ -402,15 +421,25 @@ export function TreasuryManager({
         <Card className="border-blue-300 dark:border-blue-800">
           <CardHeader>
             <CardTitle className="text-base text-blue-800 dark:text-blue-300">
-              Cash with courier (paid, not yet remitted) — {courierTotal.toFixed(2)} across{" "}
+              Cash with courier (paid, not yet remitted) — <Money value={courierTotal} /> across{" "}
               {withCourier.length} order(s)
             </CardTitle>
             {courierCharges > 0 && (
-              <p className="text-xs text-muted-foreground">
-                Customers paid {courierGross.toFixed(2)}; the courier keeps{" "}
-                {courierCharges.toFixed(2)} in delivery and COD fees, so that is what
-                reaches the treasury.
-              </p>
+              <InfoNote
+                title={
+                  <>
+                    Customers paid <Money value={courierGross} />; the courier keeps{" "}
+                    <Money value={courierCharges} />
+                  </>
+                }
+              >
+                <p>
+                  A courier doesn&apos;t hand over what it collected — it hands over what
+                  is left after its delivery charge and its percentage fee. The figures
+                  above are what will actually reach the treasury, which is why they read
+                  lower than the invoices.
+                </p>
+              </InfoNote>
             )}
           </CardHeader>
           <CardContent>
@@ -433,7 +462,7 @@ export function TreasuryManager({
                     key: "amount",
                     header: "Amount",
                     align: "right",
-                    cell: (o) => <span className="font-medium">{o.amount.toFixed(2)}</span>,
+                    cell: (o) => <span className="font-medium"><Money value={o.amount} /></span>,
                   },
                   ...(canManage
                     ? [
@@ -464,7 +493,7 @@ export function TreasuryManager({
         <Card className="border-blue-300 dark:border-blue-800">
           <CardHeader>
             <CardTitle className="text-base text-blue-800 dark:text-blue-300">
-              Cash with team members (paid, not yet deposited) — {membersTotal.toFixed(2)} across{" "}
+              Cash with team members (paid, not yet deposited) — <Money value={membersTotal} /> across{" "}
               {withMembers.length} order(s)
             </CardTitle>
           </CardHeader>
@@ -489,7 +518,7 @@ export function TreasuryManager({
                     key: "amount",
                     header: "Amount",
                     align: "right",
-                    cell: (o) => <span className="font-medium">{o.amount.toFixed(2)}</span>,
+                    cell: (o) => <span className="font-medium"><Money value={o.amount} /></span>,
                   },
                   ...(canManage
                     ? [
@@ -522,7 +551,7 @@ export function TreasuryManager({
         <Card className="border-amber-300 dark:border-amber-800">
           <CardHeader>
             <CardTitle className="text-base text-amber-800 dark:text-amber-300">
-              Payment due — {totalOverdue.toFixed(2)} across {overdue.length} order(s)
+              Payment due — <Money value={totalOverdue} /> across {overdue.length} order(s)
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -563,7 +592,7 @@ export function TreasuryManager({
                     align: "right",
                     sortValue: (o) => o.amount,
                     cell: (o) => (
-                      <span className="font-medium text-destructive">{o.amount.toFixed(2)}</span>
+                      <span className="font-medium text-destructive"><Money value={o.amount} /></span>
                     ),
                   },
                 ] as Column<Overdue>[]
@@ -667,7 +696,7 @@ export function TreasuryManager({
                       key: "amount",
                       header: "Amount",
                       align: "right",
-                      cell: (d) => <span className="font-medium">{d.totalAmount.toFixed(2)}</span>,
+                      cell: (d) => <span className="font-medium"><Money value={d.totalAmount} /></span>,
                     },
                     {
                       key: "actions",
@@ -696,7 +725,7 @@ export function TreasuryManager({
             <div className="space-y-1 text-sm text-muted-foreground">
               <p>
                 Treasury balance:{" "}
-                <span className="font-medium text-foreground">{balance.toFixed(2)}</span>{" "}
+                <span className="font-medium text-foreground"><Money value={balance} /></span>{" "}
                 <span className="text-xs">— the cash actually there</span>
               </p>
               <p>
@@ -708,7 +737,7 @@ export function TreasuryManager({
                       : "font-medium text-emerald-600 dark:text-emerald-400"
                   }
                 >
-                  {distributableProfit.toFixed(2)}
+                  <Money value={distributableProfit} />
                 </span>{" "}
                 <span className="text-xs">— what is still left to hand out</span>
               </p>
@@ -717,7 +746,7 @@ export function TreasuryManager({
                   had a bad month. */}
               {alreadyDistributed > 0 && (
                 <p className="text-xs">
-                  Earned {netProfit.toFixed(2)} in total, {alreadyDistributed.toFixed(2)}{" "}
+                  Earned <Money value={netProfit} /> in total, <Money value={alreadyDistributed} />{" "}
                   already distributed.
                 </p>
               )}
@@ -754,7 +783,7 @@ export function TreasuryManager({
                       <span className="text-muted-foreground">
                         {p.label} ({p.effectivePercent.toFixed(2)}%)
                       </span>
-                      <span className="font-medium">{p.amount.toFixed(2)}</span>
+                      <span className="font-medium"><Money value={p.amount} /></span>
                     </div>
                   ))}
                 </div>
@@ -762,7 +791,7 @@ export function TreasuryManager({
             )}
             {distAmountNum > balance && (
               <p className="text-sm text-destructive">
-                Amount exceeds current treasury balance ({balance.toFixed(2)}).
+                Amount exceeds current treasury balance (<Money value={balance} />).
               </p>
             )}
             {/* A treasury that can't cover the supplier bill after this payout
@@ -774,10 +803,10 @@ export function TreasuryManager({
               balance - distAmountNum < owedToSuppliers && (
                 <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
                   <p className="font-medium text-amber-800 dark:text-amber-300">
-                    {owedToSuppliers.toFixed(2)} is owed to suppliers
+                    <Money value={owedToSuppliers} /> is owed to suppliers
                   </p>
                   <p className="mt-1 text-muted-foreground">
-                    This leaves {(balance - distAmountNum).toFixed(2)} in the treasury,
+                    This leaves <Money value={(balance - distAmountNum)} /> in the treasury,
                     which doesn&apos;t cover it. You&apos;ll be asked to confirm.
                   </p>
                 </div>
@@ -785,7 +814,7 @@ export function TreasuryManager({
             {distAmountNum > 0 && distAmountNum <= balance && beyondProfit > 0 && (
               <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
                 <p className="font-medium text-amber-800 dark:text-amber-300">
-                  {beyondProfit.toFixed(2)} of this isn&apos;t profit
+                  <Money value={beyondProfit} /> of this isn&apos;t profit
                 </p>
                 <p className="mt-1 text-muted-foreground">
                   {distributableProfit <= 0
@@ -842,7 +871,7 @@ export function TreasuryManager({
                 cell: (e) => (
                   <span className={e.type === "IN" ? "text-green-600" : "text-destructive"}>
                     {e.type === "IN" ? "+" : "−"}
-                    {e.amount.toFixed(2)}
+                    <Money value={e.amount} />
                   </span>
                 ),
               },

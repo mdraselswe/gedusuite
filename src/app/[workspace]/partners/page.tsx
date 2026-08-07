@@ -10,7 +10,12 @@ import { serverT } from "@/lib/session";
 import { PartnerManager } from "@/components/partners/partner-manager";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
-import { Handshake } from "lucide-react";
+import { StatGrid, StatTile } from "@/components/ui/stat-tile";
+import { FigureList, FigureRow } from "@/components/ui/figure-list";
+import { InfoNote } from "@/components/ui/info-note";
+import { Money } from "@/components/ui/money";
+import { toneForBalance } from "@/lib/money";
+import { Handshake, PiggyBank, Receipt, Wallet } from "lucide-react";
 
 export default async function PartnersPage({
   params,
@@ -95,8 +100,12 @@ export default async function PartnersPage({
         title={(await serverT())("partners")}
         action={
           <span className="text-sm text-muted-foreground">
-            Distributable profit:{" "}
-            <span className="font-semibold text-foreground">{profit.netProfit.toFixed(2)}</span>
+            Left to distribute:{" "}
+            <Money
+              value={profit.distributableProfit}
+              tone={toneForBalance(profit.distributableProfit)}
+              className="font-semibold"
+            />
           </span>
         }
       />
@@ -108,59 +117,73 @@ export default async function PartnersPage({
         <CardHeader className="pb-3">
           <CardTitle className="text-base">How distributable profit is worked out</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-1 text-sm">
-          {(
-            [
-              ["Order profit (returns and cancellations applied)", profit.tradingProfit, false],
-              ["Ad spend", -profit.adSpend, true],
-              ["Internal purchases", -profit.internalPurchaseSpend, true],
-              ["Other partner expenses", -profit.miscExpense, true],
-              ["Damaged / lost stock", -profit.stockLoss, true],
-            ] as [string, number, boolean][]
-          )
-            .filter(([, value], i) => i === 0 || value !== 0)
-            .map(([label, value, muted]) => (
-              <div key={label} className="flex justify-between gap-3 border-b py-1.5">
-                <span>{label}</span>
-                <span className={`tabular-nums ${muted ? "text-muted-foreground" : ""}`}>
-                  {value < 0 ? "−" : ""}
-                  {Math.abs(value).toFixed(2)}
-                </span>
-              </div>
-            ))}
-          <div className="flex justify-between gap-3 pt-1.5 font-semibold">
-            <span>Distributable profit</span>
-            <span
-              className={`tabular-nums ${profit.netProfit < 0 ? "text-destructive" : "text-emerald-600 dark:text-emerald-400"}`}
-            >
-              {profit.netProfit.toFixed(2)}
-            </span>
-          </div>
-          {profit.prepaidExpenses > 0 && (
-            <div className="mt-2 flex justify-between gap-3 border-t pt-2">
-              <span className="text-muted-foreground">
-                Paid for but not yet expensed
-                <span className="block text-xs">
-                  spread costs with months left to run — this money has already left
-                  the account, so it isn&apos;t available to distribute
-                </span>
-              </span>
-              <span className="tabular-nums text-muted-foreground">
-                {profit.prepaidExpenses.toFixed(2)}
-              </span>
-            </div>
-          )}
-          <p className="pt-2 text-xs text-muted-foreground">
-            Expenses come off in the period they were paid for, unless a purchase says
-            how many months it covers. Stock bought to resell is separate again: that
-            reaches profit as cost of goods sold when it sells, not when it&apos;s bought.
-          </p>
-          {!sharesNormalized && (
-            <p className="pt-2 text-xs text-muted-foreground">
-              The profit shares don&apos;t add up to 100%, so each partner is paid their
-              percent of the total in use rather than of 100 — the &quot;Effective %&quot;
-              column. A distribution splits the money exactly the same way.
+        <CardContent className="space-y-3">
+          <FigureList>
+            <FigureRow
+              label="Order profit (returns and cancellations applied)"
+              value={profit.tradingProfit}
+            />
+            {profit.adSpend !== 0 && (
+              <FigureRow label="Ad spend" value={-profit.adSpend} tone="muted" />
+            )}
+            {profit.internalPurchaseSpend !== 0 && (
+              <FigureRow
+                label="Internal purchases"
+                value={-profit.internalPurchaseSpend}
+                tone="muted"
+              />
+            )}
+            {profit.miscExpense !== 0 && (
+              <FigureRow
+                label="Other partner expenses"
+                value={-profit.miscExpense}
+                tone="muted"
+              />
+            )}
+            {profit.stockLoss !== 0 && (
+              <FigureRow label="Damaged / lost stock" value={-profit.stockLoss} tone="muted" />
+            )}
+            {profit.distributed > 0 && (
+              <FigureRow
+                label="Already distributed to partners"
+                value={-profit.distributed}
+                tone="muted"
+              />
+            )}
+            <FigureRow
+              label="Left to distribute"
+              value={profit.distributableProfit}
+              tone={toneForBalance(profit.distributableProfit)}
+              total
+            />
+            {profit.prepaidExpenses > 0 && (
+              <FigureRow
+                label="Paid for but not yet expensed"
+                hint="spread costs with months left to run — already out of the account"
+                value={profit.prepaidExpenses}
+                tone="muted"
+                sub
+              />
+            )}
+          </FigureList>
+
+          <InfoNote title="When a cost lands on this list">
+            <p>
+              Expenses come off in the period they were paid for, unless a purchase says
+              how many months it covers. Stock bought to resell is separate again: that
+              reaches profit as cost of goods sold when it sells, not when it&apos;s
+              bought.
             </p>
+          </InfoNote>
+          {!sharesNormalized && (
+            <InfoNote tone="warn" title="The profit shares don't add up to 100%">
+              <p>
+                Each partner is paid their percent of the total in use rather than of 100
+                — the &quot;Effective %&quot; column below. A distribution splits the
+                money exactly the same way, so what they read and what they&apos;re paid
+                still agree.
+              </p>
+            </InfoNote>
           )}
         </CardContent>
       </Card>
@@ -188,146 +211,144 @@ export default async function PartnersPage({
         </div>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-6">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Total invested
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="text-2xl font-bold">
-            {capital.totalInvested.toFixed(2)}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Customer products
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="text-xl font-bold">
-            {capital.customerProductSpend.toFixed(2)}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Internal purchases
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="text-xl font-bold">
-            {capital.internalPurchaseSpend.toFixed(2)}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Boosting (ads)
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="text-xl font-bold">
-            {capital.boostSpend.toFixed(2)}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Other (rent, food, etc.)
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="text-xl font-bold">
-            {capital.miscExpense.toFixed(2)}
-          </CardContent>
-        </Card>
-        {/* Goods taken on terms. A debt, not a cost anyone has borne — and
-            before this it appeared on no screen at all, so the money set aside
-            to pay it read as profit going spare. */}
-        {capital.supplierDue > 0 && (
-          <Card className="border-amber-500/40">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Owed to suppliers
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-xl font-bold tabular-nums text-amber-700 dark:text-amber-400">
-                {capital.supplierDue.toFixed(2)}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                bought on credit, not paid yet
-              </p>
-            </CardContent>
-          </Card>
+      {/* The two figures somebody actually came for, then the breakdown that
+          explains them. This used to be eight identical tiles in a six-column
+          grid — every category at the same weight as the answer, and the
+          answer last. */}
+      <StatGrid className="lg:grid-cols-3">
+        <StatTile
+          label="Capital in the business"
+          value={capital.netInvested}
+          icon={<Wallet />}
+          color="indigo"
+          sub={
+            capital.totalCapitalWithdrawn > 0 ? (
+              <>
+                <Money value={capital.totalInvested} /> put in,{" "}
+                <Money value={capital.totalCapitalWithdrawn} /> taken back
+              </>
+            ) : (
+              "what the partners have put in"
+            )
+          }
+        />
+        <StatTile
+          label="Still the partners'"
+          value={capital.capitalPlusStock}
+          tone={toneForBalance(capital.capitalPlusStock)}
+          icon={<PiggyBank />}
+          color="emerald"
+          sub={
+            capital.inventoryValue > 0 ? (
+              <>
+                <Money value={capital.totalRemaining} /> unspent ·{" "}
+                <Money value={capital.inventoryValue} /> as stock (
+                {capital.inventoryUnits} pcs)
+              </>
+            ) : (
+              "nothing left over as stock"
+            )
+          }
+        />
+        {capital.supplierDue > 0 ? (
+          <StatTile
+            label="Owed to suppliers"
+            value={capital.supplierDue}
+            tone="negative"
+            icon={<Receipt />}
+            color="amber"
+            sub="bought on credit, not paid for yet"
+          />
+        ) : (
+          <StatTile
+            label="Spent so far"
+            value={capital.totalExpenses}
+            icon={<Receipt />}
+            color="orange"
+            sub="every recorded purchase, however it was funded"
+          />
         )}
-        {capital.totalCapitalWithdrawn > 0 && (
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Capital taken back
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-xl font-bold tabular-nums">
-                {capital.totalCapitalWithdrawn.toFixed(2)}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                still in: {capital.netInvested.toFixed(2)}
-              </p>
-            </CardContent>
-          </Card>
-        )}
+      </StatGrid>
+
+      <div className="grid gap-4 lg:grid-cols-2">
         <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Remaining capital
-            </CardTitle>
+          <CardHeader>
+            <CardTitle className="text-base">Where the money went</CardTitle>
           </CardHeader>
           <CardContent>
-            <div
-              className={`text-2xl font-bold tabular-nums ${capital.totalRemaining < 0 ? "text-destructive" : ""}`}
-            >
-              {capital.totalRemaining.toFixed(2)}
-            </div>
-            {/* Buying stock spends capital without losing it. Without this line
-                a shop that turned 250,000 into goods reads as one that lost it. */}
-            {capital.inventoryValue > 0 ? (
-              <p className="text-xs text-muted-foreground">
-                unspent · plus {capital.inventoryValue.toFixed(2)} sitting as stock (
-                {capital.inventoryUnits} pcs) ={" "}
-                <span className="font-medium text-foreground">
-                  {capital.capitalPlusStock.toFixed(2)}
-                </span>{" "}
-                still the partners&apos;
-                {/* A figure that can be raised by typing should say so. */}
-                {capital.inventoryFromCorrections > 0 && (
-                  <>
-                    {" "}
-                    · {capital.inventoryFromCorrections.toFixed(2)} of the stock came from
-                    manual corrections, not purchases
-                  </>
-                )}
-              </p>
-            ) : (
-              <p className="text-xs text-muted-foreground">of what partners put in</p>
-            )}
+            {/* Sub-rows sit under the number they break down, instead of the
+                prose paragraph that used to carry the same three facts. */}
+            <FigureList>
+              <FigureRow label="Customer products" value={capital.customerProductSpend} />
+              <FigureRow label="Internal purchases" value={capital.internalPurchaseSpend} />
+              <FigureRow label="Boosting (ads)" value={capital.boostSpend} />
+              <FigureRow label="Other (rent, food…)" value={capital.miscExpense} />
+              <FigureRow label="Total spent" value={capital.totalExpenses} total />
+              {capital.treasuryFundedSpend > 0 && (
+                <FigureRow
+                  label="paid from the treasury"
+                  value={capital.treasuryFundedSpend}
+                  tone="muted"
+                  sub
+                />
+              )}
+              {capital.supplierDue > 0 && (
+                <FigureRow
+                  label="still owed to suppliers"
+                  value={capital.supplierDue}
+                  tone="muted"
+                  sub
+                />
+              )}
+              <FigureRow
+                label="came out of partner capital"
+                value={capital.capitalSpend}
+                tone="muted"
+                sub
+              />
+            </FigureList>
           </CardContent>
         </Card>
+
+        <div className="space-y-3">
+          {capital.treasuryFundedSpend > 0 && (
+            <InfoNote title="Not all of that spending used partner capital">
+              <p>
+                Treasury money is the business&apos;s own — mostly sales takings — so
+                spending it uses up nobody&apos;s capital. Of the{" "}
+                <Money value={capital.totalExpenses} /> spent,{" "}
+                <Money value={capital.treasuryFundedSpend} /> came from the treasury, and
+                only the remaining <Money value={capital.capitalSpend} /> counts against
+                &quot;Still the partners&apos;&quot;.
+              </p>
+            </InfoNote>
+          )}
+          {capital.inventoryValue > 0 && (
+            <InfoNote title="Stock bought is capital moved, not capital lost">
+              <p>
+                Buying <Money value={capital.inventoryValue} /> of stock drops the unspent
+                figure by the same amount, but the goods are on the shelf and still
+                belong to the partners. That is why the headline adds the two together.
+              </p>
+              {capital.inventoryFromCorrections > 0 && (
+                <p>
+                  <Money value={capital.inventoryFromCorrections} /> of that stock was
+                  added by a manual correction rather than a purchase — real if the count
+                  was genuinely wrong, and worth checking if it wasn&apos;t, because no
+                  money is recorded as having bought it.
+                </p>
+              )}
+            </InfoNote>
+          )}
+          <InfoNote title="Why this doesn't match the per-partner table below">
+            <p>
+              These totals count every recorded purchase, tagged or not. The table below
+              counts only the ones with a &quot;Paid by&quot; partner on them, so an
+              untagged purchase appears here and against nobody there.
+            </p>
+          </InfoNote>
+        </div>
       </div>
-      <p className="text-xs text-muted-foreground">
-        Total spent, all categories: {capital.totalExpenses.toFixed(2)}
-        {capital.treasuryFundedSpend > 0 && (
-          <>
-            {" "}
-            — of which {capital.treasuryFundedSpend.toFixed(2)} came from the treasury.
-            Treasury money is the business&apos;s own, mostly sales takings, so spending it
-            uses up none of anyone&apos;s capital; only the remaining{" "}
-            {capital.capitalSpend.toFixed(2)} counts against &quot;Remaining capital&quot;
-          </>
-        )}
-        . The spend figures above count every recorded purchase whether or not anyone was
-        tagged as having paid; the per-partner table below only counts purchases tagged
-        with &quot;Paid by&quot;.
-      </p>
 
       <PartnerManager
         slug={slug}

@@ -20,6 +20,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { orderSourceLabel } from "@/lib/order-source";
 import { cn } from "@/lib/utils";
+import { Money } from "@/components/ui/money";
+import { InfoNote } from "@/components/ui/info-note";
+import { FigureList, FigureRow } from "@/components/ui/figure-list";
+import { formatMoney, toneForBalance } from "@/lib/money";
 import { BarChart3, Users, Wallet } from "lucide-react";
 import type { Report } from "@/lib/reports";
 
@@ -270,15 +274,20 @@ export function ReportView({
   // Kept out of the KPI grid above: it's a loss, not a headline figure, and
   // the count alone would read like an order count if it sat beside "Orders".
   const cancelled = report.kpis.cancelledOrders > 0 && (
-    <p className="text-sm text-muted-foreground">
-      <span className="font-medium text-foreground">{report.kpis.cancelledOrders}</span>{" "}
-      cancelled order(s) in this period cost{" "}
-      <span className="font-medium text-destructive tabular-nums">
-        {report.kpis.cancelledCost.toFixed(2)}
-      </span>{" "}
-      in packaging, gifts and courier return charges — already subtracted from order
-      profit above. Nothing was sold, so revenue and the order count leave them out.
-    </p>
+    <InfoNote
+      title={
+        <>
+          {report.kpis.cancelledOrders} cancelled order(s) cost{" "}
+          <Money value={report.kpis.cancelledCost} tone="negative" />
+        </>
+      }
+    >
+      <p>
+        Packaging, gifts and courier return charges on parcels that came back — already
+        subtracted from order profit above. Nothing was sold, so revenue and the order
+        count leave them out.
+      </p>
+    </InfoNote>
   );
 
   // What the shop cost to run over this range. Broken out rather than left as
@@ -289,51 +298,36 @@ export function ReportView({
       <CardHeader className="pb-3">
         <CardTitle className="text-base">Order profit to net profit</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-1 text-sm">
-        <div className="flex justify-between gap-3 border-b py-1.5">
-          <span>Order profit</span>
-          <span className="tabular-nums">{report.kpis.profit.toFixed(2)}</span>
-        </div>
-        {expenseLines
-          .filter(([, value]) => value !== 0)
-          .map(([label, value]) => (
-            <div key={label} className="flex justify-between gap-3 border-b py-1.5">
-              <span>{label}</span>
-              <span className="tabular-nums text-muted-foreground">
-                −{value.toFixed(2)}
-              </span>
-            </div>
-          ))}
-        <div className="flex justify-between gap-3 pt-1.5 font-semibold">
-          <span>Net profit</span>
-          <span
-            className={cn(
-              "tabular-nums",
-              report.kpis.netProfit < 0
-                ? "text-destructive"
-                : "text-emerald-600 dark:text-emerald-400",
-            )}
-          >
-            {report.kpis.netProfit.toFixed(2)}
-          </span>
-        </div>
-        {report.kpis.prepaidExpenses > 0 && (
-          <div className="mt-2 flex justify-between gap-3 border-t pt-2 text-sm">
-            <span className="text-muted-foreground">
-              Paid for but not yet expensed
-              <span className="block text-xs">
-                spread costs with time left to run — the cash for these is already gone
-              </span>
-            </span>
-            <span className="tabular-nums text-muted-foreground">
-              {report.kpis.prepaidExpenses.toFixed(2)}
-            </span>
-          </div>
-        )}
-        <p className="pt-2 text-xs text-muted-foreground">
-          Expenses land in the period they were paid for, unless a purchase says how
-          many months it covers — then it&apos;s charged across those months instead.
-        </p>
+      <CardContent className="space-y-3">
+        <FigureList>
+          <FigureRow label="Order profit" value={report.kpis.profit} />
+          {expenseLines
+            .filter(([, value]) => value !== 0)
+            .map(([label, value]) => (
+              <FigureRow key={label} label={label} value={-value} tone="muted" />
+            ))}
+          <FigureRow
+            label="Net profit"
+            value={report.kpis.netProfit}
+            tone={toneForBalance(report.kpis.netProfit)}
+            total
+          />
+          {report.kpis.prepaidExpenses > 0 && (
+            <FigureRow
+              label="Paid for but not yet expensed"
+              hint="spread costs with time left to run — the cash is already gone"
+              value={report.kpis.prepaidExpenses}
+              tone="muted"
+              sub
+            />
+          )}
+        </FigureList>
+        <InfoNote title="When a cost lands in this period">
+          <p>
+            Expenses land in the period they were paid for, unless a purchase says how
+            many months it covers — then it&apos;s charged across those months instead.
+          </p>
+        </InfoNote>
       </CardContent>
     </Card>
   );
@@ -472,7 +466,7 @@ export function ReportView({
                     key: "amount",
                     header: "Amount",
                     align: "right",
-                    cell: (p) => p.amount.toFixed(2),
+                    cell: (p) => <Money value={p.amount} />,
                   },
                 ] as Column<Report["partnerShares"][number]>[]
               }
@@ -515,13 +509,13 @@ export function ReportView({
                   key: "revenue",
                   header: "Revenue",
                   align: "right",
-                  cell: (s) => <span className="font-medium">{s.revenue.toFixed(2)}</span>,
+                  cell: (s) => <Money value={s.revenue} className="font-medium" />,
                 },
                 {
                   key: "profit",
                   header: "Profit",
                   align: "right",
-                  cell: (s) => s.profit.toFixed(2),
+                  cell: (s) => <Money value={s.profit} />,
                 },
                 {
                   key: "cancelRate",
@@ -540,7 +534,7 @@ export function ReportView({
                           "tabular-nums",
                           (s.cancelRate ?? 0) >= 0.2 && "text-amber-700 dark:text-amber-400",
                         )}
-                        title={`${s.cancelledCost.toFixed(2)} lost on packaging, gifts and courier returns`}
+                        title={`${formatMoney(s.cancelledCost)} lost on packaging, gifts and courier returns`}
                       >
                         {s.cancelledOrders} · {((s.cancelRate ?? 0) * 100).toFixed(0)}%
                       </span>
@@ -574,7 +568,7 @@ export function ReportView({
                   key: "amount",
                   header: "Amount collected",
                   align: "right",
-                  cell: (m) => <span className="font-medium">{m.amount.toFixed(2)}</span>,
+                  cell: (m) => <Money value={m.amount} className="font-medium" />,
                 },
               ] as Column<Report["collectedByMethod"][number]>[]
             }
@@ -622,13 +616,13 @@ function ProductTable({
             key: "revenue",
             header: "Revenue",
             align: "right",
-            cell: (p) => p.revenue.toFixed(2),
+            cell: (p) => <Money value={p.revenue} />,
           },
           {
             key: "profit",
             header: "Profit",
             align: "right",
-            cell: (p) => p.profit.toFixed(2),
+            cell: (p) => <Money value={p.profit} />,
           },
         ] as Column<Report["products"][number]>[]
       }
