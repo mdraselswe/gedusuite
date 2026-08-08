@@ -48,6 +48,17 @@ hostname, and `vercel.app` gets caught by blanket blocks aimed at the phishing
 sites that live on other people's `*.vercel.app` subdomains. A domain of our
 own carries a different SNI, so it is not in anyone's block list.
 
+Confirmed the hour the new domain went up, alternating requests from one
+machine to one deployment:
+
+```
+gedusuite.vercel.app  timeout ×4   (15s each)
+app.gedushop.com      200 ×4       (~400ms)
+```
+
+Same build, same Vercel IPs, same second. Only the name in the TLS handshake
+differed, which is the whole diagnosis in one table.
+
 If `app.gedushop.com` ever times out the same way, the block is on the IPs
 rather than the name: turn the Cloudflare proxy **on** (orange cloud) for the
 `app` record, so traffic arrives over Cloudflare's edge instead. Do that only
