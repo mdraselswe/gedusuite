@@ -164,6 +164,31 @@ const OPTIONAL_COLUMNS = [
 ] as const;
 
 const STATUSES = ["PENDING", "CONFIRMED", "PACKED", "SHIPPED", "DELIVERED", "CANCELLED"];
+
+/**
+ * Tints the status control so a long list is scannable without reading it.
+ *
+ * Same palette as the call list's fulfilment column, because it is the same
+ * fact seen from two pages — an order that reads red there has to read red
+ * here, or the two screens teach different habits about the same colour.
+ */
+const STATUS_TONE: Record<string, string> = {
+  PENDING: "border-muted-foreground/30",
+  CONFIRMED: "border-sky-500/60 text-sky-700 dark:text-sky-400",
+  PACKED: "border-indigo-500/60 text-indigo-700 dark:text-indigo-400",
+  SHIPPED: "border-violet-500/60 text-violet-700 dark:text-violet-400",
+  DELIVERED: "border-emerald-500/60 text-emerald-700 dark:text-emerald-400",
+  // The one that cost money: filled, not merely outlined, so it is found by
+  // colour alone. The parcel went out, came back, and the courier charged for
+  // the round trip.
+  CANCELLED:
+    "border-red-500/60 bg-red-500/10 font-medium text-red-700 dark:bg-red-500/15 dark:text-red-300",
+};
+
+/** A faint tint for the whole row — one control in one column is easy to skim past. */
+const ROW_TONE: Record<string, string | undefined> = {
+  CANCELLED: "border-l-red-500 bg-red-500/5 dark:bg-red-500/10",
+};
 const DELIVERY = ["SELF", "COURIER"];
 const METHODS = ["CASH", "BKASH", "NAGAD", "COURIER_COLLECTION", "OTHER"];
 const PAY_STATUS = ["UNPAID", "PAID", "PARTIAL"];
@@ -1027,6 +1052,7 @@ export function OrderManager({
       <DataTable
         rows={shownOrders}
         rowKey={(o) => o.id}
+        rowTone={(o) => ROW_TONE[o.status]}
         colorGroupBy={(o) => o.date}
         colorToggleLabel="Color by date"
         empty={{
@@ -1065,7 +1091,7 @@ export function OrderManager({
               cell: (o) =>
                 perms.canEdit ? (
                   <Select value={o.status} onValueChange={(v) => v && onStatusChange(o.id, v)}>
-                    <SelectTrigger className="h-8 w-36">
+                    <SelectTrigger className={cn("h-8 w-36", STATUS_TONE[o.status])}>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -1077,7 +1103,9 @@ export function OrderManager({
                     </SelectContent>
                   </Select>
                 ) : (
-                  <Badge variant="secondary">{o.status}</Badge>
+                  <Badge variant="secondary" className={cn(STATUS_TONE[o.status])}>
+                    {o.status}
+                  </Badge>
                 ),
             },
             {

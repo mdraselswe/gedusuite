@@ -322,7 +322,11 @@ export function DataTable<T>({
             {pageRows.map((row) => (
               <div
                 key={rowKey(row)}
-                className={cn("rounded-lg border border-l-4 border-l-transparent p-3", colorClassFor(row))}
+                className={cn(
+                  "rounded-lg border border-l-4 border-l-transparent p-3",
+                  colorClassFor(row),
+                  rowTone?.(row),
+                )}
               >
                 {visibleColumns.map((c) => {
                   const value = c.cell(row);
