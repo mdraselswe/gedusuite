@@ -86,6 +86,13 @@ transaction would leave an entry for a change that never happened.
   `recordSystemActivity(workspaceId, "WooCommerce", …)` — no membership, but a
   name.
 
+One thing deliberately NOT logged: the WooCommerce sync's own writes. It
+rewrites every website lead on each pull, and logging that would bury the
+entries a person made under a machine repeating itself. What a person typed on
+a lead — the call outcome, what the customer said, which order it became — is
+logged, because several people work that list and "who wrote that" is exactly
+the question a contradictory note raises a week later.
+
 Because the calls are written by hand they can be forgotten, so
 `lib/activity-coverage.test.ts` fails when a file in `server/actions` writes to
 the database without recording anything. Genuine exceptions go in its `EXEMPT`

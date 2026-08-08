@@ -30,8 +30,6 @@ const EXEMPT: Record<string, string> = {
     "Connecting a personal Google account writes only that user's own token.",
   "workspace.ts":
     "Creating a workspace happens before there is a workspace to hold the entry.",
-  "leads.ts":
-    "Call outcomes churn many times per lead per day; the order created from a lead is logged where it lands.",
 };
 
 const WRITE_CALL = /\b(?:prisma|tx)\.\w+\.(create|createMany|update|updateMany|upsert|delete|deleteMany)\b/;

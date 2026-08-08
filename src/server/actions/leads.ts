@@ -14,6 +14,12 @@ import { nextOrderNo } from "@/lib/lead-order-no";
 import { dhakaInputToDate } from "@/lib/dhaka-time";
 import { computeOrderTotals } from "@/lib/orders";
 import { failed, type ActionFailure } from "@/lib/form";
+import { diffFields, recordActivity } from "@/lib/activity";
+
+/** How a lead reads in the history — its website order number and the name. */
+function leadLabel(externalId: string | null, customerName: string | null): string {
+  return `${externalId ? `#${externalId} · ` : ""}${customerName ?? "Unknown"}`;
+}
 
 export type ActionResult = { ok: true } | ActionFailure;
 
@@ -99,7 +105,7 @@ export async function createLead(slug: string, formData: FormData): Promise<Acti
   }
   const d = parsed.data;
 
-  await prisma.orderLead.create({
+  const lead = await prisma.orderLead.create({
     data: {
       workspaceId: gate.access.workspaceId,
       source: "MANUAL",
@@ -119,6 +125,14 @@ export async function createLead(slug: string, formData: FormData): Promise<Acti
       // column default rather than being stored wrong.
       ...(dhakaInputToDate(d.orderedAt) ? { orderedAt: dhakaInputToDate(d.orderedAt)! } : {}),
     },
+  });
+
+  await recordActivity(gate.access, {
+    action: "CREATE",
+    entity: "OrderLead",
+    entityId: lead.id,
+    entityLabel: leadLabel(d.orderNo ?? null, d.customerName),
+    summary: `Added to the call list by hand — ৳${d.total}`,
   });
 
   revalidatePath(`/${slug}/leads`);
@@ -190,6 +204,10 @@ export async function setLeadStatus(
   const next = status as CallStatus;
   const user = await requireUser();
 
+  const before = await prisma.orderLead.findFirst({
+    where: { id, workspaceId: gate.access.workspaceId },
+    select: { callStatus: true, externalId: true, customerName: true },
+  });
   const res = await prisma.orderLead.updateMany({
     where: { id, workspaceId: gate.access.workspaceId },
     data: isCallOutcome(next)
@@ -202,6 +220,17 @@ export async function setLeadStatus(
       : { callStatus: next },
   });
   if (res.count === 0) return { ok: false, error: "Lead not found" };
+
+  if (before && before.callStatus !== next) {
+    await recordActivity(gate.access, {
+      action: "UPDATE",
+      entity: "OrderLead",
+      entityId: id,
+      entityLabel: leadLabel(before.externalId, before.customerName),
+      summary: `Call marked ${next.toLowerCase().replace(/_/g, " ")}`,
+      changes: { callStatus: { from: before.callStatus, to: next } },
+    });
+  }
 
   revalidatePath(`/${slug}/leads`);
   return { ok: true };
@@ -224,11 +253,27 @@ export async function setLeadChannel(
     return { ok: false, error: "Unknown channel" };
   }
 
+  const before = await prisma.orderLead.findFirst({
+    where: { id, workspaceId: gate.access.workspaceId },
+    select: { channel: true, externalId: true, customerName: true },
+  });
   const res = await prisma.orderLead.updateMany({
     where: { id, workspaceId: gate.access.workspaceId },
     data: { channel },
   });
   if (res.count === 0) return { ok: false, error: "Lead not found" };
+
+  const channelChanges = before ? diffFields(before, { channel }, ["channel"]) : null;
+  if (channelChanges) {
+    await recordActivity(gate.access, {
+      action: "UPDATE",
+      entity: "OrderLead",
+      entityId: id,
+      entityLabel: leadLabel(before!.externalId, before!.customerName),
+      summary: channel ? `Channel set to ${channel}` : "Channel cleared",
+      changes: channelChanges,
+    });
+  }
 
   revalidatePath(`/${slug}/leads`);
   return { ok: true };
@@ -256,6 +301,15 @@ export async function updateLeadNotes(
     return failed(parsed.error);
   }
 
+  const before = await prisma.orderLead.findFirst({
+    where: { id, workspaceId: gate.access.workspaceId },
+    select: {
+      customerAdvice: true,
+      internalNote: true,
+      externalId: true,
+      customerName: true,
+    },
+  });
   const res = await prisma.orderLead.updateMany({
     where: { id, workspaceId: gate.access.workspaceId },
     data: {
@@ -264,6 +318,30 @@ export async function updateLeadNotes(
     },
   });
   if (res.count === 0) return { ok: false, error: "Lead not found" };
+
+  // What the customer said is a fact somebody recorded, not passing chatter:
+  // several people work this list, and "who wrote that, and when" is exactly
+  // the question a contradictory note raises a week later.
+  const noteChanges = before
+    ? diffFields(
+        before,
+        {
+          customerAdvice: clean(parsed.data.customerAdvice),
+          internalNote: clean(parsed.data.internalNote),
+        },
+        ["customerAdvice", "internalNote"],
+      )
+    : null;
+  if (noteChanges) {
+    await recordActivity(gate.access, {
+      action: "UPDATE",
+      entity: "OrderLead",
+      entityId: id,
+      entityLabel: leadLabel(before!.externalId, before!.customerName),
+      summary: noteChanges.customerAdvice ? "Customer said — note updated" : "Internal note updated",
+      changes: noteChanges,
+    });
+  }
 
   revalidatePath(`/${slug}/leads`);
   return { ok: true };
@@ -350,11 +428,26 @@ export async function linkLeadToOrder(
   });
   if (!order) return { ok: false, error: "Order not found" };
 
+  const before = await prisma.orderLead.findFirst({
+    where: { id: leadId, workspaceId },
+    select: { orderId: true, externalId: true, customerName: true },
+  });
   const res = await prisma.orderLead.updateMany({
     where: { id: leadId, workspaceId },
     data: { orderId },
   });
   if (res.count === 0) return { ok: false, error: "Lead not found" };
+
+  // Which call became which order is the join between the two halves of the
+  // business, and getting it wrong misattributes a sale to the wrong channel.
+  await recordActivity(gate.access, {
+    action: "UPDATE",
+    entity: "OrderLead",
+    entityId: leadId,
+    entityLabel: leadLabel(before?.externalId ?? null, before?.customerName ?? null),
+    summary: `Linked to order #${orderId.slice(-8).toUpperCase()}`,
+    changes: { orderId: { from: before?.orderId ?? null, to: orderId } },
+  });
 
   revalidatePath(`/${slug}/leads`);
   return { ok: true };
@@ -465,11 +558,26 @@ export async function unlinkLeadOrder(slug: string, leadId: string): Promise<Act
   const gate = await requireAccess(slug, MODULE, "add");
   if (!gate.ok) return gate;
 
+  const before = await prisma.orderLead.findFirst({
+    where: { id: leadId, workspaceId: gate.access.workspaceId },
+    select: { orderId: true, externalId: true, customerName: true },
+  });
   const res = await prisma.orderLead.updateMany({
     where: { id: leadId, workspaceId: gate.access.workspaceId },
     data: { orderId: null },
   });
   if (res.count === 0) return { ok: false, error: "Lead not found" };
+
+  if (before?.orderId) {
+    await recordActivity(gate.access, {
+      action: "UPDATE",
+      entity: "OrderLead",
+      entityId: leadId,
+      entityLabel: leadLabel(before.externalId, before.customerName),
+      summary: `Unlinked from order #${before.orderId.slice(-8).toUpperCase()}`,
+      changes: { orderId: { from: before.orderId, to: null } },
+    });
+  }
 
   revalidatePath(`/${slug}/leads`);
   return { ok: true };
@@ -532,10 +640,22 @@ export async function deleteLead(slug: string, id: string): Promise<ActionResult
   const gate = await requireAccess(slug, MODULE, "edit");
   if (!gate.ok) return gate;
 
+  const existing = await prisma.orderLead.findFirst({
+    where: { id, workspaceId: gate.access.workspaceId },
+    select: { externalId: true, customerName: true, total: true, callStatus: true },
+  });
   const res = await prisma.orderLead.deleteMany({
     where: { id, workspaceId: gate.access.workspaceId },
   });
   if (res.count === 0) return { ok: false, error: "Lead not found" };
+
+  await recordActivity(gate.access, {
+    action: "DELETE",
+    entity: "OrderLead",
+    entityId: id,
+    entityLabel: leadLabel(existing?.externalId ?? null, existing?.customerName ?? null),
+    summary: `Removed from the call list — was ${(existing?.callStatus ?? "").toLowerCase().replace(/_/g, " ")}`,
+  });
 
   revalidatePath(`/${slug}/leads`);
   return { ok: true };
