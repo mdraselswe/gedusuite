@@ -79,6 +79,7 @@ export function DataTable<T>({
   searchPlaceholder = "Search…",
   colorGroupBy,
   colorToggleLabel = "Multicolor",
+  rowTone,
 }: {
   columns: Column<T>[];
   rows: T[];
@@ -96,6 +97,13 @@ export function DataTable<T>({
    */
   colorGroupBy?: (row: T) => string;
   colorToggleLabel?: string;
+  /**
+   * Classes for a whole row, when the row itself means something — a
+   * cancellation in the call list, say. Applied after the colour-grouping
+   * classes so it wins: grouping is a reading aid the user switches on, and
+   * this is the data saying something about itself.
+   */
+  rowTone?: (row: T) => string | undefined;
 }) {
   const [pageState, setPageState] = useState(1);
   const [query, setQuery] = useState("");
@@ -284,7 +292,14 @@ export function DataTable<T>({
               </TableHeader>
               <TableBody>
                 {pageRows.map((row) => (
-                  <TableRow key={rowKey(row)} className={cn("border-l-4 border-l-transparent", colorClassFor(row))}>
+                  <TableRow
+                    key={rowKey(row)}
+                    className={cn(
+                      "border-l-4 border-l-transparent",
+                      colorClassFor(row),
+                      rowTone?.(row),
+                    )}
+                  >
                     {visibleColumns.map((c) => (
                       <TableCell
                         key={c.key}

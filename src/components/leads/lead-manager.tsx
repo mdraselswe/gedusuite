@@ -54,6 +54,7 @@ import { toDhakaInputValue } from "@/lib/dhaka-time";
 import {
   LEAD_FULFILMENTS,
   LEAD_FULFILMENT_LABEL,
+  LEAD_FULFILMENT_ROW_TONE,
   LEAD_FULFILMENT_TONE,
   type LeadFulfilment,
 } from "@/lib/lead-fulfilment";
@@ -754,6 +755,7 @@ export function LeadManager({
       </div>
 
       <DataTable
+        rowTone={(l) => LEAD_FULFILMENT_ROW_TONE[l.fulfilment]}
         rows={filtered}
         rowKey={(l) => l.id}
         colorGroupBy={(l) => l.date}

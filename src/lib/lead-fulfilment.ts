@@ -65,8 +65,26 @@ export const LEAD_FULFILMENT_TONE: Record<LeadFulfilment, string> = {
     "border-emerald-600/50 bg-emerald-500/25 font-semibold text-emerald-900 dark:bg-emerald-500/30 dark:text-emerald-100",
   RETURNED:
     "border-orange-500/40 bg-orange-500/15 text-orange-800 dark:bg-orange-500/25 dark:text-orange-200",
+  // Was muted grey and struck through — the styling of something finished and
+  // not worth a second look. A cancellation is the opposite: the parcel went
+  // out, came back, and the courier charged for the round trip, so it is the
+  // row most worth noticing while scanning. Filled as strongly as DELIVERED,
+  // in the colour the rest of the app already uses for money lost.
   CANCELLED:
-    "border-muted-foreground/30 bg-muted text-muted-foreground line-through",
+    "border-red-600/50 bg-red-500/20 font-semibold text-red-900 dark:bg-red-500/25 dark:text-red-100",
+};
+
+/**
+ * A tint for the whole row, not just its badge.
+ *
+ * One chip in one column is easy to miss in a long list, and the two states
+ * that cost money are exactly the ones a reader should not have to hunt for.
+ * Deliberately faint: the row has to catch the eye without making the text on
+ * it harder to read.
+ */
+export const LEAD_FULFILMENT_ROW_TONE: Partial<Record<LeadFulfilment, string>> = {
+  CANCELLED: "border-l-red-500 bg-red-500/5 dark:bg-red-500/10",
+  RETURNED: "border-l-orange-400 bg-orange-500/5 dark:bg-orange-500/10",
 };
 
 /** The linked order, reduced to what the fulfilment state depends on. */
