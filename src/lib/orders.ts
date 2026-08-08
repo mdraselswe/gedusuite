@@ -136,6 +136,11 @@ export type CancelledCost = {
   giftCost: number;
   /** What the courier charged for the failed trip. */
   deliveryCost: number;
+  /**
+   * The courier's percentage fee on what it did collect. Zero on a parcel
+   * nobody paid for — there was nothing to take a percentage of.
+   */
+  codFeeCost: number;
   /** What the customer paid anyway — a partial delivery, usually the shipping. */
   collected: number;
   /** Costs less anything collected. Can be negative: a cancellation can end up ahead. */
@@ -164,11 +169,17 @@ export function cancelledOrderCost(order: {
   packagingCost: Prisma.Decimal | number;
   giftCost: Prisma.Decimal | number;
   deliveryCost?: Prisma.Decimal | number | null;
+  codFeeCost?: Prisma.Decimal | number | null;
   cancelledCollected?: Prisma.Decimal | number | null;
 }): CancelledCost {
   const packagingCost = n(order.packagingCost);
   const giftCost = n(order.giftCost);
   const deliveryCost = order.deliveryCost != null ? n(order.deliveryCost) : 0;
+  // The courier does not hand over the whole partial payment — it keeps its
+  // percentage of it, the same as on a delivered parcel. Cancelling re-quotes
+  // this against what was actually collected, so it is the fee on the 120 at
+  // the door, not the one quoted against the invoice that never arrived.
+  const codFeeCost = order.codFeeCost != null ? n(order.codFeeCost) : 0;
   // A partial delivery — the customer paid the shipping and sent the goods
   // back — is not a total loss, and calling it one overstates the damage by
   // whatever they handed over.
@@ -177,10 +188,35 @@ export function cancelledOrderCost(order: {
     packagingCost: round2(packagingCost),
     giftCost: round2(giftCost),
     deliveryCost: round2(deliveryCost),
+    codFeeCost: round2(codFeeCost),
     collected: round2(collected),
     // Packaging is out of the total for the same reason it's out of netProfit:
     // the bags were expensed when they were bought. Kept in the breakdown so a
     // cancellation still says what it consumed.
-    total: round2(giftCost + deliveryCost - collected),
+    total: round2(giftCost + deliveryCost + codFeeCost - collected),
   };
+}
+
+/** Anything that can be asked "what did this order make?" — sold or not. */
+export type ProfitableOrder = OrderWithTotals & {
+  status: string;
+  cancelledCollected?: Prisma.Decimal | number | null;
+};
+
+/**
+ * The one profit figure for an order, whatever its status — every surface that
+ * shows profit for a single order should come through here.
+ *
+ * computeOrderTotals is deliberately blind to status, so on a cancelled order
+ * it reports the margin on goods that went straight back on the shelf: a
+ * refused parcel showed up in the orders list as a healthy profit on a sale
+ * that never happened. What a cancellation actually leaves behind is whatever
+ * the customer paid on the doorstep, less what the courier charged to bring
+ * the parcel home — which is what the dashboard, the reports and the campaign
+ * pages have always used. Reading `netProfit` directly is what let the same
+ * order claim two different numbers on two different pages.
+ */
+export function orderNetProfit(order: ProfitableOrder): number {
+  if (order.status === "CANCELLED") return round2(-cancelledOrderCost(order).total);
+  return computeOrderTotals(order).netProfit;
 }

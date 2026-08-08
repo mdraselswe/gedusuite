@@ -3,7 +3,7 @@ import { workspaceAccess } from "@/lib/authz";
 import { serverT } from "@/lib/session";
 import { can } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
-import { computeOrderTotals } from "@/lib/orders";
+import { computeOrderTotals, orderNetProfit } from "@/lib/orders";
 import { amountOutstanding } from "@/lib/order-cash";
 import { OrderManager } from "@/components/sales/order-manager";
 import { variantFullName } from "@/lib/variants";
@@ -221,7 +221,11 @@ export default async function OrdersPage({
       notes: o.notes,
       heldByName: o.heldBy ? (o.heldBy.user.name ?? o.heldBy.user.email) : null,
       heldByMembershipId: o.heldByMembershipId,
-      totals,
+      // `totals` is the sold-order math; its netProfit is right for everything
+      // that was actually delivered and meaningless on a cancelled row, where
+      // it reports the margin on goods that went back on the shelf. The list
+      // shows the one figure the dashboard and the reports agree on.
+      totals: { ...totals, netProfit: orderNetProfit(o) },
       gifts: o.gifts.map((g) => ({ label: g.label, quantity: g.quantity })),
       items: o.items.map((it) => {
         const returned = it.returns.reduce((s, r) => s + r.quantity, 0);

@@ -20,7 +20,7 @@
  * can say so instead of quietly double-counting.
  */
 
-import { cancelledOrderCost, computeOrderTotals, type OrderWithTotals } from "@/lib/orders";
+import { computeOrderTotals, orderNetProfit, type OrderWithTotals } from "@/lib/orders";
 
 const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
 
@@ -123,7 +123,7 @@ export function toAttributable(
     return {
       ...common,
       netRevenue: 0,
-      netProfit: -cancelledOrderCost(order).total,
+      netProfit: orderNetProfit(order),
       cancelled: true,
     };
   }

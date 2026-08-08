@@ -3,7 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { workspaceAccess } from "@/lib/authz";
 import { can } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
-import { computeOrderTotals } from "@/lib/orders";
+import { computeOrderTotals, orderNetProfit } from "@/lib/orders";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CustomerOrdersTable } from "@/components/customers/customer-orders-table";
 import { Money } from "@/components/ui/money";
@@ -38,7 +38,10 @@ export default async function CustomerDetailPage({
     status: o.status,
     paymentStatus: o.paymentStatus,
     itemCount: o.items.length,
-    totals: computeOrderTotals(o),
+    // Sold-order math, with the profit taken from orderNetProfit so a
+    // cancelled row reports what the cancellation left rather than the margin
+    // on goods that came back — see lib/orders.
+    totals: { ...computeOrderTotals(o), netProfit: orderNetProfit(o) },
   }));
 
   const lifetime = orders
@@ -48,9 +51,11 @@ export default async function CustomerDetailPage({
     .filter((o) => o.status !== "CANCELLED" && o.paymentStatus !== "PAID")
     .reduce((s, o) => s + o.totals.customerTotal, 0);
   // Lifetime profit from this customer (cost/profit is reports-gated).
-  const totalProfit = orders
-    .filter((o) => o.status !== "CANCELLED")
-    .reduce((s, o) => s + o.totals.netProfit, 0);
+  // Cancelled orders are in: a refused parcel still costs a courier fee, and
+  // that is part of what this customer has been worth. Excluding them while
+  // the rows below showed a figure each left the column and the total
+  // disagreeing on the same screen.
+  const totalProfit = orders.reduce((s, o) => s + o.totals.netProfit, 0);
 
   return (
     <div className="space-y-6">

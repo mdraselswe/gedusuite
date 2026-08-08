@@ -56,7 +56,19 @@ export function CustomerOrdersTable({
                   key: "profit",
                   header: "Profit",
                   align: "right" as const,
-                  cell: (o: Row) => <Money value={o.netProfit} />,
+                  // Marked on a cancelled row: nothing was sold, so the figure
+                  // is what the cancellation left, not a trading margin.
+                  cell: (o: Row) =>
+                    o.status === "CANCELLED" ? (
+                      <span
+                        className="text-muted-foreground"
+                        title="Cancelled: collected on a partial delivery, less the courier's return charge and any gift. Nothing was sold."
+                      >
+                        <Money value={o.netProfit} />
+                      </span>
+                    ) : (
+                      <Money value={o.netProfit} />
+                    ),
                 },
               ]
             : []),

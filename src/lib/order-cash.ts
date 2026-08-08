@@ -140,7 +140,9 @@ export function depositAmount(
 
   // computeOrderTotals reads a null deliveryCost as "same as the charge",
   // which is right for a delivered order and wrong for a cancelled one — see
-  // cancelledOrderCost. Nothing was quoted, so nothing was charged.
+  // cancelledOrderCost. Nothing was quoted, so nothing was charged. The COD
+  // fee needs no such correction: cancelling re-quotes it against the partial
+  // payment, so it is already the fee on the money the courier is holding.
   const deliveryCost =
     cancelled && order.deliveryCost == null ? 0 : totals.deliveryCost;
   const courierCharges =

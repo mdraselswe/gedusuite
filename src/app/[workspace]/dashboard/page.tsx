@@ -7,7 +7,7 @@ import { computeInventoryAlerts } from "@/lib/inventory";
 import { overdueOrders, totalBusinessProfit, treasuryBalance } from "@/lib/finance";
 import { splitByShare } from "@/lib/profit-share";
 import { dhakaDayStart, dhakaMonthStart } from "@/lib/dhaka-time";
-import { cancelledOrderCost, computeOrderTotals } from "@/lib/orders";
+import { computeOrderTotals, orderNetProfit } from "@/lib/orders";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PartnerShareTable } from "@/components/dashboard/partner-share-table";
 import { PageHeader } from "@/components/ui/page-header";
@@ -94,7 +94,7 @@ export default async function DashboardPage({
   let monthProfit = 0;
   for (const o of monthOrders) {
     if (o.status === "CANCELLED") {
-      monthProfit -= cancelledOrderCost(o).total;
+      monthProfit += orderNetProfit(o);
       continue;
     }
     const totals = computeOrderTotals(o);

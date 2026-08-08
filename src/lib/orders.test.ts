@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { cancelledOrderCost, computeOrderTotals, type OrderWithTotals } from "@/lib/orders";
+import {
+  cancelledOrderCost,
+  computeOrderTotals,
+  orderNetProfit,
+  type OrderWithTotals,
+} from "@/lib/orders";
 
 type Item = OrderWithTotals["items"][number] & { id?: string };
 
@@ -182,5 +187,67 @@ describe("cancelledOrderCost", () => {
 
   it("is free when nothing was packed or shipped", () => {
     expect(cancelledOrderCost({ packagingCost: 0, giftCost: 0 }).total).toBe(0);
+  });
+
+  it("keeps the courier's percentage of what it did collect", () => {
+    // The courier hands over the partial payment less its own cut, exactly as
+    // on a delivered parcel — 120 collected at 1% is 118.80 arriving.
+    const c = cancelledOrderCost({
+      packagingCost: 0,
+      giftCost: 0,
+      deliveryCost: 60,
+      codFeeCost: 1.2,
+      cancelledCollected: 120,
+    });
+    expect(c.codFeeCost).toBe(1.2);
+    expect(c.total).toBe(-58.8);
+  });
+});
+
+describe("orderNetProfit", () => {
+  it("is the trading margin on an order that was delivered", () => {
+    expect(orderNetProfit({ ...order({}, [line()]), status: "DELIVERED" })).toBe(400);
+  });
+
+  it("does not pay out the margin on goods a cancellation sent back", () => {
+    // The bug this exists to stop: the orders list reported 400 of profit on a
+    // parcel the customer refused, because the sold-order math never looks at
+    // the status.
+    const cancelled = {
+      ...order({ deliveryCharge: 120, deliveryCost: 60 }, [line()]),
+      status: "CANCELLED",
+      cancelledCollected: 120,
+    };
+    // 120 collected on the doorstep, 60 to the courier for the failed trip.
+    expect(orderNetProfit(cancelled)).toBe(60);
+  });
+
+  it("takes the courier's fee on the partial payment off the cancellation too", () => {
+    const cancelled = {
+      ...order({ deliveryCharge: 120, deliveryCost: 60, codFeeCost: 1.2 }, [line()]),
+      status: "CANCELLED",
+      cancelledCollected: 120,
+    };
+    // The treasury only ever receives 118.80, so profit cannot claim 120.
+    expect(orderNetProfit(cancelled)).toBe(58.8);
+  });
+
+  it("is a loss when the return cost more than was collected", () => {
+    expect(
+      orderNetProfit({
+        ...order({ deliveryCharge: 120, deliveryCost: 60, giftCost: 90 }, [line()]),
+        status: "CANCELLED",
+        cancelledCollected: 0,
+      }),
+    ).toBe(-150);
+  });
+
+  it("charges nothing for a cancellation that never reached the courier", () => {
+    expect(
+      orderNetProfit({
+        ...order({ deliveryCharge: 120 }, [line()]),
+        status: "CANCELLED",
+      }),
+    ).toBe(0);
   });
 });

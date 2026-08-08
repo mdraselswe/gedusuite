@@ -3,7 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { workspaceAccess } from "@/lib/authz";
 import { can } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
-import { computeOrderTotals } from "@/lib/orders";
+import { cancelledOrderCost, computeOrderTotals } from "@/lib/orders";
 import {
   Table,
   TableBody,
@@ -51,6 +51,11 @@ export default async function OrderBreakdownPage({
 
   const totals = computeOrderTotals(order);
   const deliveryCostWasBlank = order.deliveryCost == null;
+  // A cancelled order sold nothing and its stock went back on the shelf, so
+  // the sold-order calculation below describes a sale that never happened.
+  // What it actually left behind is its own, much shorter, sum.
+  const cancelled = order.status === "CANCELLED";
+  const cancelCost = cancelledOrderCost(order);
 
   return (
     <div className="space-y-6">
@@ -76,7 +81,9 @@ export default async function OrderBreakdownPage({
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Items</CardTitle>
+          <CardTitle className="text-base">
+            {cancelled ? "Items (cancelled — went back on the shelf, not sold)" : "Items"}
+          </CardTitle>
         </CardHeader>
         <CardContent className="overflow-x-auto">
           <Table>
@@ -155,46 +162,83 @@ export default async function OrderBreakdownPage({
         </Card>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Full calculation</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-1 text-sm">
-          <Row label="Gross revenue (before returns)" value={totals.grossRevenue} />
-          <Row label="Item discounts" value={-totals.itemDiscounts} />
-          <Row label="Order discount" value={-totals.orderDiscount} />
-          <Row label="= Net revenue" value={totals.netRevenue} bold />
-          <div className="h-2" />
-          <Row label="COGS (cost of goods sold)" value={-totals.cogs} />
-          <Row label="Packaging cost" value={-totals.packagingCost} />
-          <Row label="Gift cost" value={-totals.giftCost} />
-          <Row
-            label={`Delivery margin (charge ${money(totals.deliveryCharge)} − cost ${money(totals.deliveryCost)})`}
-            value={totals.deliveryMargin}
-          />
-          <div className="flex justify-between border-t pt-2 text-base font-bold">
-            <span>Net profit</span>
-            <span><Money value={totals.netProfit} /></span>
-          </div>
-          <div className="h-2" />
-          <Row label="Delivery charge (billed to customer)" value={totals.deliveryCharge} />
-          <div className="flex justify-between border-t pt-2 text-base font-bold">
-            <span>Customer total</span>
-            <span><Money value={totals.customerTotal} /></span>
-          </div>
-          {totals.refunds > 0 && <Row label="Refunded to customer" value={-totals.refunds} />}
-          {totals.returnedUnits > 0 && (
-            <div className="pt-1 text-muted-foreground">{totals.returnedUnits} unit(s) returned</div>
-          )}
-          {deliveryCostWasBlank && (
-            <p className="pt-3 text-xs text-amber-600 dark:text-amber-400">
-              Delivery cost was never entered for this order — assumed equal to delivery charge
-              (0 margin). If the actual courier cost was different, edit the order to set it and
-              profit will update.
+      {cancelled ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Cancellation result</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1 text-sm">
+            <Row label="Collected from customer (partial delivery)" value={cancelCost.collected} />
+            <Row label="Courier's charge for the failed trip" value={-cancelCost.deliveryCost} />
+            <Row label="Courier's fee on what it collected" value={-cancelCost.codFeeCost} />
+            <Row label="Gift cost (gone with the parcel)" value={-cancelCost.giftCost} />
+            <div className="flex justify-between border-t pt-2 text-base font-bold">
+              <span>Net effect on profit</span>
+              <span><Money value={-cancelCost.total} /></span>
+            </div>
+            <p className="pt-3 text-xs text-muted-foreground">
+              Nothing was sold, so there is no revenue and no COGS — the stock went back on the
+              shelf. The margin this order would have earned if it had been delivered (
+              {money(totals.netProfit)}) is not counted anywhere.
             </p>
-          )}
-        </CardContent>
-      </Card>
+            {cancelCost.packagingCost > 0 && (
+              <p className="text-xs text-muted-foreground">
+                Packaging used: {money(cancelCost.packagingCost)} — recorded, but not subtracted
+                here. The material was charged to profit when it was bought, so taking it again
+                per order would count the same polybags twice.
+              </p>
+            )}
+            {deliveryCostWasBlank && (
+              <p className="pt-1 text-xs text-amber-600 dark:text-amber-400">
+                No courier charge was entered when this order was cancelled, so it is treated as
+                zero. If the courier billed for the return, edit the order to set the delivery
+                cost and this figure will update.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Full calculation</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1 text-sm">
+            <Row label="Gross revenue (before returns)" value={totals.grossRevenue} />
+            <Row label="Item discounts" value={-totals.itemDiscounts} />
+            <Row label="Order discount" value={-totals.orderDiscount} />
+            <Row label="= Net revenue" value={totals.netRevenue} bold />
+            <div className="h-2" />
+            <Row label="COGS (cost of goods sold)" value={-totals.cogs} />
+            <Row label="Packaging cost" value={-totals.packagingCost} />
+            <Row label="Gift cost" value={-totals.giftCost} />
+            <Row
+              label={`Delivery margin (charge ${money(totals.deliveryCharge)} − cost ${money(totals.deliveryCost)})`}
+              value={totals.deliveryMargin}
+            />
+            <div className="flex justify-between border-t pt-2 text-base font-bold">
+              <span>Net profit</span>
+              <span><Money value={totals.netProfit} /></span>
+            </div>
+            <div className="h-2" />
+            <Row label="Delivery charge (billed to customer)" value={totals.deliveryCharge} />
+            <div className="flex justify-between border-t pt-2 text-base font-bold">
+              <span>Customer total</span>
+              <span><Money value={totals.customerTotal} /></span>
+            </div>
+            {totals.refunds > 0 && <Row label="Refunded to customer" value={-totals.refunds} />}
+            {totals.returnedUnits > 0 && (
+              <div className="pt-1 text-muted-foreground">{totals.returnedUnits} unit(s) returned</div>
+            )}
+            {deliveryCostWasBlank && (
+              <p className="pt-3 text-xs text-amber-600 dark:text-amber-400">
+                Delivery cost was never entered for this order — assumed equal to delivery charge
+                (0 margin). If the actual courier cost was different, edit the order to set it and
+                profit will update.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>

@@ -94,6 +94,25 @@ const OrderSchema = z.object({
 });
 
 /**
+ * What the courier will collect on the doorstep — the only money its
+ * percentage fee is charged on.
+ *
+ * The test is how the customer pays, not whether the order has been settled
+ * yet: an order paid by bKash in advance still travels by courier, but there
+ * is nothing for it to hand over and so no fee. (Payment status would be the
+ * wrong test — every COD order is UNPAID at the moment it's created.)
+ *
+ * `amount` is the invoice on a live order and, on a cancelled one, only what
+ * was collected on a partial delivery: the courier keeps its percentage of
+ * the 120 it handed over, not of the 1,200 nobody ever paid. Quoting a
+ * cancellation on the undelivered invoice charged a fee several times the
+ * size of the money it was supposedly taken from.
+ */
+function codCollectable(paymentMethod: string, amount: number): number {
+  return paymentMethod === "COURIER_COLLECTION" ? Math.max(0, amount) : 0;
+}
+
+/**
  * What the courier will keep for this parcel.
  *
  * Recomputed here rather than taken from the form: the browser's preview is a
@@ -108,8 +127,12 @@ async function quoteForOrder(
     courierZoneId?: string;
     weightKg?: number;
     deliveryCost?: number;
+    /**
+     * What the courier will actually hand over — zero when it collects
+     * nothing. Callers decide this with `codCollectable`; the fee follows the
+     * money, and the money is not always the invoice.
+     */
     codAmount: number;
-    paymentMethod: string;
   },
 ): Promise<{ courierId: string | null; courierZoneId: string | null; deliveryCost: number | null; codFeeCost: number }> {
   const fallback = {
@@ -135,16 +158,7 @@ async function quoteForOrder(
       returnChargeType: zone.courier.returnChargeType,
       returnChargeValue: Number(zone.courier.returnChargeValue),
     },
-    {
-      zoneRate: Number(zone.rate),
-      weightKg: input.weightKg ?? null,
-      // The fee is charged on money the COURIER collects — so the test is how
-      // the customer pays, not whether the order has been settled yet. An
-      // order paid by bKash in advance still travels by courier, but there is
-      // nothing for it to collect and so no fee. (Payment status would be the
-      // wrong test: every COD order is UNPAID at the moment it's created.)
-      codAmount: input.paymentMethod === "COURIER_COLLECTION" ? input.codAmount : 0,
-    },
+    { zoneRate: Number(zone.rate), weightKg: input.weightKg ?? null, codAmount: input.codAmount },
   );
 
   return {
@@ -394,8 +408,7 @@ export async function createOrder(
     courierZoneId: d.courierZoneId || undefined,
     weightKg: d.weightKg,
     deliveryCost: d.deliveryCost,
-    codAmount: customerTotal,
-    paymentMethod: d.paymentMethod,
+    codAmount: codCollectable(d.paymentMethod, customerTotal),
   });
 
   let order: { id: string };
@@ -533,6 +546,9 @@ export async function updateOrderHeader(
       id: true,
       cashInTreasury: true,
       status: true,
+      // Read so a save that leaves the partial-payment field alone still
+      // re-quotes the courier's fee against the figure already stored.
+      cancelledCollected: true,
       items: { select: { unitPrice: true, quantity: true, discount: true } },
       gifts: { select: { quantity: true, unitCost: true } },
     },
@@ -595,18 +611,22 @@ export async function updateOrderHeader(
 
   // Re-quoted on every save, because the fee follows the order's value: change
   // the delivery charge or a discount and the percentage the courier keeps
-  // changes with it. A cancelled order collected nothing to be charged on.
+  // changes with it. On a cancelled order it follows the partial payment
+  // instead — editing that figure has to move the fee taken out of it.
   const itemsNet = order.items.reduce(
     (s, it) => s + Number(it.unitPrice) * it.quantity - Number(it.discount),
     0,
   );
+  const collectable =
+    order.status === "CANCELLED"
+      ? (d.cancelledCollected ?? Number(order.cancelledCollected))
+      : Math.max(0, itemsNet - d.discount + d.deliveryCharge);
   const courierQuote = await quoteForOrder(workspaceId, {
     courierId: d.courierId || undefined,
     courierZoneId: d.courierZoneId || undefined,
     weightKg: d.weightKg,
     deliveryCost: d.deliveryCost,
-    codAmount: Math.max(0, itemsNet - d.discount + d.deliveryCharge),
-    paymentMethod: order.status === "CANCELLED" ? "" : d.paymentMethod,
+    codAmount: codCollectable(d.paymentMethod, collectable),
   });
 
   await prisma.$transaction(async (tx) => {
@@ -675,7 +695,7 @@ export async function updateOrderStatus(
 
   const order = await prisma.order.findFirst({
     where: { id: orderId, workspaceId },
-    include: { items: true, gifts: true },
+    include: { items: { include: { returns: true } }, gifts: true },
   });
   if (!order) return { ok: false, error: "Order not found" };
 
@@ -695,6 +715,23 @@ export async function updateOrderStatus(
     }
     costs = parsed.data;
   }
+
+  // Cancelling changes what the courier has to hand over, so it changes the
+  // percentage it keeps: a refused parcel yields only whatever was paid on the
+  // doorstep, and un-cancelling puts the whole invoice back. Left alone, the
+  // fee stored at order time went on describing a delivery that wasn't
+  // happening — 9.60 taken out of a 120 partial payment that was quoted
+  // against a 960 parcel.
+  const collectable =
+    status === "CANCELLED"
+      ? (costs.cancelledCollected ?? Number(order.cancelledCollected))
+      : computeOrderTotals(order).customerTotal;
+  const { codFeeCost } = await quoteForOrder(workspaceId, {
+    courierId: order.courierId ?? undefined,
+    courierZoneId: order.courierZoneId ?? undefined,
+    weightKg: order.weightKg != null ? Number(order.weightKg) : undefined,
+    codAmount: codCollectable(order.paymentMethod, collectable),
+  });
 
   // Moving from non-consuming → consuming: verify stock is available. Checked
   // twice on purpose — here for a fast, friendly refusal before anything is
@@ -739,7 +776,7 @@ export async function updateOrderStatus(
       }
       await tx.order.update({
         where: { id: orderId },
-        data: { status: status as OrderStatus, ...costs },
+        data: { status: status as OrderStatus, ...costs, codFeeCost },
       });
       // Cancelling sells nothing, so a deposited order's treasury entry drops
       // to whatever the customer paid anyway — or goes entirely.

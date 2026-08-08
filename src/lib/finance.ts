@@ -1,6 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { cancelledOrderCost, computeOrderTotals } from "@/lib/orders";
+import { computeOrderTotals, orderNetProfit } from "@/lib/orders";
 import { amountOutstanding, depositAmount } from "@/lib/order-cash";
 import { inventoryValue } from "@/lib/inventory";
 import { amortizeAll } from "@/lib/amortize";
@@ -571,14 +571,7 @@ export async function totalBusinessProfit(workspaceId: string): Promise<Business
     }),
   ]);
 
-  const tradingProfit = orders.reduce(
-    (s, o) =>
-      s +
-      (o.status === "CANCELLED"
-        ? -cancelledOrderCost(o).total
-        : computeOrderTotals(o).netProfit),
-    0,
-  );
+  const tradingProfit = orders.reduce((s, o) => s + orderNetProfit(o), 0);
   const adSpend = Number(adSpendAgg._sum.amount ?? 0);
   // A spread purchase contributes only its elapsed share; the remainder comes
   // back as `prepaid` rather than disappearing.

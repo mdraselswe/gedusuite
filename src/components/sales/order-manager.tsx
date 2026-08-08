@@ -1187,7 +1187,21 @@ export function OrderManager({
                     key: "profit",
                     header: "Profit",
                     align: "right" as const,
-                    cell: (o: OrderRow) => <Money value={o.totals.netProfit} />,
+                    // A cancelled order's figure is not a trading margin —
+                    // nothing was sold — it's what was left after the
+                    // cancellation, so it's marked rather than shown as if it
+                    // were an ordinary sale.
+                    cell: (o: OrderRow) =>
+                      o.status === "CANCELLED" ? (
+                        <span
+                          className="text-muted-foreground"
+                          title="Cancelled: collected on a partial delivery, less the courier's return charge and any gift. Nothing was sold."
+                        >
+                          <Money value={o.totals.netProfit} />
+                        </span>
+                      ) : (
+                        <Money value={o.totals.netProfit} />
+                      ),
                   },
                 ]
               : []),
