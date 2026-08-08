@@ -57,9 +57,13 @@ export type AttributableCampaign = {
 
 export type ChannelSplit = {
   source: string | null;
+  /** Orders that stuck. A cancellation is counted in `cancelledOrders`, not here. */
   orders: number;
   revenue: number;
+  /** Net of what this channel's cancellations cost, so the rows add up. */
   profit: number;
+  cancelledOrders: number;
+  cancelledCost: number;
 };
 
 export type CampaignResult = {
@@ -186,12 +190,31 @@ function summarise(orders: AttributableOrder[]) {
   };
 }
 
+/**
+ * Cancellations are split by channel like everything else, rather than dropped.
+ *
+ * Two reasons. The rows are read as a breakdown of the headline, so they have
+ * to add up to it — filtering cancellations out left the profit column summing
+ * to more than the campaign made, by exactly what the refused parcels cost.
+ * And the split is where the useful question lives: a channel that produces
+ * orders which come back is not the same as one whose orders stick, however
+ * similar their revenue looks.
+ */
 function splitByChannel(orders: AttributableOrder[]): ChannelSplit[] {
-  const map = new Map<string, { orders: number; revenue: number; profit: number }>();
+  type Acc = { orders: number; revenue: number; profit: number; cancelledOrders: number; cancelledCost: number };
+  const map = new Map<string, Acc>();
   for (const o of orders) {
     const key = o.source ?? "";
-    const acc = map.get(key) ?? { orders: 0, revenue: 0, profit: 0 };
-    acc.orders += 1;
+    const acc =
+      map.get(key) ?? { orders: 0, revenue: 0, profit: 0, cancelledOrders: 0, cancelledCost: 0 };
+    if (o.cancelled) {
+      acc.cancelledOrders += 1;
+      acc.cancelledCost += -o.netProfit;
+    } else {
+      acc.orders += 1;
+    }
+    // A cancelled order carries no revenue and a negative profit, so both
+    // accumulate correctly without a special case.
     acc.revenue += o.netRevenue;
     acc.profit += o.netProfit;
     map.set(key, acc);
@@ -202,6 +225,8 @@ function splitByChannel(orders: AttributableOrder[]): ChannelSplit[] {
       orders: v.orders,
       revenue: round2(v.revenue),
       profit: round2(v.profit),
+      cancelledOrders: v.cancelledOrders,
+      cancelledCost: round2(v.cancelledCost),
     }))
     .sort((a, b) => b.revenue - a.revenue);
 }
@@ -251,7 +276,7 @@ export function buildCampaignResult(
         : null,
     taggedOrders: tagged.length,
     estimatedOrders: estimated.length,
-    byChannel: splitByChannel(headline.filter((o) => !o.cancelled)),
+    byChannel: splitByChannel(headline),
   };
 }
 

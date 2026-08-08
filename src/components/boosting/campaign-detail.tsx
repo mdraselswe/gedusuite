@@ -335,6 +335,26 @@ function ResultsCard({
                   },
                   { key: "orders", header: "Orders", align: "right", cell: (c) => c.orders },
                   {
+                    key: "cancelled",
+                    header: "Cancelled",
+                    align: "right",
+                    // Which channel's orders come back is the question this
+                    // table can answer and the headline tile can't: two
+                    // channels with the same revenue are not the same channel
+                    // if one of them keeps sending parcels home.
+                    cell: (c) =>
+                      c.cancelledOrders === 0 ? (
+                        <span className="text-muted-foreground">—</span>
+                      ) : (
+                        <span
+                          className="text-orange-700 dark:text-orange-400"
+                          title={`${money(c.cancelledCost)} lost, already taken off this row's profit`}
+                        >
+                          {c.cancelledOrders}
+                        </span>
+                      ),
+                  },
+                  {
                     key: "revenue",
                     header: "Revenue",
                     align: "right",
