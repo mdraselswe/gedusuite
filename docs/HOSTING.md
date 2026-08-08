@@ -99,10 +99,8 @@ locks everyone out of the app:
    consequence is worth knowing: signing in at `gedusuite.vercel.app` sends
    the browser to the primary domain to finish, so the fallback is a fallback
    for *reading* a page, not for logging in while the primary is unreachable.
-2. **Google OAuth authorised redirect URIs** — the `GeduShop` client in the
-   `geduShop` Google Cloud project, which is shared with the WordPress site.
-   Two paths per origin, because sign-in and the personal Drive backup have
-   separate callbacks:
+2. **Google OAuth authorised redirect URIs.** Two paths per origin, because
+   sign-in and the personal Drive backup have separate callbacks:
 
    ```
    https://app.gedushop.com/api/auth/callback/google
@@ -111,13 +109,23 @@ locks everyone out of the app:
    http://localhost:3000/…             (both, for local development)
    ```
 
-   Until August 2026 that client listed exactly one URI —
-   `https://gedushop.com/wp-login.php?loginSocial=google`, WordPress's social
-   login — and nothing for GeduSuite at any address, which is why signing in
-   with Google returned `Error 400: redirect_uri_mismatch`. It was never the
-   domain move; the app's own callbacks had simply never been registered. The
-   WordPress entry is still first in the list and must stay: removing it
-   breaks social login on the shop.
+   **Which client, exactly**, because there are two Google accounts and two
+   look-alike projects, and picking the wrong one wastes an afternoon:
+
+   | | Project | Client | Owner |
+   |---|---|---|---|
+   | GeduSuite (this app) | `GeduSuite` | `Web client 1` — `990311290359-ip1c…` | rrasel141@gmail.com |
+   | The shop's WordPress | `geduShop` | `GeduShop` — `1003128223161-2osh…` | gedu.shop@gmail.com |
+
+   The WordPress client has exactly one redirect URI, WordPress's own social
+   login, and must keep exactly that. Adding GeduSuite's callbacks there does
+   nothing at all — the app never presents that client id.
+
+   When a callback is wrong the browser lands on
+   `accounts.google.com/signin/oauth/error?authError=…`, and that URL is the
+   fastest diagnosis available: it carries both the `client_id` being used and
+   the `redirect_uri` being sent, so it says which client needs the entry
+   rather than leaving it to be guessed.
 3. **The WooCommerce webhook** (WP admin → WooCommerce → Settings → Advanced →
    Webhooks). Two of them — `order.created` and `order.updated` — both posting
    to `/api/cron/woo-lead`, which is what fills the call list. Saving one makes
