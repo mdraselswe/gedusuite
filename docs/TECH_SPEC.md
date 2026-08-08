@@ -1,9 +1,15 @@
 # GeduSuite — Technical Specification
 _(Reference document for Claude Code implementation. Pairs with `PRD.md` and `IMPLEMENTATION_PLAN.md`.)_
 
-> **Project name:** GeduSuite — a multi-tenant business management PWA.
-> GeduShop is the first business ("Workspace") that will run on it; anyone
-> else can register their own Workspace on the same app later.
+> **Project name:** GeduSuite — a multi-tenant **small-business ERP**, built as
+> a PWA. GeduShop is the first business ("Workspace") running on it; anyone else
+> can register their own Workspace on the same app.
+>
+> ERP rather than CRM: the system covers inventory and procurement, order
+> management and courier money, finance (treasury, spending, partner
+> profit-sharing), marketing attribution and reporting. Customers and the call
+> list are one module of seven, not the headline. See `PRD.md` §1 for the full
+> area → module map.
 
 ## 1. Recommended Stack
 
@@ -22,22 +28,41 @@ _(Reference document for Claude Code implementation. Pairs with `PRD.md` and `IM
 
 ## 1.1 Current Implementation Snapshot
 
-The repository is no longer a blank scaffold. It currently includes:
+In production at `app.gedushop.com`. Every ERP area in `PRD.md` §1 is
+implemented:
 
-- Next.js App Router pages for login/register, workspace creation, dashboard,
-  products, purchases, sales orders, customers, partners, treasury, internal
-  purchases, reports, notifications, team settings, appearance settings, and
-  backup settings.
-- Prisma schema and migrations through the core modules: multi-tenancy,
-  NextAuth adapter tables, products/purchases, customers/orders/returns,
-  partner finance, treasury, internal purchases, backup logs/settings, stock
-  adjustments, and personal Google backup connections.
-- Server actions for each business module, plus server-side inventory/order
-  validation helpers.
-- Serwist service worker, offline fallback page, IndexedDB-style local mutation
-  queue helpers, and reconnect sync UI.
-- Company-level and personal Google backup code paths using shared Google API
-  helpers.
+- Pages for login/register, workspace creation, dashboard, products, purchases,
+  sales orders, call list, couriers, customers, partners, treasury, boosting,
+  spending, internal purchases, reports, notifications, and team/backup/
+  appearance settings.
+- Prisma schema and migrations covering multi-tenancy, NextAuth adapter tables,
+  products/variants/purchases, customers/orders/gifts/returns, couriers and
+  zones, WooCommerce leads, partner finance and profit distributions, treasury,
+  internal purchases, boost campaigns/ad-sets/daily spend, stock adjustments,
+  backup logs/settings, and personal Google backup connections.
+- Server actions per module, with permission checks and money math server-side.
+- Serwist service worker, offline fallback, local mutation queue replayed
+  through `/api/mutations`, and reconnect sync UI.
+- Vitest coverage on the money math (`src/lib/*.test.ts`).
+
+## 1.2 One Number, One Source
+
+The rule that keeps the ERP self-consistent, and the first thing to check
+before adding a figure to a page:
+
+| Figure | Comes from |
+|---|---|
+| An order's profit, whatever its status | `orderNetProfit` (`lib/orders.ts`) |
+| A delivered order's full breakdown | `computeOrderTotals` |
+| What a cancellation left behind | `cancelledOrderCost` |
+| Courier delivery charge, COD fee, return charge | `quoteCourier` (`lib/courier.ts`) |
+| What the customer has paid / still owes | `amountCollected` / `amountOutstanding` (`lib/order-cash.ts`) |
+| What lands in the treasury | `depositAmount` |
+| Per-product revenue and profit | `allocateOrderLines` (`lib/product-report.ts`) |
+
+Pages call these; they do not re-derive. A number shown on two screens has one
+function behind it, or the two screens will eventually disagree about the same
+order and nobody will know which is right.
 
 ## 2. Multi-Tenancy Model
 
@@ -57,19 +82,37 @@ Product          { id, workspaceId, name, category, sku, barcode, imageUrl, expi
 ProductVariant   { id, productId, size, color, sku }
 Purchase         { id, workspaceId, supplierId?, productVariantId, date, unitCost, quantity, expiryDate }
 
+Courier          { id, workspaceId, name, isDefault, baseWeightKg, extraKgRate,
+                    codFeePercent, codFeeBase(GROSS|NET), returnChargeType, returnChargeValue }
+CourierZone      { id, courierId, workspaceId, name, rate }
+
 Customer         { id, workspaceId, name, phone, address, notes }
 Order            { id, workspaceId, customerId, date, status(enum), deliveryType, deliveryCharge,
-                    deliveryCost, paymentMethod, paymentStatus, packagingCost, giftCost, discount,
-                    heldByMembershipId, notes }
+                    deliveryCost, courierId?, courierZoneId?, weightKg?, codFeeCost,
+                    courierTrackingId?, paymentMethod, paymentStatus, amountPaid,
+                    cancelledCollected, cashInTreasury, packagingCost, giftCost, discount,
+                    source?, boostCampaignId?, heldByMembershipId, notes }
 OrderItem        { id, orderId, productVariantId, unitPrice, quantity, unitCost, discount }
+OrderGift        { id, orderId, productVariantId?, label, quantity, unitCost }
 Return           { id, orderItemId, quantity, reason, refundAmount, date }
+OrderLead        { id, workspaceId, source, externalId, customerName, phone, address, itemsText,
+                    total, channel, callStatus, fulfilmentStatus, convertedCustomerId?, notes }
 
 Partner          { id, workspaceId, userId, profitSharePercent, notes }
 PartnerTxn       { id, workspaceId, partnerId, type(INVESTMENT|EXPENSE|WITHDRAWAL|DEPOSIT_TO_TREASURY),
                     amount, purpose, date }
 TreasuryEntry    { id, workspaceId, type(IN|OUT), amount, source, note, date, partnerId?, partnerTxnId? }
+ProfitDistribution { id, workspaceId, totalAmount, note, date, lines(per partner) }
 
-InternalPurchase { id, workspaceId, itemName, description, supplierName, cost, quantity, category, date }
+InternalPurchase { id, workspaceId, itemName, description, supplierName, cost, quantity,
+                    category(ExpenseCategory), spreadMonths?, date }
+
+BoostCampaign    { id, workspaceId, name, objective, status, budget, startDate, endDate?, notes }
+BoostAdSet       { id, campaignId, workspaceId, name, startDate, endDate?, budget }
+BoostDailySpend  { id, adSetId, workspaceId, date, amount, results? }
+
+WooSyncState     { id, workspaceId, lastSyncedAt, cursor }
+ProcessedMutation{ id, workspaceId, mutationId, processedAt }   // offline queue idempotency
 
 BackupLog        { id, workspaceId, type(SHEETS|JSON), status, triggeredBy, fileUrl, payload, error, createdAt }
 BackupSetting    { id, workspaceId, googleSheetId, driveFolderId, autoJson, lastJsonAt, lastSheetsAt }
@@ -86,10 +129,14 @@ Notification     { id, workspaceId, type, message, dedupeKey, read, createdAt }
 /[workspace]/dashboard          → KPI summary
 /[workspace]/products           → product + variant + supplier CRUD
 /[workspace]/purchases          → purchase entries
-/[workspace]/sales/orders        → sales/order entry, returns, status
+/[workspace]/sales/orders        → sales/order entry, returns, status, cancellation costs
+/[workspace]/leads              → call list (WooCommerce lead → phone call → order)
+/[workspace]/couriers           → courier rules, zones, and balance reconciliation
 /[workspace]/customers          → customer list + history
-/[workspace]/partners           → investment, expense, profit-share
+/[workspace]/partners           → investment, expense, profit-share, distributions
 /[workspace]/treasury           → central ledger
+/[workspace]/boosting           → ad campaigns, daily spend, order attribution
+/[workspace]/expenses           → spending: where the day's money went
 /[workspace]/internal-purchases → non-sales purchases
 /[workspace]/reports            → analytics, export
 /[workspace]/settings/team      → invite admins/staff, roles
@@ -98,19 +145,52 @@ Notification     { id, workspaceId, type, message, dedupeKey, read, createdAt }
 /[workspace]/notifications      → notification center
 /[workspace]/customers/[id]     → customer order history
 /[workspace]/partners/[id]      → partner transaction history
-/[workspace]/sales/orders/[id]/invoice → printable invoice
+/[workspace]/boosting/[id]      → campaign detail + attributed orders
+/[workspace]/products/[id]      → per-product profitability
+/[workspace]/sales/orders/[id]/invoice   → printable invoice
+/[workspace]/sales/orders/[id]/breakdown → how this order's profit was computed
+/api/cron/woo-lead              → WooCommerce webhook (HMAC-signed) → call list
+/api/cron/backup                → nightly company backup (Bearer CRON_SECRET)
+/api/mutations                  → offline queue replay
 ```
 
-## 5. RBAC Permission Matrix (starting point — refine per module)
+Route access is gated twice: `src/proxy.ts` checks workspace membership and
+module-level RBAC before the page renders, and every server action re-checks
+its own permission. The proxy is convenience; the action is the boundary.
+
+## 5. RBAC Permission Matrix
+
+`src/lib/rbac.ts` is the implementation of this table — change them together.
+Levels are ordered (`none < view < add < edit < full`), so a higher level
+implies every lower one.
 
 | Module | Owner | Partner | Manager | Staff |
 |---|---|---|---|---|
-| Products/Purchases | Full | View+Edit | View+Add+Edit | Add only |
-| Sales/Orders | Full | View+Edit | View+Add+Edit | Add only |
-| Partner Finance | Full | View own + Add own | View only | No access |
-| Treasury | Full | View | View | No access |
-| Team/Settings | Full | No access | No access | No access |
-| Backup | Full | View | No access | No access |
+| Dashboard | Full | View | View | View |
+| Products/Purchases | Full | Edit | Edit | Add |
+| Sales/Orders | Full | Edit | Edit | Add |
+| Customers | Full | Edit | Edit | Add |
+| Partner Finance | Full | Add (own rows only) | View | None |
+| Treasury | Full | View | View | None |
+| Boosting | Full | Edit | Add | None |
+| Internal Purchases | Full | Edit | Edit | None |
+| Reports | Full | View | View | None |
+| Team/Settings | Full | None | None | None |
+| Backup | Full | View | None | None |
+
+Two modules have no row of their own and are gated by another's: **Couriers**
+sits under `sales` (it is order money), and **Spending** under `purchases` (it
+is the purchase records read a different way). A segment missing from
+`moduleForSegment` gets no gate at all, which is why adding a route means
+adding it there too.
+
+Cost and profit figures are additionally gated on `reports` access — the Profit
+column, the breakdown page and per-product margins all check it, so a Staff
+account can enter an order without seeing what the business makes on it.
+
+Per-membership overrides sit in `Membership.permissions` (json) on top of this
+matrix, so one partner can be given something the role does not grant by
+default.
 
 ## 6. Backup & Recovery Design
 
@@ -154,7 +234,7 @@ tiers of dedicated platforms instead:
 | Database (PostgreSQL) | **Neon — Free tier** | ~0.5GB storage, generous compute hours. Auto-suspends after a period of inactivity and wakes on the next request (a few hundred ms delay on the first query after idle) — no data loss, just a cold-start pause. Fine for a business tool that isn't hit 24/7. |
 | Backups | Google Sheets + Drive API | Already free (section 6) — uses your own Google account's storage quota. |
 | Auth | NextAuth + Google OAuth | Free — only needs a Google Cloud project (also free to create) for OAuth credentials. |
-| Domain | Existing `gedushop.com` | Add a subdomain (e.g. `suite.gedushop.com`) as a CNAME pointing to Vercel — done in Hostinger's DNS Zone Editor, free, and Vercel issues the HTTPS certificate automatically. |
+| Domain | `app.gedushop.com` | A CNAME in the shop's **Cloudflare** zone (not Hostinger — the domain's nameservers are Cloudflare's), DNS-only, pointing at Vercel, which issues the certificate. The shop's own server never sees this traffic. Full setup, and why the app is not on `gedusuite.vercel.app` any more, in [`HOSTING.md`](HOSTING.md). |
 
 **Why this is a solid choice, not just "the free option"**
 Vercel + Neon is what Next.js is built and optimized for — deployments are
