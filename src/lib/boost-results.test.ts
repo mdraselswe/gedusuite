@@ -10,8 +10,11 @@ const campaign = {
   window: { from: day("2026-08-01"), to: day("2026-08-31") },
 };
 
+let seq = 0;
 const sold = (over: Partial<AttributableOrder> = {}): AttributableOrder => ({
+  id: `o${++seq}`,
   date: day("2026-08-05"),
+  customerName: "Asha",
   source: "FACEBOOK",
   boostCampaignId: "c1",
   netRevenue: 1000,
@@ -70,5 +73,37 @@ describe("buildCampaignResult — channel split", () => {
     const r = buildCampaignResult(campaign, [sold()], 0);
     expect(r.byChannel[0].cancelledOrders).toBe(0);
     expect(r.byChannel[0].cancelledCost).toBe(0);
+  });
+});
+
+describe("buildCampaignResult — attributed order list", () => {
+  it("lists exactly the orders the headline was computed from", () => {
+    // An order outside the window and tagged to nobody is not this campaign's,
+    // and must not appear in a list that claims to explain its numbers.
+    const mine = sold({ boostCampaignId: "c1" });
+    const stranger = sold({ boostCampaignId: null, date: day("2026-09-20") });
+    const r = buildCampaignResult(campaign, [mine, stranger], 0, day("2026-09-30"));
+    expect(r.attributedOrders.map((o) => o.id)).toEqual([mine.id]);
+    expect(r.attributedOrders.length).toBe(r.orders + r.cancelledOrders);
+  });
+
+  it("keeps cancellations in the list and marks them", () => {
+    const r = buildCampaignResult(campaign, [sold(), cancelled()], 0);
+    const row = r.attributedOrders.find((o) => o.cancelled);
+    expect(row).toBeDefined();
+    expect(row?.revenue).toBe(0);
+    expect(row?.profit).toBe(-115);
+  });
+
+  it("puts the newest order first", () => {
+    const older = sold({ date: day("2026-08-02") });
+    const newer = sold({ date: day("2026-08-20") });
+    const r = buildCampaignResult(campaign, [older, newer], 0);
+    expect(r.attributedOrders.map((o) => o.date)).toEqual(["2026-08-20", "2026-08-02"]);
+  });
+
+  it("names a walk-in rather than leaving the cell blank", () => {
+    const r = buildCampaignResult(campaign, [sold({ customerName: null })], 0);
+    expect(r.attributedOrders[0].customerName).toBe("Walk-in");
   });
 });

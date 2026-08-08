@@ -124,10 +124,12 @@ export default async function BoostCampaignPage({
       ],
     },
     select: {
+      id: true,
       date: true,
       status: true,
       source: true,
       boostCampaignId: true,
+      customer: { select: { name: true } },
       discount: true,
       deliveryCharge: true,
       deliveryCost: true,

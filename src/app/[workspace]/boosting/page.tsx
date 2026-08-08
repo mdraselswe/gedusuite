@@ -64,10 +64,12 @@ export default async function BoostingPage({
           OR: [{ date: { gte: earliestStart } }, { boostCampaignId: { not: null } }],
         },
         select: {
+          id: true,
           date: true,
           status: true,
           source: true,
           boostCampaignId: true,
+          customer: { select: { name: true } },
           discount: true,
           deliveryCharge: true,
           deliveryCost: true,

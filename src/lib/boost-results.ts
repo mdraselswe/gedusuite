@@ -26,7 +26,9 @@ const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
 
 /** An order reduced to what attribution needs. Money is already netted. */
 export type AttributableOrder = {
+  id: string;
   date: Date;
+  customerName: string | null;
   source: string | null;
   boostCampaignId: string | null;
   netRevenue: number;
@@ -53,6 +55,18 @@ export type AttributableCampaign = {
   name: string;
   channel: string | null;
   window: CampaignWindow | null; // null when the campaign has no ad sets yet
+};
+
+/** One order behind a campaign's numbers, as the detail page lists it. */
+export type AttributedOrderRow = {
+  id: string;
+  /** ISO date-only, ready to render. */
+  date: string;
+  customerName: string;
+  source: string | null;
+  cancelled: boolean;
+  revenue: number;
+  profit: number;
 };
 
 export type ChannelSplit = {
@@ -95,6 +109,14 @@ export type CampaignResult = {
   cancelledCost: number;
   /** Cancelled ÷ (sold + cancelled). Null when nothing was attributed. */
   cancelRate: number | null;
+  /**
+   * The orders the headline figures were computed from, newest first.
+   *
+   * Returned rather than re-derived by the page: the list and the totals have
+   * to be the same set, or a reader counting rows gets a different answer from
+   * the tile above them.
+   */
+  attributedOrders: AttributedOrderRow[];
   /** How many orders carry the tag, whatever the basis ended up being. */
   taggedOrders: number;
   /** Untagged orders inside the window (and channel), whatever the basis. */
@@ -112,14 +134,18 @@ export type CampaignResult = {
  */
 export function toAttributable(
   order: OrderWithTotals & {
+    id: string;
     date: Date;
     status: string;
     source: string | null;
     boostCampaignId: string | null;
+    customer: { name: string } | null;
   },
 ): AttributableOrder {
   const common = {
+    id: order.id,
     date: order.date,
+    customerName: order.customer?.name ?? null,
     source: order.source,
     boostCampaignId: order.boostCampaignId,
   };
@@ -274,6 +300,17 @@ export function buildCampaignResult(
       totals.orders + totals.cancelledOrders > 0
         ? totals.cancelledOrders / (totals.orders + totals.cancelledOrders)
         : null,
+    attributedOrders: [...headline]
+      .sort((a, b) => b.date.getTime() - a.date.getTime())
+      .map((o) => ({
+        id: o.id,
+        date: o.date.toISOString().slice(0, 10),
+        customerName: o.customerName ?? "Walk-in",
+        source: o.source,
+        cancelled: o.cancelled,
+        revenue: round2(o.netRevenue),
+        profit: round2(o.netProfit),
+      })),
     taggedOrders: tagged.length,
     estimatedOrders: estimated.length,
     byChannel: splitByChannel(headline),

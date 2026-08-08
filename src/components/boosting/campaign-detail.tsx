@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Layers } from "lucide-react";
@@ -144,11 +145,13 @@ function ChannelSelect({
  * doesn't say which it is invites a decision it can't support.
  */
 function ResultsCard({
+  slug,
   result,
   overlaps,
   window,
   channel,
 }: {
+  slug: string;
   result: CampaignResult;
   overlaps: string[];
   window: { from: string; to: string | null } | null;
@@ -367,6 +370,88 @@ function ResultsCard({
                     cell: (c) => <Money value={c.profit} />,
                   },
                 ] as Column<CampaignResult["byChannel"][number]>[]
+              }
+            />
+          </div>
+        )}
+
+        {result.attributedOrders.length > 0 && (
+          <div>
+            <div className="mb-1 text-xs text-muted-foreground">
+              The orders behind these numbers
+              {estimated && " — matched by date and channel, not tagged"}
+            </div>
+            <DataTable
+              rows={result.attributedOrders}
+              rowKey={(o) => o.id}
+              colorGroupBy={(o) => o.date}
+              colorToggleLabel="Color by date"
+              empty={{ title: "No orders attributed yet" }}
+              columns={
+                [
+                  { key: "date", header: "Date", cell: (o) => o.date },
+                  {
+                    key: "customer",
+                    header: "Customer",
+                    cardTitle: true,
+                    cell: (o) => (
+                      <span className="inline-flex items-center gap-2">
+                        {o.customerName}
+                        {o.cancelled && (
+                          <span
+                            className="rounded bg-orange-500/10 px-1.5 py-0.5 text-xs text-orange-700 dark:text-orange-300"
+                            title="Cancelled — the ad was paid for anyway, so its cost stays against this campaign"
+                          >
+                            cancelled
+                          </span>
+                        )}
+                      </span>
+                    ),
+                  },
+                  {
+                    key: "source",
+                    header: "Channel",
+                    cell: (o) => (
+                      <span className={cn(!o.source && "text-amber-700 dark:text-amber-400")}>
+                        {orderSourceLabel(o.source)}
+                      </span>
+                    ),
+                  },
+                  {
+                    key: "revenue",
+                    header: "Revenue",
+                    align: "right",
+                    cell: (o) =>
+                      o.cancelled ? (
+                        <span className="text-muted-foreground">—</span>
+                      ) : (
+                        <Money value={o.revenue} />
+                      ),
+                  },
+                  {
+                    key: "profit",
+                    header: "Profit",
+                    align: "right",
+                    cell: (o) => (
+                      <span className={cn(o.cancelled && "text-orange-700 dark:text-orange-400")}>
+                        <Money value={o.profit} />
+                      </span>
+                    ),
+                  },
+                  {
+                    key: "links",
+                    header: "",
+                    cardFullWidth: true,
+                    cell: (o) => (
+                      <Link
+                        href={`/${slug}/sales/orders/${o.id}/breakdown`}
+                        className="text-sm underline underline-offset-4"
+                      >
+                        Breakdown
+                      </Link>
+                    ),
+                  },
+                ] as Column<CampaignResult["attributedOrders"][number]>[]
               }
             />
           </div>
@@ -786,6 +871,7 @@ export function CampaignDetail({
       </Card>
 
       <ResultsCard
+        slug={slug}
         result={result}
         overlaps={overlaps}
         window={window}
