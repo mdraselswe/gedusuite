@@ -99,21 +99,33 @@ locks everyone out of the app:
    consequence is worth knowing: signing in at `gedusuite.vercel.app` sends
    the browser to the primary domain to finish, so the fallback is a fallback
    for *reading* a page, not for logging in while the primary is unreachable.
-2. **Google OAuth authorised redirect URIs** (Google Cloud Console → the OAuth
-   client used by `GOOGLE_CLIENT_ID`). Both are needed:
-   - `https://app.gedushop.com/api/auth/callback/google` — sign-in
-   - `https://app.gedushop.com/api/google/personal/callback` — personal backup
+2. **Google OAuth authorised redirect URIs** — the `GeduShop` client in the
+   `geduShop` Google Cloud project, which is shared with the WordPress site.
+   Two paths per origin, because sign-in and the personal Drive backup have
+   separate callbacks:
 
-   As of August 2026 the only OAuth client in the `geduShop` Google Cloud
-   project lists exactly one redirect URI — `https://gedushop.com/wp-login.php
-   ?loginSocial=google`, WordPress's social login. Nothing for GeduSuite at
-   any address. So either the app's Google sign-in and Drive backup have never
-   worked, or `GOOGLE_CLIENT_ID` points at a client in some other Google
-   account. Worth settling before anyone relies on either feature; the domain
-   move does not make it worse.
+   ```
+   https://app.gedushop.com/api/auth/callback/google
+   https://app.gedushop.com/api/google/personal/callback
+   https://gedusuite.vercel.app/…      (both, for the fallback address)
+   http://localhost:3000/…             (both, for local development)
+   ```
+
+   Until August 2026 that client listed exactly one URI —
+   `https://gedushop.com/wp-login.php?loginSocial=google`, WordPress's social
+   login — and nothing for GeduSuite at any address, which is why signing in
+   with Google returned `Error 400: redirect_uri_mismatch`. It was never the
+   domain move; the app's own callbacks had simply never been registered. The
+   WordPress entry is still first in the list and must stay: removing it
+   breaks social login on the shop.
 3. **The WooCommerce webhook** (WP admin → WooCommerce → Settings → Advanced →
-   Webhooks), if its delivery URL names the old host. It posts new orders to
-   `/api/cron/woo-lead`, which is what fills the call list.
+   Webhooks). Two of them — `order.created` and `order.updated` — both posting
+   to `/api/cron/woo-lead`, which is what fills the call list. Saving one makes
+   WooCommerce ping the new URL immediately and *disable the webhook* if it
+   does not get a 200 back, so a webhook that is still "Active" after the edit
+   has already proved the new address works. Leave the Secret field alone; it
+   is shown filled in, and clearing it would break the HMAC that
+   `WOO_WEBHOOK_SECRET` checks.
 4. **Anything bookmarked or installed.** The PWA remembers the origin it was
    installed from; re-install from the new address to get it pointing there.
 
