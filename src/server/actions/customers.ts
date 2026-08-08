@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAccess } from "@/lib/authz";
 import { normalizePhone } from "@/lib/phone";
 import { failed, type ActionFailure } from "@/lib/form";
+import { diffFields, recordActivity } from "@/lib/activity";
 
 export type ActionResult = { ok: true } | ActionFailure;
 
@@ -53,6 +54,14 @@ export async function createCustomer(
       notes: clean(d.notes),
     },
   });
+  await recordActivity(gate.access, {
+    action: "CREATE",
+    entity: "Customer",
+    entityId: customer.id,
+    entityLabel: customer.name,
+    summary: "Added",
+  });
+
   revalidatePath(`/${slug}/customers`);
   // id/name/phone let callers (the order form's inline "+ New customer")
   // select the fresh customer immediately without a refetch.
@@ -71,6 +80,10 @@ export async function updateCustomer(
     return failed(parsed.error);
   }
   const d = parsed.data;
+  const before = await prisma.customer.findFirst({
+    where: { id, workspaceId: gate.access.workspaceId },
+    select: { name: true, phone: true, altPhone: true, address: true, notes: true },
+  });
   const res = await prisma.customer.updateMany({
     where: { id, workspaceId: gate.access.workspaceId },
     data: {
@@ -82,6 +95,33 @@ export async function updateCustomer(
     },
   });
   if (res.count === 0) return { ok: false, error: "Customer not found" };
+
+  const changes = before
+    ? diffFields(
+        before,
+        {
+          name: d.name,
+          phone: cleanPhone(d.phone),
+          altPhone: cleanPhone(d.altPhone),
+          address: clean(d.address),
+          notes: clean(d.notes),
+        },
+        ["name", "phone", "altPhone", "address", "notes"],
+      )
+    : null;
+  if (changes) {
+    // A changed delivery address is the one that shows up later as "why did
+    // this parcel go to the wrong place".
+    await recordActivity(gate.access, {
+      action: "UPDATE",
+      entity: "Customer",
+      entityId: id,
+      entityLabel: d.name,
+      summary: "Edited",
+      changes,
+    });
+  }
+
   revalidatePath(`/${slug}/customers`);
   return { ok: true };
 }
@@ -121,9 +161,22 @@ export async function deleteCustomer(
 ): Promise<ActionResult> {
   const gate = await requireAccess(slug, "customers", "edit");
   if (!gate.ok) return gate;
+  const existing = await prisma.customer.findFirst({
+    where: { id, workspaceId: gate.access.workspaceId },
+    select: { name: true },
+  });
   await prisma.customer.deleteMany({
     where: { id, workspaceId: gate.access.workspaceId },
   });
+  if (existing) {
+    await recordActivity(gate.access, {
+      action: "DELETE",
+      entity: "Customer",
+      entityId: id,
+      entityLabel: existing.name,
+      summary: "Deleted",
+    });
+  }
   revalidatePath(`/${slug}/customers`);
   return { ok: true };
 }

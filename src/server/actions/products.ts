@@ -5,6 +5,8 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAccess } from "@/lib/authz";
 import { failed, type ActionFailure } from "@/lib/form";
+import { diffFields, recordActivity } from "@/lib/activity";
+import { variantFullName } from "@/lib/variants";
 
 export type ActionResult = { ok: true } | ActionFailure;
 
@@ -160,7 +162,7 @@ export async function createProduct(
       ? d.variants.map(variantData)
       : [variantData({ attributes: [] } as VariantInputData)];
 
-  await prisma.product.create({
+  const created = await prisma.product.create({
     data: {
       workspaceId: gate.access.workspaceId,
       name: d.name,
@@ -176,6 +178,15 @@ export async function createProduct(
       variants: { create: variantCreate },
     },
   });
+
+  await recordActivity(gate.access, {
+    action: "CREATE",
+    entity: "Product",
+    entityId: created.id,
+    entityLabel: d.name,
+    summary: `Added — ${variantCreate.length} variant(s)`,
+  });
+
   revalidatePath(`/${slug}/products`);
   return { ok: true };
 }
@@ -197,7 +208,18 @@ export async function updateProduct(
   // Scope check up front so we can safely reconcile this product's variants.
   const product = await prisma.product.findFirst({
     where: { id, workspaceId: gate.access.workspaceId },
-    select: { id: true, variants: { select: { id: true } } },
+    select: {
+      id: true,
+      variants: { select: { id: true } },
+      name: true,
+      category: true,
+      sku: true,
+      barcode: true,
+      expiryTracked: true,
+      lowStockThreshold: true,
+      unitsPerPack: true,
+      weightGrams: true,
+    },
   });
   if (!product) return { ok: false, error: "Product not found" };
   const existingIds = new Set(product.variants.map((v) => v.id));
@@ -232,6 +254,34 @@ export async function updateProduct(
     }
   });
 
+  const productChanges = diffFields(
+    product,
+    {
+      name: d.name,
+      category: clean(d.category),
+      sku: clean(d.sku),
+      barcode: clean(d.barcode),
+      expiryTracked: d.expiryTracked,
+      lowStockThreshold: d.lowStockThreshold,
+      unitsPerPack: d.unitsPerPack ?? null,
+      weightGrams: d.weightGrams ?? null,
+    },
+    ["name", "category", "sku", "barcode", "expiryTracked", "lowStockThreshold", "unitsPerPack", "weightGrams"],
+  );
+  const newVariants = d.variants.filter((v) => !v.id || !existingIds.has(v.id)).length;
+  if (productChanges || newVariants > 0) {
+    await recordActivity(gate.access, {
+      action: "UPDATE",
+      entity: "Product",
+      entityId: id,
+      entityLabel: d.name,
+      // Variant prices live on their own rows; saying how many appeared keeps
+      // the line honest without listing every one.
+      summary: newVariants > 0 ? `Edited — ${newVariants} new variant(s)` : "Edited",
+      changes: productChanges,
+    });
+  }
+
   revalidatePath(`/${slug}/products`);
   return { ok: true };
 }
@@ -242,7 +292,7 @@ export async function deleteProduct(slug: string, id: string): Promise<ActionRes
 
   const product = await prisma.product.findFirst({
     where: { id, workspaceId: gate.access.workspaceId },
-    select: { id: true },
+    select: { id: true, name: true },
   });
   if (!product) return { ok: false, error: "Product not found" };
 
@@ -273,6 +323,15 @@ export async function deleteProduct(slug: string, id: string): Promise<ActionRes
   }
 
   await prisma.product.delete({ where: { id } });
+
+  await recordActivity(gate.access, {
+    action: "DELETE",
+    entity: "Product",
+    entityId: id,
+    entityLabel: product.name,
+    summary: "Deleted — it had never been sold or bought",
+  });
+
   revalidatePath(`/${slug}/products`);
   return { ok: true };
 }
@@ -297,13 +356,22 @@ export async function addVariant(
   // Confirm the product belongs to this workspace before attaching a variant.
   const product = await prisma.product.findFirst({
     where: { id: productId, workspaceId: gate.access.workspaceId },
-    select: { id: true },
+    select: { id: true, name: true },
   });
   if (!product) return { ok: false, error: "Product not found" };
 
-  await prisma.productVariant.create({
+  const variant = await prisma.productVariant.create({
     data: { productId, ...variantData(parsed.data) },
   });
+
+  await recordActivity(gate.access, {
+    action: "CREATE",
+    entity: "ProductVariant",
+    entityId: variant.id,
+    entityLabel: variantFullName(product.name, variant.attributes),
+    summary: "Variant added",
+  });
+
   revalidatePath(`/${slug}/products`);
   return { ok: true };
 }
@@ -318,7 +386,7 @@ export async function deleteVariant(
   // Scope delete via the parent product's workspace.
   const variant = await prisma.productVariant.findFirst({
     where: { id: variantId, product: { workspaceId: gate.access.workspaceId } },
-    select: { id: true },
+    select: { id: true, attributes: true, product: { select: { name: true } } },
   });
   if (!variant) return { ok: false, error: "Variant not found" };
 
@@ -344,6 +412,15 @@ export async function deleteVariant(
   }
 
   await prisma.productVariant.delete({ where: { id: variantId } });
+
+  await recordActivity(gate.access, {
+    action: "DELETE",
+    entity: "ProductVariant",
+    entityId: variantId,
+    entityLabel: variantFullName(variant.product.name, variant.attributes),
+    summary: "Variant deleted — it had never been sold or bought",
+  });
+
   revalidatePath(`/${slug}/products`);
   return { ok: true };
 }

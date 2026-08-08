@@ -14,6 +14,7 @@ import {
 import { ConcurrentWrite, runSerializable } from "@/lib/tx";
 import { beyondDistributableProfit, splitByShare } from "@/lib/profit-share";
 import { failed, type ActionFailure } from "@/lib/form";
+import { recordActivity } from "@/lib/activity";
 
 const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
 
@@ -60,7 +61,12 @@ export async function createDistribution(
 
   const partners = await prisma.partner.findMany({
     where: { workspaceId, profitSharePercent: { gt: 0 } },
-    select: { id: true, profitSharePercent: true },
+    select: {
+      id: true,
+      profitSharePercent: true,
+      // For the history line: a distribution is remembered by who got what.
+      user: { select: { name: true, email: true } },
+    },
   });
   if (partners.length === 0) {
     return { ok: false, error: "No partners have a profit share set" };
@@ -139,8 +145,9 @@ export async function createDistribution(
       : null;
   const note = [d.note?.trim() || null, capitalNote].filter(Boolean).join(" — ") || null;
 
+  let distributionId: string;
   try {
-    await runSerializable(async (tx) => {
+    distributionId = await runSerializable(async (tx) => {
       // Checked here rather than before the transaction: two distributions
       // approved at the same moment would otherwise both pass and overdraw.
       await assertTreasuryCovers(tx, workspaceId, d.amount);
@@ -177,6 +184,7 @@ export async function createDistribution(
         },
       });
     }
+    return distribution.id;
     });
   } catch (e) {
     if (e instanceof InsufficientTreasury || e instanceof ConcurrentWrite) {
@@ -184,6 +192,25 @@ export async function createDistribution(
     }
     throw e;
   }
+
+  // Handing out money is the decision partners most want a record of, so the
+  // line carries who got what rather than only the total.
+  await recordActivity(gate.access, {
+    action: "CREATE",
+    entity: "ProfitDistribution",
+    entityId: distributionId,
+    entityLabel: `৳${d.amount}`,
+    summary:
+      `Distributed ৳${d.amount} — ` +
+      cuts
+        .filter((c) => c.amount > 0)
+        .map((c) => {
+          const p = partners.find((x) => x.id === c.partnerId);
+          return `${p?.user.name ?? p?.user.email ?? "partner"} ৳${c.amount}`;
+        })
+        .join(", ") +
+      (beyondProfit > 0 ? ` (৳${beyondProfit} beyond profit)` : ""),
+  });
 
   revalidatePath(`/${slug}/treasury`);
   revalidatePath(`/${slug}/partners`);
@@ -201,7 +228,7 @@ export async function deleteDistribution(
 
   const existing = await prisma.profitDistribution.findFirst({
     where: { id, workspaceId },
-    select: { id: true },
+    select: { id: true, totalAmount: true, date: true },
   });
   if (!existing) return { ok: false, error: "Distribution not found" };
 
@@ -212,6 +239,16 @@ export async function deleteDistribution(
     await tx.partnerTxn.deleteMany({ where: { workspaceId, distributionId: id } });
     await tx.treasuryEntry.deleteMany({ where: { workspaceId, distributionId: id } });
     await tx.profitDistribution.delete({ where: { id } });
+  });
+
+  await recordActivity(gate.access, {
+    action: "DELETE",
+    entity: "ProfitDistribution",
+    entityId: id,
+    entityLabel: `৳${Number(existing.totalAmount)}`,
+    summary:
+      `Distribution of ৳${Number(existing.totalAmount)} from ` +
+      `${existing.date.toISOString().slice(0, 10)} undone — every partner's share went back`,
   });
 
   revalidatePath(`/${slug}/treasury`);

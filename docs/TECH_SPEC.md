@@ -64,6 +64,36 @@ Pages call these; they do not re-derive. A number shown on two screens has one
 function behind it, or the two screens will eventually disagree about the same
 order and nobody will know which is right.
 
+## 1.3 Audit Trail
+
+`ActivityLog` records who changed what, and when — the requirement in `PRD.md`
+§7 that went unbuilt until August 2026.
+
+Written from the **action layer**, after each write commits, via
+`recordActivity(gate.access, …)` in `lib/activity.ts`. Not from a Prisma
+extension: an extension sees every attempt, so `runSerializable` retrying a
+conflicted transaction would log one created order twice, and a rolled-back
+transaction would leave an entry for a change that never happened.
+
+- `diffFields(before, after, fields)` returns only what moved, and null when
+  nothing did — a save that changed nothing writes no entry. It normalises
+  Decimal and Date first, or every save would log `115 → 115`.
+- Rows written by one action share a `groupId` and are drawn as one event.
+- Logging failure never fails the write. The order saved; a missing line is a
+  smaller problem than an error on a screen where nothing went wrong.
+- Entries for the WooCommerce webhook and the cron use
+  `recordSystemActivity(workspaceId, "WooCommerce", …)` — no membership, but a
+  name.
+
+Because the calls are written by hand they can be forgotten, so
+`lib/activity-coverage.test.ts` fails when a file in `server/actions` writes to
+the database without recording anything. Genuine exceptions go in its `EXEMPT`
+map with a reason; that list is meant to stay short.
+
+Read through `lib/activity-read.ts`: `/[workspace]/activity` for the whole
+workspace (Owner and Partner), and `<RecordHistory>` for one record's own
+history on the order breakdown, product, partner and customer pages.
+
 ## 2. Multi-Tenancy Model
 
 - **Workspace** = one registered business (e.g., GeduShop). Every data table has a `workspaceId`.
@@ -114,6 +144,9 @@ BoostDailySpend  { id, adSetId, workspaceId, date, amount, results? }
 WooSyncState     { id, workspaceId, lastSyncedAt, cursor }
 ProcessedMutation{ id, workspaceId, mutationId, processedAt }   // offline queue idempotency
 
+ActivityLog      { id, workspaceId, actorMembershipId?, actorLabel, action(CREATE|UPDATE|DELETE),
+                    entity, entityId, entityLabel?, summary, changes(json), groupId?, createdAt }
+
 BackupLog        { id, workspaceId, type(SHEETS|JSON), status, triggeredBy, fileUrl, payload, error, createdAt }
 BackupSetting    { id, workspaceId, googleSheetId, driveFolderId, autoJson, lastJsonAt, lastSheetsAt }
 StockAdjustment  { id, workspaceId, productVariantId, type(DAMAGED|LOST|GIFT|CORRECTION), delta, reason, date }
@@ -138,6 +171,7 @@ Notification     { id, workspaceId, type, message, dedupeKey, read, createdAt }
 /[workspace]/boosting           → ad campaigns, daily spend, order attribution
 /[workspace]/expenses           → spending: where the day's money went
 /[workspace]/internal-purchases → non-sales purchases
+/[workspace]/activity           → who changed what (Owner + Partner)
 /[workspace]/reports            → analytics, export
 /[workspace]/settings/team      → invite admins/staff, roles
 /[workspace]/settings/backup    → Google Sheets/JSON backup controls
@@ -175,6 +209,7 @@ implies every lower one.
 | Boosting | Full | Edit | Add | None |
 | Internal Purchases | Full | Edit | Edit | None |
 | Reports | Full | View | View | None |
+| Activity (audit trail) | Full | View | None | None |
 | Team/Settings | Full | None | None | None |
 | Backup | Full | View | None | None |
 

@@ -10,6 +10,7 @@ import { ConcurrentWrite, runSerializable } from "@/lib/tx";
 import { removePartnerCredit, syncPartnerCredit } from "@/lib/partner-credit";
 import { variantFullName } from "@/lib/variants";
 import { failed, type ActionFailure } from "@/lib/form";
+import { diffFields, recordActivity } from "@/lib/activity";
 
 export type ActionResult = { ok: true } | ActionFailure;
 
@@ -102,8 +103,9 @@ export async function createPurchase(
   const cost = round2(d.unitCost * d.quantity);
   const label = variantFullName(variant.product.name, variant.attributes);
 
+  let purchaseId: string;
   try {
-    await runSerializable(async (tx) => {
+    purchaseId = await runSerializable(async (tx) => {
       // Serializable, so the balance can't be read and spent twice by two
       // people saving at the same moment — see runSerializable for why the
       // check being inside the transaction isn't enough on its own.
@@ -145,6 +147,7 @@ export async function createPurchase(
         date: d.date,
       });
     }
+    return purchase.id;
     });
   } catch (e) {
     if (e instanceof InsufficientTreasury || e instanceof ConcurrentWrite) {
@@ -155,6 +158,16 @@ export async function createPurchase(
 
   // Stock changed → recompute low-stock / expiry alerts.
   await refreshInventoryAlerts(workspaceId);
+
+  await recordActivity(gate.access, {
+    action: "CREATE",
+    entity: "Purchase",
+    entityId: purchaseId,
+    entityLabel: label,
+    // The unit cost is the figure every future sale's profit is measured
+    // against, so it is the one worth having in the line itself.
+    summary: `Bought ${d.quantity} × ${label} at ৳${d.unitCost} each — ৳${cost} total`,
+  });
 
   revalidateAll(slug);
   return { ok: true };
@@ -297,6 +310,22 @@ export async function updatePurchase(
   // Cost/quantity/variant may have changed → stock and alerts must recompute.
   await refreshInventoryAlerts(workspaceId);
 
+  const purchaseChanges = diffFields(
+    existing,
+    { unitCost: d.unitCost, quantity: d.quantity, salePrice: d.salePrice ?? null, date: d.date },
+    ["unitCost", "quantity", "salePrice", "date"],
+  );
+  if (purchaseChanges) {
+    await recordActivity(gate.access, {
+      action: "UPDATE",
+      entity: "Purchase",
+      entityId: id,
+      entityLabel: label,
+      summary: `Purchase of ${label} edited`,
+      changes: purchaseChanges,
+    });
+  }
+
   revalidateAll(slug);
   return { ok: true };
 }
@@ -363,6 +392,18 @@ export async function deletePurchase(
   });
 
   await refreshInventoryAlerts(workspaceId);
+
+  await recordActivity(gate.access, {
+    action: "DELETE",
+    entity: "Purchase",
+    entityId: id,
+    entityLabel: variantFullName(
+      existing.productVariant.product.name,
+      existing.productVariant.attributes,
+    ),
+    summary: `Deleted — ${existing.quantity} piece(s) that came in on it went off the books`,
+  });
+
   revalidateAll(slug);
   return { ok: true };
 }

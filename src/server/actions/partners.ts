@@ -14,6 +14,7 @@ import { variantFullName } from "@/lib/variants";
 import { InsufficientTreasury, assertTreasuryCovers } from "@/lib/finance";
 import { ConcurrentWrite, runSerializable } from "@/lib/tx";
 import { failed, type ActionFailure } from "@/lib/form";
+import { diffFields, recordActivity } from "@/lib/activity";
 
 export type ActionResult = { ok: true } | ActionFailure;
 
@@ -46,7 +47,7 @@ export async function createPartner(
   // The selected user must be a member of this workspace.
   const membership = await prisma.membership.findFirst({
     where: { userId: d.userId, workspaceId },
-    select: { id: true },
+    select: { id: true, user: { select: { name: true, email: true } } },
   });
   if (!membership) return { ok: false, error: "That user is not a member" };
 
@@ -55,7 +56,7 @@ export async function createPartner(
   });
   if (existing) return { ok: false, error: "That member is already a partner" };
 
-  await prisma.partner.create({
+  const partner = await prisma.partner.create({
     data: {
       workspaceId,
       userId: d.userId,
@@ -63,6 +64,15 @@ export async function createPartner(
       notes: d.notes?.trim() || null,
     },
   });
+
+  await recordActivity(gate.access, {
+    action: "CREATE",
+    entity: "Partner",
+    entityId: partner.id,
+    entityLabel: membership.user.name ?? membership.user.email,
+    summary: `Added as a partner on ${d.profitSharePercent}%`,
+  });
+
   revalidatePath(`/${slug}/partners`);
   return { ok: true };
 }
@@ -81,11 +91,39 @@ export async function updatePartner(
   }
   const notes = String(formData.get("notes") ?? "").trim() || null;
 
+  const before = await prisma.partner.findFirst({
+    where: { id, workspaceId: gate.access.workspaceId },
+    select: {
+      profitSharePercent: true,
+      notes: true,
+      user: { select: { name: true, email: true } },
+    },
+  });
   const res = await prisma.partner.updateMany({
     where: { id, workspaceId: gate.access.workspaceId },
     data: { profitSharePercent: percent, notes },
   });
   if (res.count === 0) return { ok: false, error: "Partner not found" };
+
+  const changes = before
+    ? diffFields(before, { profitSharePercent: percent, notes }, ["profitSharePercent", "notes"])
+    : null;
+  if (changes) {
+    // A profit share is what everybody gets paid on. Changing it quietly is
+    // the single most consequential edit in the app.
+    await recordActivity(gate.access, {
+      action: "UPDATE",
+      entity: "Partner",
+      entityId: id,
+      entityLabel: before?.user.name ?? before?.user.email ?? "Partner",
+      summary:
+        changes.profitSharePercent
+          ? `Profit share changed to ${percent}%`
+          : "Partner details edited",
+      changes,
+    });
+  }
+
   revalidatePath(`/${slug}/partners`);
   return { ok: true };
 }
@@ -195,9 +233,10 @@ export async function createPartnerTxn(
 
   const partner = await prisma.partner.findFirst({
     where: { id: d.partnerId, workspaceId },
-    select: { id: true, userId: true },
+    select: { id: true, userId: true, user: { select: { name: true, email: true } } },
   });
   if (!partner) return { ok: false, error: "Partner not found" };
+  const partnerName = partner.user.name ?? partner.user.email;
 
   // Row-level: a PARTNER may only add transactions to their own record.
   if (gate.access.role === "PARTNER" && partner.userId !== gate.access.userId) {
@@ -218,12 +257,13 @@ export async function createPartnerTxn(
         ? { type: "OUT" as const, source: "Partner withdrawal" }
         : null;
 
+  let txnId: string;
   try {
-    await runSerializable(async (tx) => {
+    txnId = await runSerializable(async (tx) => {
       // Only the OUT direction can overdraw, and the check belongs inside the
       // transaction that writes it.
       if (fromTreasury) await assertTreasuryCovers(tx, workspaceId, d.amount);
-      await tx.partnerTxn.create({
+      const created = await tx.partnerTxn.create({
         data: {
           workspaceId,
           partnerId: d.partnerId,
@@ -246,6 +286,7 @@ export async function createPartnerTxn(
             : undefined,
         },
       });
+      return created.id;
     });
   } catch (e) {
     if (e instanceof InsufficientTreasury || e instanceof ConcurrentWrite) {
@@ -253,6 +294,16 @@ export async function createPartnerTxn(
     }
     throw e;
   }
+
+  await recordActivity(gate.access, {
+    action: "CREATE",
+    entity: "PartnerTxn",
+    entityId: txnId,
+    entityLabel: partnerName,
+    summary:
+      `${d.type.toLowerCase().replace(/_/g, " ")} — ৳${d.amount}` +
+      (d.purpose?.trim() ? ` (${d.purpose.trim()})` : ""),
+  });
 
   revalidatePath(`/${slug}/partners`, "layout");
   revalidatePath(`/${slug}/treasury`);
@@ -270,7 +321,12 @@ export async function deletePartnerTxn(
 
   const txn = await prisma.partnerTxn.findFirst({
     where: { id, workspaceId: gate.access.workspaceId },
-    select: DERIVED_SELECT,
+    select: {
+      ...DERIVED_SELECT,
+      type: true,
+      amount: true,
+      partner: { select: { user: { select: { name: true, email: true } } } },
+    },
   });
   if (!txn) return { ok: false, error: "Transaction not found" };
   const source = derivedSource(txn);
@@ -284,6 +340,15 @@ export async function deletePartnerTxn(
   await prisma.partnerTxn.deleteMany({
     where: { id, workspaceId: gate.access.workspaceId },
   });
+
+  await recordActivity(gate.access, {
+    action: "DELETE",
+    entity: "PartnerTxn",
+    entityId: id,
+    entityLabel: txn.partner?.user.name ?? txn.partner?.user.email ?? "Partner",
+    summary: `Deleted a ${txn.type.toLowerCase().replace(/_/g, " ")} of ৳${Number(txn.amount)}`,
+  });
+
   revalidatePath(`/${slug}/partners`, "layout");
   revalidatePath(`/${slug}/treasury`);
   return { ok: true };

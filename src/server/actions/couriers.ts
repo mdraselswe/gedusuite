@@ -5,6 +5,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAccess } from "@/lib/authz";
 import { failed, type ActionFailure } from "@/lib/form";
+import { diffFields, recordActivity } from "@/lib/activity";
 
 export type ActionResult = { ok: true; id?: string } | ActionFailure;
 
@@ -75,6 +76,14 @@ export async function createCourier(slug: string, input: CourierInput): Promise<
   });
   if (d.isDefault) await clearOtherDefaults(workspaceId, courier.id);
 
+  await recordActivity(gate.access, {
+    action: "CREATE",
+    entity: "Courier",
+    entityId: courier.id,
+    entityLabel: d.name,
+    summary: `Added — ${d.codFeePercent}% COD fee on ${d.codFeeBase}, ${d.zones.length} zone(s)`,
+  });
+
   revalidateCouriers(slug);
   return { ok: true, id: courier.id };
 }
@@ -90,7 +99,19 @@ export async function updateCourier(
 
   const existing = await prisma.courier.findFirst({
     where: { id, workspaceId },
-    select: { id: true, zones: { select: { id: true } } },
+    select: {
+      id: true,
+      zones: { select: { id: true, name: true, rate: true } },
+      name: true,
+      isDefault: true,
+      isActive: true,
+      baseWeightKg: true,
+      extraKgRate: true,
+      codFeePercent: true,
+      codFeeBase: true,
+      returnChargeType: true,
+      returnChargeValue: true,
+    },
   });
   if (!existing) return { ok: false, error: "Courier not found" };
 
@@ -145,6 +166,34 @@ export async function updateCourier(
   });
   if (d.isDefault) await clearOtherDefaults(workspaceId, id);
 
+  // A courier's rules decide every future parcel's cost and every COD fee, so
+  // a quiet edit here moves profit on orders nobody has placed yet. Zone rates
+  // are folded into the same entry rather than one line per zone — the whole
+  // table is what somebody changed.
+  const courierChanges = diffFields(existing, d, ["name", "isDefault", "isActive", "baseWeightKg", "extraKgRate", "codFeePercent", "codFeeBase", "returnChargeType", "returnChargeValue"]);
+  const zoneMoves = d.zones
+    .filter((z) => {
+      const was = existing.zones.find((e) => e.id === z.id);
+      return was && (was.name !== z.name || Number(was.rate) !== z.rate);
+    })
+    .map((z) => {
+      const was = existing.zones.find((e) => e.id === z.id)!;
+      return `${was.name} ৳${Number(was.rate)} → ${z.name} ৳${z.rate}`;
+    });
+  if (courierChanges || zoneMoves.length > 0) {
+    await recordActivity(gate.access, {
+      action: "UPDATE",
+      entity: "Courier",
+      entityId: id,
+      entityLabel: d.name,
+      summary:
+        zoneMoves.length > 0
+          ? `Rules edited — zones: ${zoneMoves.join(", ")}`
+          : "Rules edited",
+      changes: courierChanges,
+    });
+  }
+
   revalidateCouriers(slug);
   return { ok: true };
 }
@@ -154,7 +203,10 @@ export async function deleteCourier(slug: string, id: string): Promise<ActionRes
   if (!gate.ok) return gate;
   const workspaceId = gate.access.workspaceId;
 
-  const courier = await prisma.courier.findFirst({ where: { id, workspaceId }, select: { id: true } });
+  const courier = await prisma.courier.findFirst({
+    where: { id, workspaceId },
+    select: { id: true, name: true },
+  });
   if (!courier) return { ok: false, error: "Courier not found" };
 
   const used = await prisma.order.count({ where: { courierId: id, workspaceId } });
@@ -166,6 +218,15 @@ export async function deleteCourier(slug: string, id: string): Promise<ActionRes
   }
 
   await prisma.courier.delete({ where: { id } });
+
+  await recordActivity(gate.access, {
+    action: "DELETE",
+    entity: "Courier",
+    entityId: id,
+    entityLabel: courier.name,
+    summary: "Deleted — no order had used it",
+  });
+
   revalidateCouriers(slug);
   return { ok: true };
 }

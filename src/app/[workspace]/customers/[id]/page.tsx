@@ -7,6 +7,7 @@ import { computeOrderTotals, orderNetProfit } from "@/lib/orders";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CustomerOrdersTable } from "@/components/customers/customer-orders-table";
 import { Money } from "@/components/ui/money";
+import { RecordHistory } from "@/components/activity/record-history";
 
 export default async function CustomerDetailPage({
   params,
@@ -130,6 +131,11 @@ export default async function CustomerDetailPage({
           }))}
         />
       </div>
+      <RecordHistory
+        workspaceId={access.workspaceId}
+        entity="Customer"
+        entityId={customer.id}
+      />
     </div>
   );
 }

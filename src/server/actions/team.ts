@@ -9,6 +9,7 @@ import { requireAccess } from "@/lib/authz";
 import { can } from "@/lib/rbac";
 import type { Role } from "@prisma/client";
 import { failed, type ActionFailure } from "@/lib/form";
+import { recordActivity } from "@/lib/activity";
 
 const ROLES = ["OWNER", "PARTNER", "MANAGER", "STAFF"] as const;
 
@@ -106,7 +107,10 @@ export async function updateMemberRole(
   if (!gate.ok) return gate;
   const workspaceId = gate.access.workspaceId;
 
-  const target = await prisma.membership.findUnique({ where: { id: membershipId } });
+  const target = await prisma.membership.findUnique({
+    where: { id: membershipId },
+    include: { user: { select: { name: true, email: true } } },
+  });
   if (!target || target.workspaceId !== workspaceId) {
     return { ok: false, error: "Member not found" };
   }
@@ -117,6 +121,18 @@ export async function updateMemberRole(
   }
 
   await prisma.membership.update({ where: { id: membershipId }, data: { role } });
+
+  // Who can see the treasury and who can hand out profit is decided here, so
+  // a role change is the one edit an audit trail exists for above all others.
+  await recordActivity(gate.access, {
+    action: "UPDATE",
+    entity: "Membership",
+    entityId: membershipId,
+    entityLabel: target.user.name ?? target.user.email,
+    summary: `Role changed from ${target.role} to ${role}`,
+    changes: { role: { from: target.role, to: role } },
+  });
+
   revalidatePath(`/${slug}/settings/team`);
   return { ok: true };
 }
@@ -127,7 +143,10 @@ export async function removeMember(slug: string, membershipId: string): Promise<
   if (!gate.ok) return gate;
   const workspaceId = gate.access.workspaceId;
 
-  const target = await prisma.membership.findUnique({ where: { id: membershipId } });
+  const target = await prisma.membership.findUnique({
+    where: { id: membershipId },
+    include: { user: { select: { name: true, email: true } } },
+  });
   if (!target || target.workspaceId !== workspaceId) {
     return { ok: false, error: "Member not found" };
   }
@@ -138,6 +157,17 @@ export async function removeMember(slug: string, membershipId: string): Promise<
   }
 
   await prisma.membership.delete({ where: { id: membershipId } });
+
+  // Recorded before the row is gone, and the actor's name is snapshotted, so
+  // removing somebody never removes the account of it.
+  await recordActivity(gate.access, {
+    action: "DELETE",
+    entity: "Membership",
+    entityId: membershipId,
+    entityLabel: target.user.name ?? target.user.email,
+    summary: `Removed from the workspace (was ${target.role})`,
+  });
+
   revalidatePath(`/${slug}/settings/team`);
   return { ok: true };
 }

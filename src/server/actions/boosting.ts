@@ -8,6 +8,7 @@ import { InsufficientTreasury, assertTreasuryCovers } from "@/lib/finance";
 import { ConcurrentWrite, runSerializable } from "@/lib/tx";
 import { isOrderSource } from "@/lib/order-source";
 import { failed, type ActionFailure } from "@/lib/form";
+import { diffFields, recordActivity } from "@/lib/activity";
 
 export type ActionResult =
   | { ok: true; id?: string }
@@ -95,6 +96,14 @@ export async function createCampaign(
     },
   });
 
+  await recordActivity(gate.access, {
+    action: "CREATE",
+    entity: "BoostCampaign",
+    entityId: campaign.id,
+    entityLabel: d.name,
+    summary: `Campaign created — ${d.status.toLowerCase()}`,
+  });
+
   revalidateBoosting(slug);
   return { ok: true, id: campaign.id };
 }
@@ -125,6 +134,10 @@ export async function updateCampaign(
   }
   const d = parsed.data;
 
+  const before = await prisma.boostCampaign.findUnique({
+    where: { id },
+    select: { name: true, objective: true, channel: true, status: true, notes: true },
+  });
   await prisma.boostCampaign.update({
     where: { id },
     data: {
@@ -135,6 +148,32 @@ export async function updateCampaign(
       notes: d.notes?.trim() || null,
     },
   });
+
+  const campaignChanges = before
+    ? diffFields(
+        before,
+        {
+          name: d.name,
+          objective: d.objective?.trim() || null,
+          channel: isOrderSource(d.channel) ? d.channel : null,
+          status: d.status,
+          notes: d.notes?.trim() || null,
+        },
+        ["name", "objective", "channel", "status", "notes"],
+      )
+    : null;
+  if (campaignChanges) {
+    // The channel decides which untagged orders a campaign gets credit for,
+    // so changing it rewrites the campaign's results after the fact.
+    await recordActivity(gate.access, {
+      action: "UPDATE",
+      entity: "BoostCampaign",
+      entityId: id,
+      entityLabel: d.name,
+      summary: "Campaign edited",
+      changes: campaignChanges,
+    });
+  }
 
   revalidateBoosting(slug, id);
   return { ok: true };
@@ -147,7 +186,7 @@ export async function deleteCampaign(slug: string, id: string): Promise<ActionRe
 
   const campaign = await prisma.boostCampaign.findFirst({
     where: { id, workspaceId },
-    select: { id: true },
+    select: { id: true, name: true },
   });
   if (!campaign) return { ok: false, error: "Campaign not found" };
 
@@ -161,6 +200,14 @@ export async function deleteCampaign(slug: string, id: string): Promise<ActionRe
     });
     // Cascades to ad sets and daily spends.
     await tx.boostCampaign.deleteMany({ where: { id, workspaceId } });
+  });
+
+  await recordActivity(gate.access, {
+    action: "DELETE",
+    entity: "BoostCampaign",
+    entityId: id,
+    entityLabel: campaign.name,
+    summary: "Campaign deleted — its ad sets and every spend entry went with it",
   });
 
   revalidateBoosting(slug);
@@ -214,6 +261,14 @@ export async function createAdSet(
     },
   });
 
+  await recordActivity(gate.access, {
+    action: "CREATE",
+    entity: "BoostAdSet",
+    entityId: adSet.id,
+    entityLabel: d.name,
+    summary: `Ad set created — from ${d.startDate.toISOString().slice(0, 10)}`,
+  });
+
   revalidateBoosting(slug, campaignId);
   return { ok: true, id: adSet.id };
 }
@@ -228,7 +283,14 @@ export async function updateAdSet(
 
   const adSet = await prisma.boostAdSet.findFirst({
     where: { id, workspaceId: gate.access.workspaceId },
-    select: { id: true, campaignId: true },
+    select: {
+      id: true,
+      campaignId: true,
+      name: true,
+      startDate: true,
+      endDate: true,
+      status: true,
+    },
   });
   if (!adSet) return { ok: false, error: "Ad set not found" };
 
@@ -260,6 +322,21 @@ export async function updateAdSet(
     },
   });
 
+  // Ad set dates are the campaign's window, and the window decides which
+  // untagged orders it gets credit for — an estimated result moves with them.
+  await recordActivity(gate.access, {
+    action: "UPDATE",
+    entity: "BoostAdSet",
+    entityId: id,
+    entityLabel: d.name,
+    summary: "Ad set edited",
+    changes: diffFields(
+      adSet,
+      { name: d.name, startDate: d.startDate, endDate: d.endDate ?? null, status: d.status },
+      ["name", "startDate", "endDate", "status"],
+    ),
+  });
+
   revalidateBoosting(slug, adSet.campaignId);
   return { ok: true };
 }
@@ -271,7 +348,7 @@ export async function deleteAdSet(slug: string, id: string): Promise<ActionResul
 
   const adSet = await prisma.boostAdSet.findFirst({
     where: { id, workspaceId },
-    select: { id: true, campaignId: true },
+    select: { id: true, campaignId: true, name: true },
   });
   if (!adSet) return { ok: false, error: "Ad set not found" };
 
@@ -282,6 +359,14 @@ export async function deleteAdSet(slug: string, id: string): Promise<ActionResul
       where: { workspaceId, boostSpend: { adSetId: id } },
     });
     await tx.boostAdSet.deleteMany({ where: { id, workspaceId } });
+  });
+
+  await recordActivity(gate.access, {
+    action: "DELETE",
+    entity: "BoostAdSet",
+    entityId: id,
+    entityLabel: adSet.name,
+    summary: "Ad set deleted — its spend entries went with it",
   });
 
   revalidateBoosting(slug, adSet.campaignId);
@@ -337,8 +422,9 @@ export async function addDailySpend(
   // a card as many times per day as it hits billing thresholds.
   const day = new Date(d.date.toISOString().slice(0, 10));
 
+  let spendId: string;
   try {
-    await runSerializable(async (tx) => {
+    spendId = await runSerializable(async (tx) => {
       // Inside the transaction: the balance is read and spent as one step.
       if (paidFromTreasury) await assertTreasuryCovers(tx, workspaceId, d.amount);
       const spend = await tx.boostDailySpend.create({
@@ -380,6 +466,7 @@ export async function addDailySpend(
         },
       });
     }
+    return spend.id;
     });
   } catch (e) {
     if (e instanceof InsufficientTreasury || e instanceof ConcurrentWrite) {
@@ -387,6 +474,14 @@ export async function addDailySpend(
     }
     throw e;
   }
+
+  await recordActivity(gate.access, {
+    action: "CREATE",
+    entity: "BoostDailySpend",
+    entityId: spendId,
+    entityLabel: adSet.name,
+    summary: `৳${d.amount} ad spend on ${day.toISOString().slice(0, 10)} (${d.fundingSource.toLowerCase()})`,
+  });
 
   revalidateBoosting(slug, adSet.campaignId);
   revalidateFunding(slug);
@@ -400,7 +495,12 @@ export async function deleteDailySpend(slug: string, id: string): Promise<Action
   const workspaceId = gate.access.workspaceId;
   const spend = await prisma.boostDailySpend.findFirst({
     where: { id, workspaceId },
-    select: { id: true, adSet: { select: { campaignId: true } } },
+    select: {
+      id: true,
+      amount: true,
+      date: true,
+      adSet: { select: { campaignId: true, name: true } },
+    },
   });
   if (!spend) return { ok: false, error: "Spend entry not found" };
 
@@ -413,6 +513,14 @@ export async function deleteDailySpend(slug: string, id: string): Promise<Action
     // so the intent is visible here rather than buried in the schema.
     await tx.partnerTxn.deleteMany({ where: { workspaceId, boostSpendId: id } });
     await tx.boostDailySpend.deleteMany({ where: { id, workspaceId } });
+  });
+
+  await recordActivity(gate.access, {
+    action: "DELETE",
+    entity: "BoostDailySpend",
+    entityId: id,
+    entityLabel: spend.adSet.name,
+    summary: `Deleted ৳${Number(spend.amount)} of ad spend from ${spend.date.toISOString().slice(0, 10)}`,
   });
 
   revalidateBoosting(slug, spend.adSet.campaignId);

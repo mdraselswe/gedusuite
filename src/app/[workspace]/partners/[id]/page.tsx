@@ -8,6 +8,7 @@ import { derivedSource } from "@/lib/partner-credit";
 import { PartnerTxnManager } from "@/components/partners/partner-txn-manager";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Money } from "@/components/ui/money";
+import { RecordHistory } from "@/components/activity/record-history";
 
 export default async function PartnerDetailPage({
   params,
@@ -94,6 +95,11 @@ export default async function PartnerDetailPage({
         txns={txns}
         canAdd={canAdd}
         canDelete={canDelete}
+      />
+      <RecordHistory
+        workspaceId={access.workspaceId}
+        entity="Partner"
+        entityId={partner.id}
       />
     </div>
   );

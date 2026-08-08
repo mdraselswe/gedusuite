@@ -8,6 +8,7 @@ import { InsufficientTreasury, assertTreasuryCovers } from "@/lib/finance";
 import { ConcurrentWrite, runSerializable } from "@/lib/tx";
 import { removePartnerCredit, syncPartnerCredit } from "@/lib/partner-credit";
 import { failed, type ActionFailure } from "@/lib/form";
+import { diffFields, recordActivity } from "@/lib/activity";
 
 export type ActionResult = { ok: true } | ActionFailure;
 
@@ -115,8 +116,9 @@ export async function createInternalPurchase(
 
   const cost = round2(d.cost * d.quantity);
 
+  let itemId: string;
   try {
-    await runSerializable(async (tx) => {
+    itemId = await runSerializable(async (tx) => {
       // Inside the transaction so two people saving at once can't both spend
       // the same balance.
       if (paidFromTreasury) await assertTreasuryCovers(tx, workspaceId, cost);
@@ -159,6 +161,7 @@ export async function createInternalPurchase(
         date: d.date,
       });
     }
+    return item.id;
     });
   } catch (e) {
     if (e instanceof InsufficientTreasury || e instanceof ConcurrentWrite) {
@@ -166,6 +169,14 @@ export async function createInternalPurchase(
     }
     throw e;
   }
+
+  await recordActivity(gate.access, {
+    action: "CREATE",
+    entity: "InternalPurchase",
+    entityId: itemId,
+    entityLabel: d.itemName,
+    summary: `Bought ${d.quantity} × ${d.itemName} — ৳${cost} (${d.fundingSource.toLowerCase()})`,
+  });
 
   revalidateAll(slug);
   return { ok: true };
@@ -286,6 +297,22 @@ export async function updateInternalPurchase(
     throw e;
   }
 
+  const ipChanges = diffFields(
+    existing,
+    { itemName: d.itemName, cost: d.cost, quantity: d.quantity, date: d.date, spreadMonths: d.spreadMonths ?? null },
+    ["itemName", "cost", "quantity", "date", "spreadMonths"],
+  );
+  if (ipChanges) {
+    await recordActivity(gate.access, {
+      action: "UPDATE",
+      entity: "InternalPurchase",
+      entityId: id,
+      entityLabel: d.itemName,
+      summary: "Edited",
+      changes: ipChanges,
+    });
+  }
+
   revalidateAll(slug);
   return { ok: true };
 }
@@ -298,6 +325,11 @@ export async function deleteInternalPurchase(
   if (!gate.ok) return gate;
   const workspaceId = gate.access.workspaceId;
 
+  const existing = await prisma.internalPurchase.findFirst({
+    where: { id, workspaceId },
+    select: { itemName: true, cost: true, quantity: true },
+  });
+
   await prisma.$transaction(async (tx) => {
     // Delete the linked treasury deduction first, if any — the FK is
     // ON DELETE SET NULL, which would otherwise leave a stray entry behind
@@ -307,6 +339,16 @@ export async function deleteInternalPurchase(
     await removePartnerCredit(tx, workspaceId, { internalPurchaseId: id });
     await tx.internalPurchase.deleteMany({ where: { id, workspaceId } });
   });
+
+  if (existing) {
+    await recordActivity(gate.access, {
+      action: "DELETE",
+      entity: "InternalPurchase",
+      entityId: id,
+      entityLabel: existing.itemName,
+      summary: `Deleted — ৳${Number(existing.cost) * existing.quantity} came back off the books`,
+    });
+  }
 
   revalidateAll(slug);
   return { ok: true };

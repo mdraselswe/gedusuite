@@ -5,6 +5,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAccess } from "@/lib/authz";
 import { failed, type ActionFailure } from "@/lib/form";
+import { recordActivity } from "@/lib/activity";
 
 export type ActionResult = { ok: true } | ActionFailure;
 
@@ -81,9 +82,18 @@ export async function createProductCategory(
     return { ok: true, name: existing.name };
   }
 
-  await prisma.productCategory.create({
+  const created = await prisma.productCategory.create({
     data: { workspaceId: gate.access.workspaceId, name: clean },
   });
+
+  await recordActivity(gate.access, {
+    action: "CREATE",
+    entity: "ProductCategory",
+    entityId: created.id,
+    entityLabel: clean,
+    summary: "Category added",
+  });
+
   revalidatePath(`/${slug}/products`);
   return { ok: true, name: clean };
 }
@@ -91,9 +101,22 @@ export async function createProductCategory(
 export async function deleteProductCategory(slug: string, name: string): Promise<ActionResult> {
   const gate = await requireAccess(slug, "products", "edit");
   if (!gate.ok) return gate;
+  const existing = await prisma.productCategory.findFirst({
+    where: { workspaceId: gate.access.workspaceId, name },
+    select: { id: true },
+  });
   await prisma.productCategory.deleteMany({
     where: { workspaceId: gate.access.workspaceId, name },
   });
+  if (existing) {
+    await recordActivity(gate.access, {
+      action: "DELETE",
+      entity: "ProductCategory",
+      entityId: existing.id,
+      entityLabel: name,
+      summary: "Category deleted",
+    });
+  }
   revalidatePath(`/${slug}/products`);
   return { ok: true };
 }

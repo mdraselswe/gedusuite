@@ -7,6 +7,7 @@ import { requireAccess } from "@/lib/authz";
 import { InsufficientTreasury, assertTreasuryCovers } from "@/lib/finance";
 import { ConcurrentWrite, runSerializable } from "@/lib/tx";
 import { failed, type ActionFailure } from "@/lib/form";
+import { recordActivity } from "@/lib/activity";
 
 export type ActionResult = { ok: true } | ActionFailure;
 
@@ -56,10 +57,11 @@ export async function createTreasuryEntry(
   // other one — purchases, boost spends, partner withdrawals, distributions —
   // has refused to overdraw for a while; a 20,000 "Rent" against a balance of
   // 5,000 simply took the treasury to −15,000 and said nothing.
+  let entryId: string;
   try {
-    await runSerializable(async (tx) => {
+    entryId = await runSerializable(async (tx) => {
       if (d.type === "OUT") await assertTreasuryCovers(tx, workspaceId, d.amount);
-      await tx.treasuryEntry.create({
+      const created = await tx.treasuryEntry.create({
         data: {
           workspaceId,
           type: d.type,
@@ -70,6 +72,7 @@ export async function createTreasuryEntry(
           date: d.date,
         },
       });
+      return created.id;
     });
   } catch (e) {
     if (e instanceof InsufficientTreasury || e instanceof ConcurrentWrite) {
@@ -77,6 +80,16 @@ export async function createTreasuryEntry(
     }
     throw e;
   }
+
+  await recordActivity(gate.access, {
+    action: "CREATE",
+    entity: "TreasuryEntry",
+    entityId: entryId,
+    entityLabel: d.source,
+    summary:
+      `৳${d.amount} ${d.type === "IN" ? "in" : "out"} — ${d.source}` +
+      (d.note?.trim() ? ` (${d.note.trim()})` : ""),
+  });
 
   revalidatePath(`/${slug}/treasury`);
   revalidatePath(`/${slug}/dashboard`);
@@ -93,6 +106,9 @@ export async function deleteTreasuryEntry(
   const entry = await prisma.treasuryEntry.findFirst({
     where: { id, workspaceId: gate.access.workspaceId },
     select: {
+      type: true,
+      amount: true,
+      source: true,
       partnerTxnId: true,
       orderId: true,
       purchaseId: true,
@@ -140,6 +156,17 @@ export async function deleteTreasuryEntry(
   }
 
   await prisma.treasuryEntry.delete({ where: { id } });
+
+  // The balance moved and the row explaining it is gone, so this line is now
+  // the only account of it.
+  await recordActivity(gate.access, {
+    action: "DELETE",
+    entity: "TreasuryEntry",
+    entityId: id,
+    entityLabel: entry.source,
+    summary: `Deleted a ৳${Number(entry.amount)} ${entry.type === "IN" ? "in" : "out"} entry — ${entry.source}`,
+  });
+
   revalidatePath(`/${slug}/treasury`);
   revalidatePath(`/${slug}/dashboard`);
   return { ok: true };

@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { upsertLeadFromWooOrder, type WooOrder } from "@/lib/woo";
+import { recordSystemActivity } from "@/lib/activity";
 
 /**
  * WooCommerce order webhook -> the call list.
@@ -59,7 +60,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: `Unknown workspace "${slug}"` }, { status: 500 });
   }
 
-  await upsertLeadFromWooOrder(workspace.id, order, JSON.parse(raw));
+  const lead = await upsertLeadFromWooOrder(workspace.id, order, JSON.parse(raw));
+
+  // Nobody was logged in, and the call list gained a row. A history with a
+  // gap where the shop's own website writes data is a history that can't be
+  // trusted to be complete.
+  if (lead) {
+    await recordSystemActivity(workspace.id, "WooCommerce", {
+      action: "CREATE",
+      entity: "OrderLead",
+      entityId: lead.id,
+      entityLabel: lead.customerName,
+      summary: `Website order #${order.number ?? order.id} arrived in the call list`,
+    });
+  }
 
   return NextResponse.json({ ok: true });
 }
