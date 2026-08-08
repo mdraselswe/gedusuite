@@ -18,6 +18,44 @@ import { isOrderSource } from "@/lib/order-source";
 import { quoteCourier } from "@/lib/courier";
 import type { OrderStatus, PaymentStatus } from "@prisma/client";
 import { failed, type ActionFailure } from "@/lib/form";
+import { diffFields, newActivityGroup, recordActivity } from "@/lib/activity";
+
+/**
+ * How an order reads in the history — the same short id the breakdown page
+ * shows, so a line in the activity list and the page it came from are
+ * recognisably about the same order.
+ */
+function orderLabel(id: string, customerName: string | null | undefined): string {
+  return `#${id.slice(-8).toUpperCase()} · ${customerName ?? "Walk-in"}`;
+}
+
+/**
+ * The header fields worth a line in the history. Money and courier fields, not
+ * the derived ones — a reader wants to know somebody changed the delivery cost
+ * from 65 to 115, not that a total moved as a consequence.
+ */
+const HEADER_AUDIT_FIELDS = [
+  "date",
+  "customerId",
+  "deliveryType",
+  "deliveryCharge",
+  "deliveryCost",
+  "codFeeCost",
+  "courierId",
+  "courierZoneId",
+  "weightKg",
+  "cancelledCollected",
+  "paymentMethod",
+  "packagingCost",
+  "giftCost",
+  "discount",
+  "heldByMembershipId",
+  "notes",
+] as const;
+
+const HEADER_AUDIT_SELECT = Object.fromEntries(
+  HEADER_AUDIT_FIELDS.map((f) => [f, true]),
+) as Record<(typeof HEADER_AUDIT_FIELDS)[number], true>;
 
 export type ActionResult =
   // `warning` is for things worth saying that aren't worth refusing over —
@@ -479,6 +517,14 @@ export async function createOrder(
   // somebody happened to save an unrelated purchase.
   await refreshInventoryAlerts(workspaceId);
 
+  await recordActivity(gate.access, {
+    action: "CREATE",
+    entity: "Order",
+    entityId: order.id,
+    entityLabel: orderLabel(order.id, customer?.name ?? null),
+    summary: `Created — ${d.items.length} item(s), ${d.status.toLowerCase()}`,
+  });
+
   revalidatePath(`/${slug}/sales/orders`);
   revalidatePath(`/${slug}/couriers`);
   revalidatePath(`/${slug}/dashboard`);
@@ -546,14 +592,16 @@ export async function updateOrderHeader(
       id: true,
       cashInTreasury: true,
       status: true,
-      // Read so a save that leaves the partial-payment field alone still
-      // re-quotes the courier's fee against the figure already stored.
-      cancelledCollected: true,
       items: { select: { unitPrice: true, quantity: true, discount: true } },
       gifts: { select: { quantity: true, unitCost: true } },
+      // Carries cancelledCollected among others, so a save that leaves the
+      // partial-payment field alone still re-quotes the courier's fee against
+      // the figure already stored.
+      ...HEADER_AUDIT_SELECT,
     },
   });
   if (!order) return { ok: false, error: "Order not found" };
+  const before = order;
 
   const parsed = HeaderSchema.safeParse({
     customerId: formData.get("customerId") ?? undefined,
@@ -658,6 +706,25 @@ export async function updateOrderHeader(
     await syncOrderCashEntry(tx, workspaceId, orderId);
   });
 
+  // Read back rather than trusting the input: courierQuote can override the
+  // delivery cost and the COD fee, so what was typed is not always what was
+  // saved, and the history has to show what was saved.
+  const after = await prisma.order.findUnique({
+    where: { id: orderId },
+    select: { ...HEADER_AUDIT_SELECT, customer: { select: { name: true } } },
+  });
+  const changes = after ? diffFields(before, after, [...HEADER_AUDIT_FIELDS]) : null;
+  if (changes) {
+    await recordActivity(gate.access, {
+      action: "UPDATE",
+      entity: "Order",
+      entityId: orderId,
+      entityLabel: orderLabel(orderId, after?.customer?.name),
+      summary: "Order details edited",
+      changes,
+    });
+  }
+
   revalidatePath(`/${slug}/sales/orders`);
   revalidatePath(`/${slug}/couriers`);
   revalidatePath(`/${slug}/treasury`);
@@ -695,7 +762,12 @@ export async function updateOrderStatus(
 
   const order = await prisma.order.findFirst({
     where: { id: orderId, workspaceId },
-    include: { items: { include: { returns: true } }, gifts: true },
+    include: {
+      items: { include: { returns: true } },
+      gifts: true,
+      // Only for the history line — an order is named by its customer there.
+      customer: { select: { name: true } },
+    },
   });
   if (!order) return { ok: false, error: "Order not found" };
 
@@ -793,6 +865,46 @@ export async function updateOrderStatus(
   // cancelling puts it back — so the alerts have to be recomputed either way.
   await refreshInventoryAlerts(workspaceId);
 
+  // A cancellation is the one status change that carries money with it, and
+  // the figures typed into the dialog are exactly the ones somebody asks about
+  // later ("who said the courier charged 115?"), so they go in the line itself.
+  const cancelDetail =
+    status === "CANCELLED"
+      ? [
+          costs.cancelledCollected !== undefined
+            ? `৳${costs.cancelledCollected} collected`
+            : null,
+          costs.deliveryCost !== undefined ? `৳${costs.deliveryCost} courier charge` : null,
+          costs.giftCost ? `৳${costs.giftCost} gift` : null,
+        ]
+          .filter(Boolean)
+          .join(", ")
+      : "";
+  await recordActivity(gate.access, {
+    action: "UPDATE",
+    entity: "Order",
+    entityId: orderId,
+    entityLabel: orderLabel(orderId, order.customer?.name),
+    summary:
+      status === "CANCELLED"
+        ? `Cancelled${cancelDetail ? ` — ${cancelDetail}` : ""}`
+        : `Status set to ${status.toLowerCase()}`,
+    changes: {
+      status: { from: order.status, to: status },
+      ...(costs.deliveryCost !== undefined
+        ? { deliveryCost: { from: Number(order.deliveryCost ?? 0), to: costs.deliveryCost } }
+        : {}),
+      ...(costs.cancelledCollected !== undefined
+        ? {
+            cancelledCollected: {
+              from: Number(order.cancelledCollected),
+              to: costs.cancelledCollected,
+            },
+          }
+        : {}),
+    },
+  });
+
   revalidatePath(`/${slug}/sales/orders`);
   revalidatePath(`/${slug}/treasury`);
   revalidatePath(`/${slug}/couriers`);
@@ -828,7 +940,10 @@ export async function updatePaymentStatus(
 
   const order = await prisma.order.findFirst({
     where: { id: orderId, workspaceId },
-    include: { items: { include: { returns: true } } },
+    include: {
+      items: { include: { returns: true } },
+      customer: { select: { name: true } },
+    },
   });
   if (!order) return { ok: false, error: "Order not found" };
 
@@ -896,6 +1011,22 @@ export async function updatePaymentStatus(
     await syncOrderCashEntry(tx, workspaceId, orderId);
   });
 
+  await recordActivity(gate.access, {
+    action: "UPDATE",
+    entity: "Order",
+    entityId: orderId,
+    entityLabel: orderLabel(orderId, order.customer?.name),
+    summary:
+      paymentStatus === "PARTIAL"
+        ? `Payment set to partial — ৳${paid} received`
+        : `Payment set to ${paymentStatus.toLowerCase()}`,
+    changes: diffFields(
+      { paymentStatus: order.paymentStatus, amountPaid: order.amountPaid },
+      { paymentStatus, amountPaid: paid },
+      ["paymentStatus", "amountPaid"],
+    ),
+  });
+
   revalidatePath(`/${slug}/sales/orders`);
   revalidatePath(`/${slug}/couriers`);
   revalidatePath(`/${slug}/dashboard`);
@@ -915,17 +1046,35 @@ export async function updateCourierTrackingId(
 
   const order = await prisma.order.findFirst({
     where: { id: orderId, workspaceId },
-    select: { id: true, deliveryType: true },
+    select: {
+      id: true,
+      deliveryType: true,
+      courierTrackingId: true,
+      customer: { select: { name: true } },
+    },
   });
   if (!order) return { ok: false, error: "Order not found" };
   if (order.deliveryType !== "COURIER") {
     return { ok: false, error: "Only courier-delivery orders have a courier order number" };
   }
 
+  const next = courierTrackingId.trim() || null;
   await prisma.order.update({
     where: { id: orderId },
-    data: { courierTrackingId: courierTrackingId.trim() || null },
+    data: { courierTrackingId: next },
   });
+
+  const changes = diffFields(order, { courierTrackingId: next }, ["courierTrackingId"]);
+  if (changes) {
+    await recordActivity(gate.access, {
+      action: "UPDATE",
+      entity: "Order",
+      entityId: orderId,
+      entityLabel: orderLabel(orderId, order.customer?.name),
+      summary: next ? `Courier tracking ID set to ${next}` : "Courier tracking ID cleared",
+      changes,
+    });
+  }
 
   revalidatePath(`/${slug}/sales/orders`);
   revalidatePath(`/${slug}/couriers`);
@@ -960,7 +1109,14 @@ export async function createReturn(
 
   const item = await prisma.orderItem.findFirst({
     where: { id: d.orderItemId, order: { workspaceId } },
-    include: { returns: true },
+    include: {
+      returns: true,
+      // For the history line only: which order, and what was sent back.
+      order: { select: { customer: { select: { name: true } } } },
+      productVariant: {
+        select: { attributes: true, product: { select: { name: true } } },
+      },
+    },
   });
   if (!item) return { ok: false, error: "Order item not found" };
 
@@ -1008,6 +1164,20 @@ export async function createReturn(
   // Returned goods go back on the shelf, which can clear a low-stock alert.
   await refreshInventoryAlerts(workspaceId);
 
+  // Filed against the ORDER, not the return row: somebody asking "why is this
+  // order's profit lower than the invoice" is looking at the order's history,
+  // and a return is the answer they need to find there.
+  await recordActivity(gate.access, {
+    action: "CREATE",
+    entity: "Order",
+    entityId: item.orderId,
+    entityLabel: orderLabel(item.orderId, item.order.customer?.name),
+    summary:
+      `Return recorded — ${d.quantity} × ` +
+      `${variantFullName(item.productVariant.product.name, item.productVariant.attributes)}` +
+      (d.refundAmount > 0 ? `, ৳${round2(d.refundAmount)} refunded` : ", no refund"),
+  });
+
   revalidatePath(`/${slug}/sales/orders`);
   revalidatePath(`/${slug}/treasury`);
   revalidatePath(`/${slug}/couriers`);
@@ -1028,7 +1198,13 @@ export async function deleteOrder(slug: string, id: string): Promise<ActionResul
   // treasury rights that deleting an order does not.
   const order = await prisma.order.findFirst({
     where: { id, workspaceId: gate.access.workspaceId },
-    select: { id: true, cashInTreasury: true },
+    select: {
+      id: true,
+      cashInTreasury: true,
+      status: true,
+      customer: { select: { name: true } },
+      items: { select: { id: true } },
+    },
   });
   if (!order) return { ok: true };
   const blocked = blockedByDepositedCash(order, "delete");
@@ -1037,6 +1213,17 @@ export async function deleteOrder(slug: string, id: string): Promise<ActionResul
   await prisma.order.deleteMany({
     where: { id, workspaceId: gate.access.workspaceId },
   });
+
+  // Deletion is the change with no record left to inspect afterwards, so the
+  // line has to carry what the row was: after this, the history IS the order.
+  await recordActivity(gate.access, {
+    action: "DELETE",
+    entity: "Order",
+    entityId: id,
+    entityLabel: orderLabel(id, order.customer?.name),
+    summary: `Deleted — was ${order.status.toLowerCase()}, ${order.items.length} item(s)`,
+  });
+
   revalidatePath(`/${slug}/sales/orders`);
   revalidatePath(`/${slug}/couriers`);
   revalidatePath(`/${slug}/dashboard`);
@@ -1067,11 +1254,27 @@ export async function setOrderSource(
     return { ok: false, error: "Unknown order source" };
   }
 
+  const before = await prisma.order.findFirst({
+    where: { id, workspaceId: gate.access.workspaceId },
+    select: { source: true, customer: { select: { name: true } } },
+  });
   const res = await prisma.order.updateMany({
     where: { id, workspaceId: gate.access.workspaceId },
     data: { source },
   });
   if (res.count === 0) return { ok: false, error: "Order not found" };
+
+  const sourceChanges = before ? diffFields(before, { source }, ["source"]) : null;
+  if (sourceChanges) {
+    await recordActivity(gate.access, {
+      action: "UPDATE",
+      entity: "Order",
+      entityId: id,
+      entityLabel: orderLabel(id, before?.customer?.name),
+      summary: source ? `Came from set to ${source}` : "Came from cleared",
+      changes: sourceChanges,
+    });
+  }
 
   revalidatePath(`/${slug}/sales/orders`);
   revalidatePath(`/${slug}/couriers`);
@@ -1109,11 +1312,37 @@ export async function setOrderCampaign(
     if (!campaign) return { ok: false, error: "Campaign not found" };
   }
 
+  const before = await prisma.order.findFirst({
+    where: { id, workspaceId },
+    select: { boostCampaignId: true, customer: { select: { name: true } } },
+  });
   const res = await prisma.order.updateMany({
     where: { id, workspaceId },
     data: { boostCampaignId },
   });
   if (res.count === 0) return { ok: false, error: "Order not found" };
+
+  const campaignChanges = before
+    ? diffFields(before, { boostCampaignId }, ["boostCampaignId"])
+    : null;
+  if (campaignChanges) {
+    // Attribution decides which campaign gets credit for the profit, so who
+    // tagged what belongs in the history as much as any money field does.
+    const name = boostCampaignId
+      ? (await prisma.boostCampaign.findUnique({
+          where: { id: boostCampaignId },
+          select: { name: true },
+        }))?.name
+      : null;
+    await recordActivity(gate.access, {
+      action: "UPDATE",
+      entity: "Order",
+      entityId: id,
+      entityLabel: orderLabel(id, before?.customer?.name),
+      summary: name ? `Tagged to campaign ${name}` : "Campaign tag removed",
+      changes: campaignChanges,
+    });
+  }
 
   revalidatePath(`/${slug}/sales/orders`);
   revalidatePath(`/${slug}/couriers`);

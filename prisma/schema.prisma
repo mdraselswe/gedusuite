@@ -56,6 +56,7 @@ model Workspace {
   orderLeads            OrderLead[]
   couriers              Courier[]
   courierZones          CourierZone[]
+  activity              ActivityLog[]
 }
 
 model User {
@@ -89,7 +90,8 @@ model Membership {
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
-  heldOrders Order[] @relation("OrderHeldBy")
+  heldOrders Order[]       @relation("OrderHeldBy")
+  activity   ActivityLog[]
 
   @@unique([userId, workspaceId])
   @@index([workspaceId])
@@ -316,7 +318,6 @@ enum OrderStatus {
 
 /**
  * What a courier's percentage fee is charged on.
- *
  * The single field that makes one courier's rules portable to the next.
  * Steadfast takes its 1% of what it actually hands over (COD minus its own
  * delivery charge); others take it on the full COD. On a 960 parcel that is
@@ -336,7 +337,6 @@ enum ReturnChargeType {
 /**
  * A courier company's pricing rules, held as data rather than code so that
  * switching or adding one is a form to fill in, not a deployment.
- *
  * Rates are per workspace, never global: the published price list and what a
  * merchant actually negotiated are different numbers — this shop pays 65
  * inside Dhaka where the public calculator quotes 50.
@@ -345,13 +345,19 @@ model Courier {
   id          String  @id @default(cuid())
   workspaceId String
   name        String
-  /** Offered first on the order form. Only one per workspace is enforced in code. */
+  /**
+   * Offered first on the order form. Only one per workspace is enforced in code.
+   */
   isDefault   Boolean @default(false)
   isActive    Boolean @default(true)
 
-  /** Weight included in the zone rate; anything above is charged per kg. */
+  /**
+   * Weight included in the zone rate; anything above is charged per kg.
+   */
   baseWeightKg      Decimal          @default(1) @db.Decimal(6, 3)
-  /** Per started kg above baseWeightKg — couriers round part-kilos up. */
+  /**
+   * Per started kg above baseWeightKg — couriers round part-kilos up.
+   */
   extraKgRate       Decimal          @default(0) @db.Decimal(12, 2)
   codFeePercent     Decimal          @default(0) @db.Decimal(6, 3)
   codFeeBase        CodFeeBase       @default(NET)
@@ -367,7 +373,9 @@ model Courier {
   @@index([workspaceId])
 }
 
-/** One delivery area and its flat rate up to the courier's base weight. */
+/**
+ * One delivery area and its flat rate up to the courier's base weight.
+ */
 model CourierZone {
   id          String  @id @default(cuid())
   workspaceId String
@@ -580,21 +588,21 @@ model Partner {
 }
 
 model PartnerTxn {
-  id             String         @id @default(cuid())
-  workspaceId    String
-  partnerId      String
-  type           PartnerTxnType
-  amount         Decimal        @db.Decimal(12, 2)
-  purpose        String?
-  date           DateTime       @default(now())
-  distributionId String? // set when auto-created by a treasury profit distribution (batch, not unique — one distribution fans out to many partner txns)
+  id                 String         @id @default(cuid())
+  workspaceId        String
+  partnerId          String
+  type               PartnerTxnType
+  amount             Decimal        @db.Decimal(12, 2)
+  purpose            String?
+  date               DateTime       @default(now())
+  distributionId     String? // set when auto-created by a treasury profit distribution (batch, not unique — one distribution fans out to many partner txns)
   // The three "out-of-pocket" links below all mean the same thing: a partner
   // paid for something with their own money, so the business owes them an
   // INVESTMENT credit. Each is unique — one source row, one credit, no drift.
-  boostSpendId       String? @unique // set when auto-created by a partner-funded boost daily spend
-  purchaseId         String? @unique // set when auto-created by a partner-funded product purchase
-  internalPurchaseId String? @unique // set when auto-created by a partner-funded internal purchase
-  createdAt      DateTime       @default(now())
+  boostSpendId       String?        @unique // set when auto-created by a partner-funded boost daily spend
+  purchaseId         String?        @unique // set when auto-created by a partner-funded product purchase
+  internalPurchaseId String?        @unique // set when auto-created by a partner-funded internal purchase
+  createdAt          DateTime       @default(now())
 
   workspace        Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   partner          Partner             @relation(fields: [partnerId], references: [id], onDelete: Cascade)
@@ -603,7 +611,7 @@ model PartnerTxn {
   purchase         Purchase?           @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
   internalPurchase InternalPurchase?   @relation(fields: [internalPurchaseId], references: [id], onDelete: Cascade)
   // A DEPOSIT_TO_TREASURY txn auto-creates one linked treasury entry.
-  treasuryEntry TreasuryEntry?
+  treasuryEntry    TreasuryEntry?
 
   @@index([workspaceId])
   @@index([workspaceId, date])
@@ -685,7 +693,9 @@ model InternalPurchase {
   category         ExpenseCategory @default(OTHER)
   paidByPartnerId  String? // which partner's money funded this purchase (optional)
   paidFromTreasury Boolean         @default(false) // funded from the shared treasury instead of a partner (mutually exclusive with paidByPartnerId)
-  /** Bought on account and still owed for — see Purchase.onCredit. */
+  /**
+   * Bought on account and still owed for — see Purchase.onCredit.
+   */
   onCredit         Boolean         @default(false)
   // How many months this cost covers, so it can be charged to them rather than
   // all to the month it was paid in. A year of hosting bought in April is not
@@ -886,12 +896,10 @@ model BoostDailySpend {
 
 /**
  * How the phone call went — and nothing else.
- *
  * DELIVERED used to live here, which forced isCallOutcome() to special-case
  * it out of the attempt counter: a parcel arriving is not a call. Where the
  * parcel got to is now read off the linked Order instead (see
  * OrderLead.orderId), so neither column has to answer the other's question.
- *
  * CANCELLED means the customer said no on the phone. An order cancelled after
  * it was entered is the Order's own CANCELLED status, which is a different
  * event with different costs attached.
@@ -977,11 +985,15 @@ model OrderLead {
 // reason as OrderLead: restoreSnapshot deletes rows inside one transaction and
 // an FK from here would make every restore fail.
 model ProcessedMutation {
-  /** Client-generated, globally unique, stable across retries of the same write. */
+  /**
+   * Client-generated, globally unique, stable across retries of the same write.
+   */
   requestId   String   @id
   workspaceId String?
   actionType  String
-  /** Null while the handler is still running; set once it returns. */
+  /**
+   * Null while the handler is still running; set once it returns.
+   */
   ok          Boolean?
   error       String?
   createdAt   DateTime @default(now())
@@ -997,4 +1009,76 @@ model WooSyncState {
   workspaceId String   @id
   lastSyncAt  DateTime @default(now())
   lastResult  String?
+}
+
+// Who changed what, and when.
+//
+// A multi-admin system without this can say what the numbers are and never
+// why they moved: an order's delivery cost is 115 today and was 65 yesterday,
+// and the only way to find out who typed it was to ask everybody. The PRD has
+// asked for an audit trail since v1.0 (§7); this is it.
+//
+// Written from the action layer, after the write commits, rather than from a
+// Prisma extension. An extension sees every attempt: runSerializable retries a
+// conflicted transaction, so one created order would log twice, and a rolled
+// back transaction would leave a log entry for a change that never happened.
+// An audit trail that lies is worse than none.
+model ActivityLog {
+  id          String @id @default(cuid())
+  workspaceId String
+
+  /**
+   * Null when nobody was logged in — the WooCommerce webhook and the nightly
+   * cron both write real data. `actorLabel` still says who, in words.
+   */
+  actorMembershipId String?
+  /**
+   * The actor's name at the time, snapshotted. A membership can be removed and
+   * a person can be renamed; the history must still read correctly afterwards.
+   */
+  actorLabel        String
+
+  action      ActivityAction
+  /**
+   * Prisma model name — "Order", "Purchase", "TreasuryEntry".
+   */
+  entity      String
+  entityId    String
+  /**
+   * What the record is called, so a deleted row still reads as something.
+   */
+  entityLabel String?
+
+  /**
+   * One human sentence: "Cancelled — ৳120 collected on a partial delivery".
+   */
+  summary String
+  /**
+   * Field-level detail: { field: { from, to } }. Null on CREATE and DELETE,
+   * where the summary and the row itself are the whole story.
+   */
+  changes Json?
+
+  /**
+   * Groups the rows written by one user action. Cancelling an order touches
+   * the order and its treasury entry; the history shows one line that opens
+   * into both, rather than two lines nobody can tell apart.
+   */
+  groupId String?
+
+  createdAt DateTime @default(now())
+
+  workspace       Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  actorMembership Membership? @relation(fields: [actorMembershipId], references: [id], onDelete: SetNull)
+
+  // The activity page reads newest-first per workspace…
+  @@index([workspaceId, createdAt])
+  // …and a record's own history page reads one entity's rows.
+  @@index([workspaceId, entity, entityId, createdAt])
+}
+
+enum ActivityAction {
+  CREATE
+  UPDATE
+  DELETE
 }

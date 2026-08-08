@@ -16,6 +16,7 @@ export type Module =
   | "reports"
   | "team" // settings/team
   | "backup"
+  | "activity" // who changed what — the audit trail
   | "dashboard";
 
 export type Access = "none" | "view" | "add" | "edit" | "full";
@@ -42,6 +43,7 @@ const MATRIX: Record<Role, Partial<Record<Module, Access>>> = {
     reports: "full",
     team: "full",
     backup: "full",
+    activity: "full",
   },
   PARTNER: {
     dashboard: "view",
@@ -56,6 +58,10 @@ const MATRIX: Record<Role, Partial<Record<Module, Access>>> = {
     reports: "view",
     team: "none",
     backup: "view",
+    // Owners and partners own the business between them, so both can see who
+    // changed what. Manager and Staff cannot: knowing their work is logged is
+    // the point, reading everyone else's is not.
+    activity: "view",
   },
   MANAGER: {
     dashboard: "view",
@@ -70,6 +76,7 @@ const MATRIX: Record<Role, Partial<Record<Module, Access>>> = {
     reports: "view",
     team: "none",
     backup: "none",
+    activity: "none",
   },
   STAFF: {
     dashboard: "view",
@@ -84,6 +91,7 @@ const MATRIX: Record<Role, Partial<Record<Module, Access>>> = {
     reports: "none",
     team: "none",
     backup: "none",
+    activity: "none",
   },
 };
 
@@ -157,6 +165,7 @@ export function moduleForSegment(segment: string, subSegment?: string): Module |
     boosting: "boosting",
     "internal-purchases": "internal-purchases",
     reports: "reports",
+    activity: "activity",
   };
   return map[segment] ?? null;
 }

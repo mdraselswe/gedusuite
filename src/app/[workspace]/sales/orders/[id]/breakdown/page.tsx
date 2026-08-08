@@ -15,6 +15,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { variantFullName } from "@/lib/variants";
 import { Money } from "@/components/ui/money";
+import { RecordHistory } from "@/components/activity/record-history";
 import { formatMoney as money } from "@/lib/money";
 
 export default async function OrderBreakdownPage({
@@ -254,6 +255,16 @@ export default async function OrderBreakdownPage({
           <Row label="Cash in treasury" value={order.cashInTreasury ? "Yes" : "No"} />
         </CardContent>
       </Card>
+
+      {/* Why this order's figures are what they are — who changed what, when.
+          Renders nothing when nobody has touched it since the audit trail
+          started, so older orders don't grow an empty card. */}
+      <RecordHistory
+        workspaceId={access.workspaceId}
+        entity="Order"
+        entityId={order.id}
+        title="Change history"
+      />
     </div>
   );
 }

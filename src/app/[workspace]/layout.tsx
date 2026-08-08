@@ -13,6 +13,7 @@ import {
   Truck,
   ClipboardList,
   BarChart3,
+  History,
   UserCog,
   DatabaseBackup,
   Palette,
@@ -172,6 +173,13 @@ async function WorkspaceChrome({
       icon: <BarChart3 className="size-4" />,
       color: "teal",
       show: can(role, "reports", "view"),
+    }),
+    navItem({
+      href: `/${slug}/activity`,
+      label: "Activity",
+      icon: <History className="size-4" />,
+      color: "slate",
+      show: can(role, "activity", "view"),
     }),
     navItem({
       href: `/${slug}/settings/team`,
