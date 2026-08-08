@@ -125,7 +125,24 @@ const STATUS_TONE: Record<string, string> = {
   WRONG_NUMBER: "border-red-500/60 text-red-700 dark:text-red-400",
   CALL_LATER: "border-sky-500/60 text-sky-700 dark:text-sky-400",
   CONFIRMED: "border-emerald-500/60 text-emerald-700 dark:text-emerald-400",
-  CANCELLED: "border-muted-foreground/40 text-muted-foreground line-through",
+  // Was muted grey and struck through — the look of a row already dealt with.
+  // It is the one the caller most needs to see: somebody rang, and the answer
+  // was no. Filled in the same red the order side uses for a cancellation, so
+  // "this one is lost" reads the same way in both columns.
+  CANCELLED:
+    "border-red-500/60 bg-red-500/10 font-medium text-red-700 dark:bg-red-500/15 dark:text-red-300",
+};
+
+/**
+ * A tint for the whole row when the CALL ended in a no.
+ *
+ * Separate from the fulfilment tone below it: this is the customer refusing on
+ * the phone, before any order exists, and it is far more common than an order
+ * that was entered and then cancelled. One tinted select in one column is
+ * still easy to skim past in a table this wide.
+ */
+const CALL_ROW_TONE: Record<string, string | undefined> = {
+  CANCELLED: "border-l-red-500 bg-red-500/5 dark:bg-red-500/10",
 };
 
 /** Sentinel for the "abandoned checkout" option, which is a wooStatus rather
@@ -755,7 +772,10 @@ export function LeadManager({
       </div>
 
       <DataTable
-        rowTone={(l) => LEAD_FULFILMENT_ROW_TONE[l.fulfilment]}
+        // The order's own state wins when there is one — an entered order that
+        // was cancelled is a bigger fact than how the call went — and the call
+        // outcome tints the rest.
+        rowTone={(l) => LEAD_FULFILMENT_ROW_TONE[l.fulfilment] ?? CALL_ROW_TONE[l.callStatus]}
         rows={filtered}
         rowKey={(l) => l.id}
         colorGroupBy={(l) => l.date}
