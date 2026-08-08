@@ -4,7 +4,12 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { setOrderSource } from "@/server/actions/orders";
-import { ORDER_SOURCES, ORDER_SOURCE_LABEL, NO_SOURCE_LABEL } from "@/lib/order-source";
+import {
+  ORDER_SOURCES,
+  ORDER_SOURCE_LABEL,
+  NO_SOURCE_LABEL,
+  orderSourceTone,
+} from "@/lib/order-source";
 import {
   Select,
   SelectContent,
@@ -40,7 +45,7 @@ export function OrderSourceCell({
 
   if (!canEdit) {
     return (
-      <span className={cn(!value && "text-amber-700 dark:text-amber-400")}>
+      <span className={cn(orderSourceTone(value))}>
         {value ? (ORDER_SOURCE_LABEL[value] ?? value) : NO_SOURCE_LABEL}
       </span>
     );
@@ -57,12 +62,7 @@ export function OrderSourceCell({
 
   return (
     <Select value={value ?? UNSET} onValueChange={onChange} disabled={saving}>
-      <SelectTrigger
-        className={cn(
-          "h-8 w-36",
-          !value && "border-amber-500/50 text-amber-700 dark:text-amber-400",
-        )}
-      >
+      <SelectTrigger className={cn("h-8 w-36", orderSourceTone(value))}>
         {/* Base UI prints the raw value until the popup has mounted its
             items, so the label is rendered directly. */}
         <span data-slot="select-value">

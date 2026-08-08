@@ -185,6 +185,21 @@ const STATUS_TONE: Record<string, string> = {
     "border-red-500/60 bg-red-500/10 font-medium text-red-700 dark:bg-red-500/15 dark:text-red-300",
 };
 
+/**
+ * Payment, tinted by what it asks of the reader.
+ *
+ * Not "colour everything" — the useful question in this column is who still
+ * owes money, so PAID is the quietest of the three. UNPAID is the normal
+ * resting state of a COD order that hasn't been delivered yet, so it warns
+ * rather than alarms; PARTIAL is the odd one, money half-arrived, and it is
+ * the one worth a second look.
+ */
+const PAY_TONE: Record<string, string> = {
+  PAID: "border-emerald-500/50 text-emerald-700 dark:text-emerald-400",
+  PARTIAL: "border-amber-500/60 font-medium text-amber-700 dark:text-amber-400",
+  UNPAID: "border-rose-400/50 text-rose-700 dark:text-rose-400",
+};
+
 /** A faint tint for the whole row — one control in one column is easy to skim past. */
 const ROW_TONE: Record<string, string | undefined> = {
   CANCELLED: "border-l-red-500 bg-red-500/5 dark:bg-red-500/10",
@@ -1120,7 +1135,7 @@ export function OrderManager({
                       value={o.paymentStatus}
                       onValueChange={(v) => v && onPaymentStatusChange(o.id, v)}
                     >
-                      <SelectTrigger className="h-8 w-28">
+                      <SelectTrigger className={cn("h-8 w-28", PAY_TONE[o.paymentStatus])}>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -1132,7 +1147,7 @@ export function OrderManager({
                       </SelectContent>
                     </Select>
                   ) : (
-                    <span>{o.paymentStatus}</span>
+                    <span className={cn(PAY_TONE[o.paymentStatus])}>{o.paymentStatus}</span>
                   )}
                   <span className="whitespace-nowrap text-muted-foreground">
                     · {formatEnum(o.paymentMethod)}
