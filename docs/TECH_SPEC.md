@@ -57,6 +57,7 @@ before adding a figure to a page:
 | What a cancellation left behind | `cancelledOrderCost` |
 | Courier delivery charge, COD fee, return charge | `quoteCourier` (`lib/courier.ts`) |
 | What the customer has paid / still owes | `amountCollected` / `amountOutstanding` (`lib/order-cash.ts`) |
+| What the courier charged for the trip | `deliveryCostCharged` |
 | What lands in the treasury | `depositAmount` |
 | Per-product revenue and profit | `allocateOrderLines` (`lib/product-report.ts`) |
 

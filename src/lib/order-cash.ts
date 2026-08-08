@@ -133,22 +133,38 @@ export function amountOutstanding(
  * and a negative "deposit" is not a thing. The loss is already carried by
  * cancelledOrderCost, which is where it belongs.
  */
+/**
+ * What the courier actually charged for the trip.
+ *
+ * computeOrderTotals reads a null deliveryCost as "same as the charge", which
+ * is right for a delivered order (pass-through) and wrong for a cancelled one:
+ * nothing was quoted, so nothing was charged, and assuming otherwise invents a
+ * courier bill that was never sent.
+ *
+ * Exported because two places need the same answer — what reaches the treasury,
+ * and what the courier is holding — and they were free to disagree while each
+ * carried its own copy of the rule. The COD fee needs no such correction:
+ * cancelling re-quotes it against the partial payment, so it is already the fee
+ * on the money the courier has.
+ */
+export function deliveryCostCharged(
+  order: { status: string; deliveryCost?: Prisma.Decimal | number | null },
+  totals: Pick<OrderTotals, "deliveryCost">,
+): number {
+  return order.status === "CANCELLED" && order.deliveryCost == null
+    ? 0
+    : totals.deliveryCost;
+}
+
 export function depositAmount(
   order: DepositableOrder,
   totals: Pick<OrderTotals, "customerTotal" | "deliveryCost" | "codFeeCost">,
 ): DepositAmount {
-  const cancelled = order.status === "CANCELLED";
   // What was collected, not what was invoiced: a part-paid order banks the
   // part that was paid.
   const gross = amountCollected(order, totals);
 
-  // computeOrderTotals reads a null deliveryCost as "same as the charge",
-  // which is right for a delivered order and wrong for a cancelled one — see
-  // cancelledOrderCost. Nothing was quoted, so nothing was charged. The COD
-  // fee needs no such correction: cancelling re-quotes it against the partial
-  // payment, so it is already the fee on the money the courier is holding.
-  const deliveryCost =
-    cancelled && order.deliveryCost == null ? 0 : totals.deliveryCost;
+  const deliveryCost = deliveryCostCharged(order, totals);
   const courierCharges =
     order.paymentMethod === "COURIER_COLLECTION"
       ? round2(deliveryCost + totals.codFeeCost)

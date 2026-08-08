@@ -5,6 +5,7 @@ import { workspaceAccess } from "@/lib/authz";
 import { can } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
 import { computeOrderTotals } from "@/lib/orders";
+import { deliveryCostCharged } from "@/lib/order-cash";
 import { PageHeader } from "@/components/ui/page-header";
 import { buttonVariants } from "@/components/ui/button";
 import { CourierReconciliation, type CourierAccount } from "@/components/sales/courier-reconciliation";
@@ -80,6 +81,10 @@ export default async function CouriersPage({
     // A cancelled parcel collected only what the customer actually handed
     // over; its order total was never charged.
     const cod = cancelled ? Number(o.cancelledCollected) : t.customerTotal;
+    // Shared with depositAmount rather than re-derived: a cancellation with no
+    // courier charge recorded owes nothing for the trip, and this page saying
+    // otherwise would put the balance out by a bill the courier never sent.
+    const deliveryCost = deliveryCostCharged(o, t);
     const acc = account(o.courier?.id ?? UNASSIGNED, o.courier?.name ?? "No courier set");
     const row = {
       id: o.id,
@@ -88,9 +93,12 @@ export default async function CouriersPage({
       trackingId: o.courierTrackingId,
       status: o.status as string,
       cod,
-      deliveryCost: t.deliveryCost,
+      deliveryCost,
       codFee: t.codFeeCost,
-      net: Math.round((cod - t.deliveryCost - t.codFeeCost + Number.EPSILON) * 100) / 100,
+      // Not floored at zero, unlike a treasury deposit: a parcel that cost more
+      // to bring back than it collected means the shop owes the courier, and a
+      // balance has to be able to say so.
+      net: Math.round((cod - deliveryCost - t.codFeeCost + Number.EPSILON) * 100) / 100,
     };
     // Money is only with the courier once it has actually been collected —
     // which a delivered parcel has, and a partly-delivered one has too.

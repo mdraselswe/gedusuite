@@ -5,6 +5,7 @@ import {
   cashEntrySource,
   amountCollected,
   amountOutstanding,
+  deliveryCostCharged,
   depositAmount,
 } from "@/lib/order-cash";
 
@@ -261,5 +262,30 @@ describe("deposits that are already banked", () => {
       totals,
     ).net;
     expect(after > before).toBe(true);
+  });
+});
+
+describe("deliveryCostCharged", () => {
+  it("charges a delivered order the pass-through cost", () => {
+    // computeOrderTotals reads a blank delivery cost as equal to the charge,
+    // which is exactly right once the parcel has been delivered.
+    expect(
+      deliveryCostCharged({ status: "DELIVERED", deliveryCost: null }, { deliveryCost: 65 }),
+    ).toBe(65);
+  });
+
+  it("charges a cancellation with no recorded courier bill nothing", () => {
+    // Nothing was quoted, so nothing was charged. Assuming otherwise invents a
+    // bill the courier never sent — and puts both the treasury and the courier
+    // balance out by it.
+    expect(
+      deliveryCostCharged({ status: "CANCELLED", deliveryCost: null }, { deliveryCost: 65 }),
+    ).toBe(0);
+  });
+
+  it("charges a cancellation what the courier actually billed", () => {
+    expect(
+      deliveryCostCharged({ status: "CANCELLED", deliveryCost: 115 }, { deliveryCost: 115 }),
+    ).toBe(115);
   });
 });
