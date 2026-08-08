@@ -34,20 +34,22 @@ export async function markCashDeposited(
     },
   });
   if (!order) return { ok: false, error: "Order not found" };
-  // PARTIAL counts: an advance is real money somebody is holding, and refusing
-  // to let it into the treasury until the order settled meant it sat outside
-  // the accounts entirely, sometimes for weeks.
-  if (order.paymentStatus === "UNPAID") {
-    return { ok: false, error: "Nothing has been collected on this order yet" };
-  }
-  // A cancelled order can still be PAID — the customer paid before refusing it.
-  // Depositing its full total would put a sale that didn't happen into the
-  // treasury; whatever they did hand over belongs on the cancellation instead.
+  // A cancelled order's payment status describes a sale that never settled, so
+  // it says nothing about whether money changed hands. What was collected on
+  // the doorstep does, and that is the field the cancellation dialog asks for.
   if (order.status === "CANCELLED") {
-    return {
-      ok: false,
-      error: "This order is cancelled. Record what the customer paid anyway in the cancellation costs instead.",
-    };
+    if (Number(order.cancelledCollected) <= 0) {
+      return {
+        ok: false,
+        error:
+          "Nothing was collected on this cancellation. Record what the customer paid anyway in the cancellation costs first.",
+      };
+    }
+  } else if (order.paymentStatus === "UNPAID") {
+    // PARTIAL counts: an advance is real money somebody is holding, and
+    // refusing to let it into the treasury until the order settled meant it sat
+    // outside the accounts entirely, sometimes for weeks.
+    return { ok: false, error: "Nothing has been collected on this order yet" };
   }
   if (order.cashInTreasury) {
     return { ok: false, error: "Already marked as deposited" };

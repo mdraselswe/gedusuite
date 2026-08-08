@@ -731,6 +731,8 @@ export type PaidNotDeposited = {
   paymentMethod: string;
   heldByName: string | null;
   isCourierCollection: boolean;
+  /** A refused parcel that collected the shipping anyway — not a sale. */
+  cancelled: boolean;
 };
 
 /**
@@ -746,13 +748,24 @@ export async function paidNotDeposited(workspaceId: string): Promise<PaidNotDepo
   const orders = await prisma.order.findMany({
     where: {
       workspaceId,
-      status: { not: "CANCELLED" },
-      // PARTIAL too: an advance is money the business is holding just as much
-      // as a settled order's is. Restricting this to PAID left every advance
-      // out of the "cash not yet in the treasury" list, which is exactly the
-      // list somebody checks to find out where the money is.
-      paymentStatus: { in: ["PAID", "PARTIAL"] },
       cashInTreasury: false,
+      OR: [
+        {
+          status: { not: "CANCELLED" },
+          // PARTIAL too: an advance is money the business is holding just as
+          // much as a settled order's is. Restricting this to PAID left every
+          // advance out of the "cash not yet in the treasury" list, which is
+          // exactly the list somebody checks to find out where the money is.
+          paymentStatus: { in: ["PAID", "PARTIAL"] },
+        },
+        // A refused parcel whose customer paid the shipping anyway. The courier
+        // is holding that money exactly as it holds a delivered order's, so
+        // leaving cancellations out made this card disagree with the courier
+        // balance page — and with the courier's own app — by whatever a partial
+        // delivery had collected. Its paymentStatus says nothing useful (the
+        // sale never settled), so the test is what was collected.
+        { status: "CANCELLED", cancelledCollected: { gt: 0 } },
+      ],
     },
     include: {
       items: { include: { returns: true } },
@@ -776,6 +789,7 @@ export async function paidNotDeposited(workspaceId: string): Promise<PaidNotDepo
         paymentMethod: o.paymentMethod,
         heldByName: o.heldBy ? (o.heldBy.user.name ?? o.heldBy.user.email) : null,
         isCourierCollection: o.paymentMethod === "COURIER_COLLECTION",
+        cancelled: o.status === "CANCELLED",
       };
     })
     // A PARTIAL order nobody has typed an amount onto has collected nothing

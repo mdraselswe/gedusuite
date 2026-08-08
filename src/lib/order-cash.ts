@@ -22,6 +22,7 @@ const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
 
 /** Enough of an order to describe the deposit in the ledger. */
 type NotedOrder = {
+  status?: string;
   customer: { name: string } | null;
   heldBy: { user: { name: string | null; email: string } } | null;
 };
@@ -36,6 +37,9 @@ export function cashEntryNote(
   const holder = order.heldBy ? (order.heldBy.user.name ?? order.heldBy.user.email) : null;
   return [
     order.customer?.name ? `Order for ${order.customer.name}` : "Walk-in order",
+    // Otherwise a 4.95 deposit against a 960 order reads as an error rather
+    // than as the shipping a refused parcel collected on the doorstep.
+    order.status === "CANCELLED" ? "cancelled — collected on a partial delivery" : null,
     holder ? `collected by ${holder}` : null,
     // Says why the figure is lower than the invoice, rather than leaving
     // someone to work it out from two screens.

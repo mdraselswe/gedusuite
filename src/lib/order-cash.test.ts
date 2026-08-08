@@ -72,6 +72,14 @@ describe("cashEntryNote", () => {
       "Order for Asha, after 73.45 courier charges",
     );
   });
+
+  it("says a cancellation is a cancellation", () => {
+    // 4.95 banked against a 960 order reads as a mistake unless the entry says
+    // the parcel came back and only the shipping was collected.
+    expect(cashEntryNote({ status: "CANCELLED", customer, heldBy: null }, 0, 115.05)).toBe(
+      "Order for Asha, cancelled — collected on a partial delivery, after 115.05 courier charges",
+    );
+  });
 });
 
 describe("depositAmount", () => {

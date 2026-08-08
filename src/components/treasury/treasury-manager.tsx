@@ -88,6 +88,8 @@ type NotDeposited = {
   paymentMethod: string;
   heldByName: string | null;
   isCourierCollection: boolean;
+  /** A refused parcel that collected the shipping anyway — not a sale. */
+  cancelled: boolean;
 };
 const NONE = "__none__";
 
@@ -463,7 +465,22 @@ export function TreasuryManager({
                     key: "customer",
                     header: "Customer",
                     cardTitle: true,
-                    cell: (o) => o.customerName,
+                    // A cancelled row is here because the courier really is
+                    // holding the shipping a refused parcel collected — but it
+                    // is not a sale, and an unmarked row reads like one.
+                    cell: (o) => (
+                      <span className="inline-flex items-center gap-2">
+                        {o.customerName}
+                        {o.cancelled && (
+                          <span
+                            className="rounded bg-orange-500/10 px-1.5 py-0.5 text-xs text-orange-700 dark:text-orange-300"
+                            title="Cancelled order — the customer paid the delivery and sent the goods back"
+                          >
+                            partial
+                          </span>
+                        )}
+                      </span>
+                    ),
                   },
                   {
                     key: "amount",
