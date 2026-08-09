@@ -286,20 +286,30 @@ export type BusinessCapitalSummary = {
   inventoryValue: number;
   /** Pieces on the shelf behind that figure. */
   inventoryUnits: number;
+  /** Cash in the shared pot right now — sales takings and partner deposits alike. */
+  treasuryBalance: number;
   /**
    * The slice of inventoryValue that came from hand-entered positive stock
    * corrections rather than purchases — see InventoryValue.fromCorrections.
    */
   inventoryFromCorrections: number;
   /**
-   * totalRemaining + inventoryValue: capital that hasn't been consumed, whether
-   * it's sitting as cash or as goods.
+   * treasuryBalance + inventoryValue − supplierDue: what the business actually
+   * holds, cash and goods together, less what it owes for them.
    *
-   * "Remaining capital" alone answers a cash question and reads as a health
-   * one. Buy 250,000 of stock with 300,000 of capital and it drops to 50,000
-   * with nothing to say the other 250,000 is on the shelf rather than gone.
+   * An asset question, deliberately, where everything above it is a capital
+   * one. This used to be totalRemaining + inventoryValue, which mixed the two
+   * and so answered neither: the treasury didn't appear in it at all, and
+   * selling stock therefore made the figure fall — the goods left the shelf,
+   * the money that replaced them landed somewhere the sum couldn't see, and a
+   * shop trading profitably watched its headline number sink.
+   *
+   * Cash still out with couriers or owed by customers isn't in here either.
+   * It's real, and it belongs to the business, but it isn't held yet — the
+   * treasury and the "not deposited" list on the dashboard are where that
+   * money is tracked until it arrives.
    */
-  capitalPlusStock: number;
+  businessHoldings: number;
 };
 
 /**
@@ -339,6 +349,7 @@ export async function businessCapitalSummary(
     boostRows,
     treasuryBoost,
     stock,
+    treasury,
   ] = await Promise.all([
     partnerBalances(workspaceId),
     prisma.purchase.findMany({
@@ -361,8 +372,9 @@ export async function businessCapitalSummary(
       where: { workspaceId, paidFromTreasury: true },
       _sum: { amount: true },
     }),
-    // The asset side of all that purchasing — see capitalPlusStock.
+    // The asset side of all that purchasing — see businessHoldings.
     inventoryValue(workspaceId),
+    treasuryBalance(workspaceId),
   ]);
 
   let totalInvested = 0;
@@ -440,7 +452,11 @@ export async function businessCapitalSummary(
     inventoryValue: stock.value,
     inventoryUnits: stock.units,
     inventoryFromCorrections: stock.fromCorrections,
-    capitalPlusStock: round2(totalRemaining + stock.value),
+    treasuryBalance: round2(treasury),
+    // Cash and goods less the bills against them. Nothing from the capital
+    // arithmetic above goes in: a partner deposit is already counted once as
+    // treasury cash, and adding "unspent capital" on top would count it twice.
+    businessHoldings: round2(treasury + stock.value - supplierDue),
   };
 }
 

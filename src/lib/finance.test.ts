@@ -20,6 +20,8 @@ function remainingCapital(input: {
   miscExpense: number;
   /** Unsold stock at cost — spent capital that is still an asset. */
   inventoryValue?: number;
+  /** Cash in the pot right now, whoever put it there. */
+  treasuryBalance?: number;
 }): {
   totalExpenses: number;
   treasuryFundedSpend: number;
@@ -29,7 +31,7 @@ function remainingCapital(input: {
   capitalSpend: number;
   netInvested: number;
   remaining: number;
-  capitalPlusStock: number;
+  businessHoldings: number;
 } {
   const deposited = input.depositedToTreasury ?? 0;
   const treasuryWithdrawals = input.treasuryWithdrawals ?? 0;
@@ -58,7 +60,10 @@ function remainingCapital(input: {
     capitalSpend,
     netInvested,
     remaining,
-    capitalPlusStock: remaining + (input.inventoryValue ?? 0),
+    // An asset question, kept clear of the capital arithmetic above it: what
+    // the shop is holding, less the bills against it.
+    businessHoldings:
+      (input.treasuryBalance ?? 0) + (input.inventoryValue ?? 0) - supplierDue,
   };
 }
 
@@ -255,6 +260,7 @@ describe("partner capital that went in through the treasury", () => {
       spend: [{ amount: 6110, paidFromTreasury: true }],
       miscExpense: 0,
       inventoryValue: 6110,
+      treasuryBalance: 3890, // 10,000 deposited, 6,110 of it spent
     });
   const fromPocket = () =>
     remainingCapital({
@@ -265,6 +271,7 @@ describe("partner capital that went in through the treasury", () => {
       spend: [{ amount: 6110, paidFromTreasury: false }],
       miscExpense: 0,
       inventoryValue: 6110,
+      treasuryBalance: 3890, // the deposit, untouched
     });
 
   it("puts the same capital in whichever route the money took", () => {
@@ -283,8 +290,8 @@ describe("partner capital that went in through the treasury", () => {
     expect(a.remaining).toBe(3890);
     expect(b.remaining).toBe(3890);
     // 3,890 still cash, 6,110 now stock — 10,000, which is what went in.
-    expect(a.capitalPlusStock).toBe(10000);
-    expect(b.capitalPlusStock).toBe(10000);
+    expect(a.businessHoldings).toBe(10000);
+    expect(b.businessHoldings).toBe(10000);
   });
 
   it("still spares capital once the pot is past what the partners put in", () => {
@@ -471,19 +478,33 @@ describe("goods bought on credit", () => {
   });
 });
 
-describe("capital that turned into stock", () => {
-  it("is not lost, and says so", () => {
+describe("what the business is holding", () => {
+  it("counts stock at cost as well as the cash", () => {
     // The figure that frightened everyone: 300,000 in, 250,000 of it now
-    // sitting on the shelf, reported as 50,000 "remaining" with no mention of
-    // where the rest went.
+    // sitting on the shelf, and "remaining" alone reads as 50,000 with no
+    // mention of where the rest went.
     const r = remainingCapital({
       invested: 300000,
       spend: [{ amount: 250000, paidFromTreasury: false }],
       miscExpense: 0,
       inventoryValue: 250000,
     });
-    expect(r.remaining).toBe(50000);
-    expect(r.capitalPlusStock).toBe(300000);
+    expect(r.remaining).toBe(50000); // capital not yet spent
+    expect(r.businessHoldings).toBe(250000); // and the shelf it turned into
+  });
+
+  it("doesn't fall when stock is sold at a profit", () => {
+    // The bug this replaced: the old figure ignored the treasury, so selling
+    // 250,000 of stock for 320,000 emptied the shelf, put the money somewhere
+    // it couldn't see, and reported the shop as worse off for trading well.
+    const r = remainingCapital({
+      invested: 300000,
+      spend: [{ amount: 250000, paidFromTreasury: false }],
+      miscExpense: 0,
+      inventoryValue: 0,
+      treasuryBalance: 320000,
+    });
+    expect(r.businessHoldings).toBe(320000);
   });
 
   it("shows the real loss once the stock is sold below cost", () => {
@@ -492,7 +513,19 @@ describe("capital that turned into stock", () => {
       spend: [{ amount: 250000, paidFromTreasury: false }],
       miscExpense: 0,
       inventoryValue: 0,
+      treasuryBalance: 200000,
     });
-    expect(r.capitalPlusStock).toBe(50000);
+    expect(r.businessHoldings).toBe(200000);
+  });
+
+  it("takes off what's owed for stock bought on credit", () => {
+    // 50,000 of the shelf isn't paid for, so it isn't the shop's to count.
+    const r = remainingCapital({
+      invested: 0,
+      spend: [{ amount: 50000, paidFromTreasury: false, onCredit: true }],
+      miscExpense: 0,
+      inventoryValue: 50000,
+    });
+    expect(r.businessHoldings).toBe(0);
   });
 });

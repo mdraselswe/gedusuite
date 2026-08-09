@@ -234,21 +234,28 @@ export default async function PartnersPage({
           }
         />
         <StatTile
-          label="Still the partners'"
-          value={capital.capitalPlusStock}
-          tone={toneForBalance(capital.capitalPlusStock)}
+          label="What the business holds"
+          value={capital.businessHoldings}
+          tone={toneForBalance(capital.businessHoldings)}
           icon={<PiggyBank />}
           color="emerald"
           sub={
-            capital.inventoryValue > 0 ? (
-              <>
-                <Money value={capital.totalRemaining} /> unspent ·{" "}
-                <Money value={capital.inventoryValue} /> as stock (
-                {capital.inventoryUnits} pcs)
-              </>
-            ) : (
-              "nothing left over as stock"
-            )
+            <>
+              <Money value={capital.treasuryBalance} /> in the treasury
+              {capital.inventoryValue > 0 && (
+                <>
+                  {" "}
+                  · <Money value={capital.inventoryValue} /> as stock (
+                  {capital.inventoryUnits} pcs)
+                </>
+              )}
+              {capital.supplierDue > 0 && (
+                <>
+                  {" "}
+                  · less <Money value={capital.supplierDue} /> owed
+                </>
+              )}
+            </>
           }
         />
         {capital.supplierDue > 0 ? (
@@ -328,7 +335,7 @@ export default async function PartnersPage({
                 nobody&apos;s capital. Of the <Money value={capital.totalExpenses} />{" "}
                 spent, <Money value={capital.salesFundedSpend} /> came out of takings, and
                 only the remaining <Money value={capital.capitalSpend} /> counts against
-                &quot;Still the partners&apos;&quot;.
+                what the partners have in.
               </p>
             </InfoNote>
           )}
@@ -350,12 +357,27 @@ export default async function PartnersPage({
               </p>
             </InfoNote>
           )}
+          <InfoNote title="What the headline figure counts, and what it doesn't">
+            <p>
+              Cash in the treasury plus stock at what it cost, less what&apos;s owed to
+              suppliers. It answers what the business is holding — not how much of it is
+              the partners&apos; capital and how much the shop earned, which is what
+              everything else on this page is about.
+            </p>
+            <p>
+              Money the couriers are still carrying and money customers still owe
+              aren&apos;t in it. They&apos;re real and they&apos;re coming, but they
+              aren&apos;t held yet — the dashboard is where they&apos;re tracked until
+              they arrive.
+            </p>
+          </InfoNote>
           {capital.inventoryValue > 0 && (
             <InfoNote title="Stock bought is capital moved, not capital lost">
               <p>
                 Buying <Money value={capital.inventoryValue} /> of stock drops the unspent
-                figure by the same amount, but the goods are on the shelf and still
-                belong to the partners. That is why the headline adds the two together.
+                capital figure by the same amount, but the goods are on the shelf and
+                still belong to the business — which is why they count in the headline
+                just as the cash does.
               </p>
               {capital.inventoryFromCorrections > 0 && (
                 <p>
