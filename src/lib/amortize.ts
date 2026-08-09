@@ -11,12 +11,39 @@
  * it was paid", which is right for a bus fare and remains the default, so no
  * existing row changes behaviour until somebody says otherwise.
  *
- * The maths is done on elapsed milliseconds rather than whole months, because
- * reports are run over arbitrary ranges — "10 May to 20 June" has no month
- * boundary to bucket by, and proration answers it without a special case.
+ * The maths prorates rather than bucketing by month, because reports are run
+ * over arbitrary ranges — "10 May to 20 June" has no month boundary to bucket
+ * by, and proration answers it without a special case. How far that proration
+ * has got is measured in whole elapsed days, not to the millisecond; see
+ * elapsedThroughToday for why.
  */
 
+import { dhakaDayStart, dhakaToday } from "@/lib/dhaka-time";
+
 const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
+
+/**
+ * How far recognition has got, when the caller doesn't say: the start of today
+ * in Dhaka, not this millisecond.
+ *
+ * A spread cost does accrue continuously, and measuring it that way made every
+ * page in the app disagree with every other. The partners card, the reports
+ * page and the dashboard each render at their own moment, so one "net profit"
+ * came back as −1,872.94, −1,888.95 and −1,888.97 within a few hours — three
+ * right answers to the same question, which reads exactly like a bug and
+ * costs more trust than the precision was ever worth.
+ *
+ * Whole elapsed days, so the figure holds still until Dhaka midnight and every
+ * screen showing it agrees all day. Nobody prorates a subscription to the
+ * second, and a range narrower than a day is not something any report asks
+ * for — `range` is parsed from Dhaka calendar days throughout.
+ *
+ * Tests and any caller wanting a specific instant still pass `now` explicitly;
+ * this is only what happens when nobody does.
+ */
+function elapsedThroughToday(): Date {
+  return dhakaDayStart(dhakaToday());
+}
 
 export type Amortizable = {
   /** When it was paid for — where the spread starts. */
@@ -64,7 +91,7 @@ export function spreadWindow(p: Amortizable): { start: Date; end: Date } | null 
 export function recognizedInPeriod(
   p: Amortizable,
   range: { from: Date; to: Date } | null,
-  now: Date = new Date(),
+  now: Date = elapsedThroughToday(),
 ): number {
   const window = spreadWindow(p);
 
@@ -95,7 +122,7 @@ export function recognizedInPeriod(
  * pay. It's shown next to profit so nobody reads a healthier figure as money
  * available to take out.
  */
-export function prepaidRemaining(p: Amortizable, now: Date = new Date()): number {
+export function prepaidRemaining(p: Amortizable, now: Date = elapsedThroughToday()): number {
   if (!spreadWindow(p)) return 0;
   return round2(Math.max(0, p.amount - recognizedInPeriod(p, null, now)));
 }
@@ -104,7 +131,7 @@ export function prepaidRemaining(p: Amortizable, now: Date = new Date()): number
 export function amortizeAll(
   purchases: Amortizable[],
   range: { from: Date; to: Date } | null,
-  now: Date = new Date(),
+  now: Date = elapsedThroughToday(),
 ): { recognized: number; prepaid: number } {
   let recognized = 0;
   let prepaid = 0;

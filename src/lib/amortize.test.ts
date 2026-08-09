@@ -132,4 +132,19 @@ describe("amortizeAll", () => {
   it("copes with an empty list", () => {
     expect(amortizeAll([], null)).toEqual({ recognized: 0, prepaid: 0 });
   });
+
+  it("gives the same answer all day when nobody names an instant", () => {
+    // The reason this matters: the partners card, the reports page and the
+    // dashboard render at their own moments, and a figure measured to the
+    // millisecond came back as three different net profits within one
+    // afternoon. Three right answers to the same question read as a bug.
+    const first = amortizeAll([hosting, ai, fare], null);
+    return new Promise<void>((resolve) => {
+      setTimeout(() => {
+        const second = amortizeAll([hosting, ai, fare], null);
+        expect(second).toEqual(first);
+        resolve();
+      }, 25);
+    });
+  });
 });
