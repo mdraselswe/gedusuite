@@ -33,7 +33,13 @@ type Customer = {
   address: string | null;
   notes: string | null;
   orderCount: number;
+  /** Parcels they refused. Kept out of orderCount and spend, counted here. */
+  cancelledCount: number;
   outstanding: number;
+  /** Everything they have actually bought, at what they were charged. */
+  lifetime: number;
+  lastOrderDay: string | null;
+  daysSinceOrder: number | null;
 };
 type Perms = { canAdd: boolean; canEdit: boolean };
 
@@ -54,7 +60,6 @@ export function CustomerManager({
   // left the message hovering over a form with no sign of which box it meant.
   const [formError, setFormError] = useState<FieldError>(null);
   const [query, setQuery] = useState("");
-  const [duesOnly, setDuesOnly] = useState(false);
   const [phoneMatch, setPhoneMatch] = useState<{ id: string; name: string } | null>(null);
 
   async function checkPhone(value: string) {
@@ -93,14 +98,31 @@ export function CustomerManager({
       value: (c) => c.outstanding,
     },
     { key: "orders", label: "Order count", kind: "numberRange", step: "1", value: (c) => c.orderCount },
+    {
+      key: "refused",
+      label: "Refused a parcel",
+      kind: "select",
+      options: [
+        { value: "yes", label: "Has refused" },
+        { value: "no", label: "Never refused" },
+      ],
+      match: (c, v) => (v === "yes" ? c.cancelledCount > 0 : c.cancelledCount === 0),
+    },
+    { key: "spend", label: "Lifetime spend", kind: "numberRange", value: (c) => c.lifetime },
   ];
 
   const { rows: byFilters, bar, active } = useFilterBar(customers, filters, {
+    // Both figures, because "due" alone next to a filtered list reads as the
+    // whole shop's — the header carries that one.
     summary: (shown) => (
       <span className="text-muted-foreground">
         Due{" "}
         <span className="font-semibold text-foreground tabular-nums">
           <Money value={shown.reduce((s, c) => s + c.outstanding, 0)} />
+        </span>
+        {" · spent "}
+        <span className="font-semibold text-foreground tabular-nums">
+          <Money value={shown.reduce((s, c) => s + c.lifetime, 0)} />
         </span>
       </span>
     ),
@@ -109,7 +131,6 @@ export function CustomerManager({
   // Search stays its own control: it is typed constantly, the filters are set
   // occasionally, and pairing them in one panel would hide the common one.
   const filtered = byFilters.filter((c) => {
-    if (duesOnly && c.outstanding <= 0) return false;
     const q = query.toLowerCase();
     return (
       c.name.toLowerCase().includes(q) ||
@@ -117,8 +138,6 @@ export function CustomerManager({
       (c.altPhone ?? "").includes(query)
     );
   });
-
-  const totalDue = customers.reduce((s, c) => s + c.outstanding, 0);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -165,24 +184,21 @@ export function CustomerManager({
 
   return (
     <div className="space-y-4">
+      {/* Search then filters, the same two-line-safe row every other manager
+          uses. This one was a fixed `flex` holding four things — search, a
+          "Dues only" toggle, a total, and the filter bar — so on anything
+          narrower than a desktop they ran off the edge instead of wrapping.
+          The toggle went with them: the Dues filter beside it does the same
+          job and says more, and the two could contradict each other into an
+          empty table with nothing to explain why. */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Input
             placeholder="Search name or phone…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             className="max-w-xs"
           />
-          <Button
-            variant={duesOnly ? "default" : "outline"}
-            size="sm"
-            onClick={() => setDuesOnly((v) => !v)}
-          >
-            Dues only
-          </Button>
-          <span className="text-sm text-muted-foreground">
-            Total due: <span className="font-semibold"><Money value={totalDue} /></span>
-          </span>
           {bar}
         </div>
         {perms.canAdd && (
@@ -222,6 +238,18 @@ export function CustomerManager({
                       Repeat
                     </Badge>
                   )}
+                  {/* Worth seeing before packing another parcel for them: a
+                      refusal costs the return charge whether or not they ever
+                      buy anything. */}
+                  {c.cancelledCount > 0 && (
+                    <Badge
+                      variant="outline"
+                      className="ml-2 border-amber-400/60 text-amber-700 dark:text-amber-400"
+                      title={`${c.cancelledCount} order(s) cancelled or refused`}
+                    >
+                      {c.cancelledCount} refused
+                    </Badge>
+                  )}
                 </span>
               ),
             },
@@ -246,6 +274,40 @@ export function CustomerManager({
               align: "right",
               sortValue: (c) => c.orderCount,
               cell: (c) => c.orderCount,
+            },
+            {
+              key: "lifetime",
+              // Order count alone said who orders often, never who is worth
+              // anything — five 300-taka orders and one 9,000 one read the same.
+              header: "Spent",
+              align: "right",
+              hideable: true,
+              sortValue: (c) => c.lifetime,
+              cell: (c) => (c.lifetime > 0 ? <Money value={c.lifetime} /> : "—"),
+            },
+            {
+              key: "lastOrder",
+              header: "Last order",
+              hideable: true,
+              // Sorts by how long ago, so one sort puts the customers who have
+              // gone quiet at one end — never-ordered last, since "no order at
+              // all" isn't a gap that grew.
+              sortValue: (c) => c.daysSinceOrder ?? Number.MAX_SAFE_INTEGER,
+              cell: (c) =>
+                c.lastOrderDay === null ? (
+                  <span className="text-muted-foreground">never</span>
+                ) : (
+                  <span>
+                    {c.lastOrderDay}
+                    <span className="block text-xs font-normal text-muted-foreground">
+                      {c.daysSinceOrder === 0
+                        ? "today"
+                        : c.daysSinceOrder === 1
+                          ? "yesterday"
+                          : `${c.daysSinceOrder} days ago`}
+                    </span>
+                  </span>
+                ),
             },
             {
               key: "outstanding",

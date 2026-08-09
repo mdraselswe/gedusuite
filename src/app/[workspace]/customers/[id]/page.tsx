@@ -4,6 +4,7 @@ import { workspaceAccess } from "@/lib/authz";
 import { can } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
 import { computeOrderTotals, orderNetProfit } from "@/lib/orders";
+import { amountOutstanding } from "@/lib/order-cash";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CustomerOrdersTable } from "@/components/customers/customer-orders-table";
 import { Money } from "@/components/ui/money";
@@ -48,9 +49,13 @@ export default async function CustomerDetailPage({
   const lifetime = orders
     .filter((o) => o.status !== "CANCELLED")
     .reduce((s, o) => s + o.totals.customerTotal, 0);
-  const outstanding = orders
-    .filter((o) => o.status !== "CANCELLED" && o.paymentStatus !== "PAID")
-    .reduce((s, o) => s + o.totals.customerTotal, 0);
+  // Net of anything already paid towards each order. Adding up whole totals
+  // for anything not marked PAID chased a 5,000 order settled by a 4,000
+  // advance for the full 5,000 — and left this page, the customers list and
+  // the treasury's "Due" all disagreeing by every advance ever taken.
+  const outstanding = customer.orders
+    .filter((o) => o.status !== "CANCELLED")
+    .reduce((s, o) => s + amountOutstanding(o, computeOrderTotals(o)), 0);
   // Lifetime profit from this customer (cost/profit is reports-gated).
   // Cancelled orders are in: a refused parcel still costs a courier fee, and
   // that is part of what this customer has been worth. Excluding them while
