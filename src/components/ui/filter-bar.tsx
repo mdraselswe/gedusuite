@@ -35,6 +35,11 @@ export type SelectOption = { value: string; label: string };
 
 type Base = {
   key: string;
+  /**
+   * Names the dimension, not one of its values — on a select this doubles as
+   * the unset row at the top of the dropdown, so a label matching one of the
+   * options lists that option twice.
+   */
   label: string;
   /** Kept out of the collapsible panel and always on screen. */
   primary?: boolean;

@@ -83,7 +83,10 @@ export function CustomerManager({
     },
     {
       key: "ordered",
-      label: "Has ordered",
+      // Names the question, not one of the answers: the label doubles as the
+      // "any" row at the top of the dropdown, so calling it "Has ordered" put
+      // "Has ordered" in the list twice.
+      label: "Ordered before",
       kind: "select",
       options: [
         { value: "yes", label: "Has ordered" },
