@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { splitByShare } from "./profit-share";
 
 /**
  * The capital rollup's rule, isolated from the database it reads.
@@ -11,6 +12,10 @@ import { describe, expect, it } from "vitest";
  */
 function remainingCapital(input: {
   invested: number;
+  /** Partner cash handed to the treasury — capital in, same as `invested`. */
+  depositedToTreasury?: number;
+  /** Capital the partners took back out of the treasury again. */
+  treasuryWithdrawals?: number;
   spend: { amount: number; paidFromTreasury: boolean; onCredit?: boolean }[];
   miscExpense: number;
   /** Unsold stock at cost — spent capital that is still an asset. */
@@ -18,11 +23,17 @@ function remainingCapital(input: {
 }): {
   totalExpenses: number;
   treasuryFundedSpend: number;
+  partnerCashInTreasury: number;
+  salesFundedSpend: number;
   supplierDue: number;
   capitalSpend: number;
+  netInvested: number;
   remaining: number;
   capitalPlusStock: number;
 } {
+  const deposited = input.depositedToTreasury ?? 0;
+  const treasuryWithdrawals = input.treasuryWithdrawals ?? 0;
+  const netInvested = input.invested + deposited - treasuryWithdrawals;
   const totalExpenses =
     input.spend.reduce((s, x) => s + x.amount, 0) + input.miscExpense;
   const treasuryFundedSpend = input.spend
@@ -32,13 +43,20 @@ function remainingCapital(input: {
   const supplierDue = input.spend
     .filter((x) => x.onCredit)
     .reduce((s, x) => s + x.amount, 0);
-  const capitalSpend = totalExpenses - treasuryFundedSpend - supplierDue;
-  const remaining = input.invested - capitalSpend;
+  // Treasury spending eats the partners' own money in the pot first; only the
+  // excess is the shop's takings, and only that costs nobody any capital.
+  const partnerCashInTreasury = Math.max(0, deposited - treasuryWithdrawals);
+  const salesFundedSpend = Math.max(0, treasuryFundedSpend - partnerCashInTreasury);
+  const capitalSpend = totalExpenses - salesFundedSpend - supplierDue;
+  const remaining = netInvested - capitalSpend;
   return {
     totalExpenses,
     treasuryFundedSpend,
+    partnerCashInTreasury,
+    salesFundedSpend,
     supplierDue,
     capitalSpend,
+    netInvested,
     remaining,
     capitalPlusStock: remaining + (input.inventoryValue ?? 0),
   };
@@ -52,15 +70,49 @@ function remainingCapital(input: {
  */
 function partnerCapital(input: {
   invested: number;
+  /** Cash handed to the treasury. Capital in, by a different route. */
+  depositedToTreasury?: number;
   withdrawals: { amount: number; fromDistribution: boolean }[];
   expenses: number;
+  /** Their cut of what the treasury spent — see treasuryCapitalShares. */
+  treasuryCapitalSpend?: number;
 }): { withdrawn: number; capitalWithdrawn: number; netCapital: number; remaining: number } {
   const withdrawn = input.withdrawals.reduce((s, w) => s + w.amount, 0);
   const capitalWithdrawn = input.withdrawals
     .filter((w) => !w.fromDistribution)
     .reduce((s, w) => s + w.amount, 0);
-  const netCapital = input.invested - capitalWithdrawn;
-  return { withdrawn, capitalWithdrawn, netCapital, remaining: netCapital - input.expenses };
+  const netCapital =
+    input.invested + (input.depositedToTreasury ?? 0) - capitalWithdrawn;
+  return {
+    withdrawn,
+    capitalWithdrawn,
+    netCapital,
+    remaining: netCapital - input.expenses - (input.treasuryCapitalSpend ?? 0),
+  };
+}
+
+/**
+ * Sharing out what the treasury spent of the partners' own money.
+ *
+ * Pooled cash carries nobody's name, but the claim it stands against does: the
+ * split follows what each partner still has in the pot. Profit share is the
+ * wrong ruler here — it would charge a partner who deposited nothing, and make
+ * one purchase cost two different amounts depending on whether the money went
+ * via the treasury or straight to the supplier.
+ */
+function treasuryCapitalShares(input: {
+  partners: { id: string; deposited: number; treasuryWithdrawn?: number }[];
+  treasuryFundedSpend: number;
+}): Record<string, number> {
+  // Each stake floored on its own before they're added: one partner's
+  // withdrawal can't eat another partner's deposit.
+  const stakes = input.partners.map((p) => ({
+    id: p.id,
+    percent: Math.max(0, p.deposited - (p.treasuryWithdrawn ?? 0)),
+  }));
+  const pool = stakes.reduce((s, x) => s + x.percent, 0);
+  const cuts = splitByShare(stakes, Math.min(input.treasuryFundedSpend, pool));
+  return Object.fromEntries(cuts.map((c) => [c.id, c.amount]));
 }
 
 describe("capital taken back vs profit taken", () => {
@@ -106,6 +158,29 @@ describe("capital taken back vs profit taken", () => {
     const r = partnerCapital({ invested: 25000, withdrawals: [], expenses: 25000 });
     expect(r.netCapital).toBe(25000);
     expect(r.remaining).toBe(0);
+  });
+
+  it("counts cash handed to the treasury as capital put in", () => {
+    // 25,000 already in, then 10,000 handed over for the shop to spend. The
+    // deposit used to sit in its own column and leave net capital at 25,000,
+    // so a partner who had given more was told they hadn't.
+    const r = partnerCapital({
+      invested: 25000,
+      depositedToTreasury: 10000,
+      withdrawals: [],
+      expenses: 0,
+    });
+    expect(r.netCapital).toBe(35000);
+  });
+
+  it("takes it back off when they take the deposit out again", () => {
+    const r = partnerCapital({
+      invested: 25000,
+      depositedToTreasury: 10000,
+      withdrawals: [{ amount: 10000, fromDistribution: false }],
+      expenses: 0,
+    });
+    expect(r.netCapital).toBe(25000);
   });
 });
 
@@ -165,6 +240,206 @@ describe("remaining capital vs total spend", () => {
       miscExpense: 0,
     });
     expect(r.remaining).toBe(-3000);
+  });
+});
+
+describe("partner capital that went in through the treasury", () => {
+  // The same 10,000 and the same 6,110 of stock, reached two ways. The shop
+  // ends up in an identical position, so every capital figure has to agree —
+  // and they didn't: routing the money through the treasury reported 16,110 of
+  // capital still the partners', for 10,000 they had put in.
+  const viaTreasury = () =>
+    remainingCapital({
+      invested: 0,
+      depositedToTreasury: 10000,
+      spend: [{ amount: 6110, paidFromTreasury: true }],
+      miscExpense: 0,
+      inventoryValue: 6110,
+    });
+  const fromPocket = () =>
+    remainingCapital({
+      // 6,110 of it as the credit mirroring the purchase they paid for, the
+      // rest as cash handed over.
+      invested: 6110,
+      depositedToTreasury: 3890,
+      spend: [{ amount: 6110, paidFromTreasury: false }],
+      miscExpense: 0,
+      inventoryValue: 6110,
+    });
+
+  it("puts the same capital in whichever route the money took", () => {
+    expect(viaTreasury().netInvested).toBe(10000);
+    expect(fromPocket().netInvested).toBe(10000);
+  });
+
+  it("charges the purchase to capital either way", () => {
+    expect(viaTreasury().capitalSpend).toBe(6110);
+    expect(fromPocket().capitalSpend).toBe(6110);
+  });
+
+  it("leaves the partners holding the same thing either way", () => {
+    const a = viaTreasury();
+    const b = fromPocket();
+    expect(a.remaining).toBe(3890);
+    expect(b.remaining).toBe(3890);
+    // 3,890 still cash, 6,110 now stock — 10,000, which is what went in.
+    expect(a.capitalPlusStock).toBe(10000);
+    expect(b.capitalPlusStock).toBe(10000);
+  });
+
+  it("still spares capital once the pot is past what the partners put in", () => {
+    // 10,000 deposited and 50,000 of takings in the same pot, 40,000 spent from
+    // it: the partners' 10,000 goes first, the other 30,000 is the shop's own.
+    const r = remainingCapital({
+      invested: 0,
+      depositedToTreasury: 10000,
+      spend: [{ amount: 40000, paidFromTreasury: true }],
+      miscExpense: 0,
+    });
+    expect(r.salesFundedSpend).toBe(30000);
+    expect(r.capitalSpend).toBe(10000);
+    expect(r.remaining).toBe(0);
+  });
+
+  it("leaves the pot to the shop once a partner has taken their deposit back", () => {
+    // Deposit in, deposit out, then the treasury spends takings. Without the
+    // withdrawal the deposit would go on shielding capital it no longer funds,
+    // and remaining would read −5,000 for money nobody had spent.
+    const r = remainingCapital({
+      invested: 0,
+      depositedToTreasury: 10000,
+      treasuryWithdrawals: 10000,
+      spend: [{ amount: 5000, paidFromTreasury: true }],
+      miscExpense: 0,
+    });
+    expect(r.partnerCashInTreasury).toBe(0);
+    expect(r.salesFundedSpend).toBe(5000);
+    expect(r.capitalSpend).toBe(0);
+    expect(r.remaining).toBe(0);
+  });
+});
+
+describe("who the treasury spent it on", () => {
+  it("charges it to whoever's money was in the pot, not to everyone", () => {
+    // Tinny deposited, Rasel didn't. Shared by profit share instead, this would
+    // charge Rasel 3,055 for a purchase funded entirely by someone else.
+    const cuts = treasuryCapitalShares({
+      partners: [
+        { id: "tinny", deposited: 10000 },
+        { id: "rasel", deposited: 0 },
+      ],
+      treasuryFundedSpend: 6110,
+    });
+    expect(cuts.tinny).toBe(6110);
+    expect(cuts.rasel).toBe(0);
+  });
+
+  it("splits it by what each one has in the pot", () => {
+    const cuts = treasuryCapitalShares({
+      partners: [
+        { id: "tinny", deposited: 8000 },
+        { id: "rasel", deposited: 2000 },
+      ],
+      treasuryFundedSpend: 5000,
+    });
+    // 80/20 of the pot, not 50/50 of the shares.
+    expect(cuts.tinny).toBe(4000);
+    expect(cuts.rasel).toBe(1000);
+  });
+
+  it("stops once the partners' money in the pot runs out", () => {
+    // 10,000 of deposits against 40,000 of spending: the other 30,000 was the
+    // shop's own takings, and costs nobody any capital.
+    const cuts = treasuryCapitalShares({
+      partners: [
+        { id: "tinny", deposited: 6000 },
+        { id: "rasel", deposited: 4000 },
+      ],
+      treasuryFundedSpend: 40000,
+    });
+    expect(cuts.tinny + cuts.rasel).toBe(10000);
+  });
+
+  it("leaves out a partner who has taken their deposit back", () => {
+    const cuts = treasuryCapitalShares({
+      partners: [
+        { id: "tinny", deposited: 10000, treasuryWithdrawn: 10000 },
+        { id: "rasel", deposited: 5000 },
+      ],
+      treasuryFundedSpend: 5000,
+    });
+    expect(cuts.tinny).toBe(0);
+    expect(cuts.rasel).toBe(5000);
+  });
+
+  it("doesn't let one partner's withdrawal eat another's deposit", () => {
+    // The real case: Tinny leaves 3,890 in the pot for the next restock while
+    // Rasel takes 888.67 of capital back out of it. Rasel's capital went into
+    // stock long ago — what he's taking is sales cash, and it must not shrink
+    // what the treasury still owes Tinny. Netted together it would, and her
+    // 3,890 would never finish being spent however much the shop bought.
+    const cuts = treasuryCapitalShares({
+      partners: [
+        { id: "tinny", deposited: 3890 },
+        { id: "rasel", deposited: 0, treasuryWithdrawn: 888.67 },
+      ],
+      treasuryFundedSpend: 3890,
+    });
+    expect(cuts.tinny).toBe(3890);
+    expect(cuts.rasel).toBe(0);
+  });
+
+  it("charges nobody when the pot is all sales money", () => {
+    const cuts = treasuryCapitalShares({
+      partners: [{ id: "tinny", deposited: 0 }],
+      treasuryFundedSpend: 25000,
+    });
+    expect(cuts.tinny).toBe(0);
+  });
+
+  it("leaves one partner's balance the same whichever route their money took", () => {
+    // The equivalence, now at partner level too: Tinny puts 10,000 in and
+    // 6,110 of stock gets bought, and it can't matter whose hands the cash
+    // passed through on the way to the supplier.
+    const viaTreasury = partnerCapital({
+      invested: 0,
+      depositedToTreasury: 10000,
+      withdrawals: [],
+      expenses: 0,
+      treasuryCapitalSpend: treasuryCapitalShares({
+        partners: [
+          { id: "tinny", deposited: 10000 },
+          { id: "rasel", deposited: 0 },
+        ],
+        treasuryFundedSpend: 6110,
+      }).tinny,
+    });
+    const fromPocket = partnerCapital({
+      invested: 6110, // the credit mirroring the purchase she paid for
+      depositedToTreasury: 3890,
+      withdrawals: [],
+      expenses: 6110,
+    });
+    expect(viaTreasury.netCapital).toBe(10000);
+    expect(fromPocket.netCapital).toBe(10000);
+    expect(viaTreasury.remaining).toBe(3890);
+    expect(fromPocket.remaining).toBe(3890);
+  });
+
+  it("leaves the partner who funded none of it untouched either way", () => {
+    const rasel = partnerCapital({
+      invested: 35000,
+      withdrawals: [],
+      expenses: 35000,
+      treasuryCapitalSpend: treasuryCapitalShares({
+        partners: [
+          { id: "tinny", deposited: 10000 },
+          { id: "rasel", deposited: 0 },
+        ],
+        treasuryFundedSpend: 6110,
+      }).rasel,
+    });
+    expect(rasel.remaining).toBe(0);
   });
 });
 

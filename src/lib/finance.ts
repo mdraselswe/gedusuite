@@ -4,6 +4,7 @@ import { computeOrderTotals, orderNetProfit } from "@/lib/orders";
 import { amountOutstanding, depositAmount } from "@/lib/order-cash";
 import { inventoryValue } from "@/lib/inventory";
 import { amortizeAll } from "@/lib/amortize";
+import { splitByShare } from "@/lib/profit-share";
 
 export const OVERDUE_DAYS = 7;
 
@@ -29,8 +30,22 @@ export type PartnerBalance = {
   miscExpense: number; // manual PartnerTxn EXPENSE entries — rent, food, anything with no dedicated record
   expenses: number; // customerProductSpend + internalPurchaseSpend + boostSpend + miscExpense
   depositedToTreasury: number; // sum of DEPOSIT_TO_TREASURY
-  netCapital: number; // invested − capitalWithdrawn
-  remaining: number; // netCapital − expenses: what's left of their capital still to spend
+  /** Capital taken back out of the treasury — the subset of capitalWithdrawn that moved the pot. */
+  treasuryCapitalWithdrawn: number;
+  /**
+   * Their share of the treasury spending that used up partner deposits, split
+   * by what each partner has left in the pot rather than by profit share.
+   *
+   * Pooled cash carries no name, but a capital account isn't about which note
+   * left — it's about whose claim shrinks. Sharing it by profit percent would
+   * charge a partner who deposited nothing, and would make the same purchase
+   * cost different amounts depending on whether the money went via the treasury
+   * or straight to the supplier. By deposit, the two routes agree.
+   */
+  treasuryCapitalSpend: number;
+  netCapital: number; // invested + depositedToTreasury − capitalWithdrawn
+  /** netCapital − expenses − treasuryCapitalSpend: what's left of their capital to spend. */
+  remaining: number;
 };
 
 /**
@@ -46,11 +61,27 @@ export type PartnerBalance = {
  * withdraw their capital and the page would go on reporting it as still
  * invested and still available to spend. `distributionId` is what tells them
  * apart — a distribution sets it, a hand-entered withdrawal doesn't.
+ *
+ * Cash handed to the treasury counts as capital in just as much as cash spent
+ * straight out of a pocket does. It didn't, and the two routes to putting the
+ * same money into the same business gave different answers: pay the supplier
+ * yourself and your capital rose by what you paid, hand the money over and let
+ * the treasury pay and your capital didn't move at all.
  */
 export async function partnerBalances(
   workspaceId: string,
 ): Promise<Map<string, PartnerBalance>> {
-  const [txnRows, capitalOutRows, purchaseRows, internalRows, boostRows] = await Promise.all([
+  const [
+    txnRows,
+    capitalOutRows,
+    treasuryOutRows,
+    purchaseRows,
+    internalRows,
+    boostRows,
+    treasuryPurchases,
+    treasuryInternals,
+    treasuryBoost,
+  ] = await Promise.all([
     prisma.partnerTxn.groupBy({
       by: ["partnerId", "type"],
       where: { workspaceId },
@@ -60,6 +91,19 @@ export async function partnerBalances(
     prisma.partnerTxn.groupBy({
       by: ["partnerId"],
       where: { workspaceId, type: "WITHDRAWAL", distributionId: null },
+      _sum: { amount: true },
+    }),
+    // The subset of those that came out of the treasury — a linked entry is
+    // what says the pot actually moved. Cash a partner was holding elsewhere
+    // leaves the pot alone and so leaves everyone's share of it alone.
+    prisma.partnerTxn.groupBy({
+      by: ["partnerId"],
+      where: {
+        workspaceId,
+        type: "WITHDRAWAL",
+        distributionId: null,
+        treasuryEntry: { isNot: null },
+      },
       _sum: { amount: true },
     }),
     prisma.purchase.findMany({
@@ -73,6 +117,22 @@ export async function partnerBalances(
     prisma.boostDailySpend.groupBy({
       by: ["paidByPartnerId"],
       where: { workspaceId, paidByPartnerId: { not: null } },
+      _sum: { amount: true },
+    }),
+    // Everything the treasury paid for. Read again here rather than handed down
+    // from businessCapitalSummary: the partner pages call this function on its
+    // own, and a balance that only came out right when the rollup happened to
+    // be running alongside it would be worse than the extra three queries.
+    prisma.purchase.findMany({
+      where: { workspaceId, paidFromTreasury: true },
+      select: { unitCost: true, quantity: true },
+    }),
+    prisma.internalPurchase.findMany({
+      where: { workspaceId, paidFromTreasury: true },
+      select: { cost: true, quantity: true },
+    }),
+    prisma.boostDailySpend.aggregate({
+      where: { workspaceId, paidFromTreasury: true },
       _sum: { amount: true },
     }),
   ]);
@@ -93,6 +153,8 @@ export async function partnerBalances(
         miscExpense: 0,
         expenses: 0,
         depositedToTreasury: 0,
+        treasuryCapitalWithdrawn: 0,
+        treasuryCapitalSpend: 0,
         netCapital: 0,
         remaining: 0,
       })
@@ -108,6 +170,9 @@ export async function partnerBalances(
   }
   for (const r of capitalOutRows) {
     ensure(r.partnerId).capitalWithdrawn += Number(r._sum.amount ?? 0);
+  }
+  for (const r of treasuryOutRows) {
+    ensure(r.partnerId).treasuryCapitalWithdrawn += Number(r._sum.amount ?? 0);
   }
   for (const p of purchaseRows) {
     const b = ensure(p.paidByPartnerId!);
@@ -134,9 +199,38 @@ export async function partnerBalances(
     );
     b.depositedToTreasury = round2(b.depositedToTreasury);
     b.capitalWithdrawn = round2(b.capitalWithdrawn);
+    b.treasuryCapitalWithdrawn = round2(b.treasuryCapitalWithdrawn);
     b.profitWithdrawn = round2(b.withdrawn - b.capitalWithdrawn);
-    b.netCapital = round2(b.invested - b.capitalWithdrawn);
-    b.remaining = round2(b.netCapital - b.expenses);
+    b.netCapital = round2(b.invested + b.depositedToTreasury - b.capitalWithdrawn);
+  }
+
+  // Second pass, because sharing the treasury's spending out needs every
+  // partner's stake in the pot before any one of them can be told their part.
+  const treasuryFundedSpend =
+    treasuryPurchases.reduce((s, p) => s + Number(p.unitCost) * p.quantity, 0) +
+    treasuryInternals.reduce((s, ip) => s + Number(ip.cost) * ip.quantity, 0) +
+    Number(treasuryBoost._sum.amount ?? 0);
+  const stakes = [...map.values()].map((b) => ({
+    partnerId: b.partnerId,
+    // Weight, not money: what each partner still has in the pot. A partner who
+    // has taken more out of the treasury than they put in weighs nothing rather
+    // than negatively — they aren't funding anyone else's purchases.
+    percent: Math.max(0, b.depositedToTreasury - b.treasuryCapitalWithdrawn),
+  }));
+  // The pot's partner-funded part: each stake floored on its own before they
+  // are added up, never netted across people. A partner taking capital out of
+  // the treasury is almost always taking sales cash — their own capital went
+  // into stock months ago — so netting it would have one partner's withdrawal
+  // eat another's deposit, and the depositor's money would then never finish
+  // being spent however much the treasury bought.
+  const pool = stakes.reduce((s, x) => s + x.percent, 0);
+  // splitByShare normalizes the weights and hands the rounding remainder to the
+  // biggest one, so the shares add up to exactly what was consumed.
+  for (const cut of splitByShare(stakes, Math.min(treasuryFundedSpend, pool))) {
+    map.get(cut.partnerId)!.treasuryCapitalSpend = cut.amount;
+  }
+  for (const b of map.values()) {
+    b.remaining = round2(b.netCapital - b.expenses - b.treasuryCapitalSpend);
   }
   return map;
 }
@@ -155,10 +249,27 @@ export type BusinessCapitalSummary = {
   totalExpenses: number;
   /**
    * The part of that spending paid for out of the shared treasury rather than
-   * a partner's pocket. Shared money is the business's own — mostly sales
-   * takings — so spending it uses up no partner's capital.
+   * a partner's pocket.
    */
   treasuryFundedSpend: number;
+  /**
+   * Partner capital currently sitting in the treasury: what partners have
+   * deposited, less any capital they've taken back out of it. Profit
+   * distributions aren't in here — those hand out earnings, not capital.
+   */
+  partnerCashInTreasury: number;
+  /**
+   * The slice of treasuryFundedSpend the shop's own takings paid for, once the
+   * partner money in the pot has been used up. This is the only spending that
+   * costs nobody any capital.
+   *
+   * treasuryFundedSpend used to fill that role by itself, on the reasoning that
+   * treasury money is the business's own. True while the pot only ever held
+   * sales takings, and wrong as soon as a partner deposited capital into it:
+   * the same taka was then counted twice over, once as capital nobody had spent
+   * yet and again as the stock it had already bought.
+   */
+  salesFundedSpend: number;
   /**
    * Bought on account and not paid for yet — what the shop owes its suppliers.
    *
@@ -168,7 +279,7 @@ export type BusinessCapitalSummary = {
    * aside to settle the bill looked like profit anyone could take out.
    */
   supplierDue: number;
-  /** totalExpenses − treasuryFundedSpend − supplierDue: what capital paid for. */
+  /** totalExpenses − salesFundedSpend − supplierDue: what capital paid for. */
   capitalSpend: number;
   totalRemaining: number; // netInvested − capitalSpend
   /** Unsold stock at what it cost — spent capital that is still an asset. */
@@ -204,46 +315,68 @@ export type BusinessCapitalSummary = {
  * purchase would have shown the partners as overdrawn by its full amount,
  * having spent nothing.
  *
- * So treasury-funded spending is separated out. An untagged row still counts
- * against capital: nobody recording a payer is far more likely to mean a
- * partner paid and forgot than that the treasury did, and the treasury leaves
- * its own trail either way.
+ * So treasury-funded spending is separated out — but only as far as the pot is
+ * the shop's own money. Partner deposits go into the same pot, and spending
+ * those is spending capital wherever the taka physically travelled: hand over
+ * 10,000, let the treasury buy 6,110 of stock, and the shop is 6,110 of capital
+ * down and 6,110 of stock up, exactly as if the partner had paid the supplier
+ * directly. Treated as capital-neutral, the two routes disagreed by the whole
+ * purchase — same money in, same goods on the shelf, 6,110 of difference in
+ * what the partners were told they still had.
+ *
+ * An untagged row still counts against capital: nobody recording a payer is far
+ * more likely to mean a partner paid and forgot than that the treasury did, and
+ * the treasury leaves its own trail either way.
  */
 export async function businessCapitalSummary(
   workspaceId: string,
 ): Promise<BusinessCapitalSummary> {
-  const [balances, purchases, internalPurchases, miscRows, boostRows, treasuryBoost, stock] =
-    await Promise.all([
-      partnerBalances(workspaceId),
-      prisma.purchase.findMany({
-        where: { workspaceId },
-        select: { unitCost: true, quantity: true, paidFromTreasury: true, onCredit: true },
-      }),
-      prisma.internalPurchase.findMany({
-        where: { workspaceId },
-        select: { cost: true, quantity: true, paidFromTreasury: true, onCredit: true },
-      }),
-      prisma.partnerTxn.aggregate({
-        where: { workspaceId, type: "EXPENSE" },
-        _sum: { amount: true },
-      }),
-      prisma.boostDailySpend.aggregate({
-        where: { workspaceId },
-        _sum: { amount: true },
-      }),
-      prisma.boostDailySpend.aggregate({
-        where: { workspaceId, paidFromTreasury: true },
-        _sum: { amount: true },
-      }),
-      // The asset side of all that purchasing — see capitalPlusStock.
-      inventoryValue(workspaceId),
-    ]);
+  const [
+    balances,
+    purchases,
+    internalPurchases,
+    miscRows,
+    boostRows,
+    treasuryBoost,
+    stock,
+  ] = await Promise.all([
+    partnerBalances(workspaceId),
+    prisma.purchase.findMany({
+      where: { workspaceId },
+      select: { unitCost: true, quantity: true, paidFromTreasury: true, onCredit: true },
+    }),
+    prisma.internalPurchase.findMany({
+      where: { workspaceId },
+      select: { cost: true, quantity: true, paidFromTreasury: true, onCredit: true },
+    }),
+    prisma.partnerTxn.aggregate({
+      where: { workspaceId, type: "EXPENSE" },
+      _sum: { amount: true },
+    }),
+    prisma.boostDailySpend.aggregate({
+      where: { workspaceId },
+      _sum: { amount: true },
+    }),
+    prisma.boostDailySpend.aggregate({
+      where: { workspaceId, paidFromTreasury: true },
+      _sum: { amount: true },
+    }),
+    // The asset side of all that purchasing — see capitalPlusStock.
+    inventoryValue(workspaceId),
+  ]);
 
   let totalInvested = 0;
   let totalCapitalWithdrawn = 0;
+  // The pot's partner-funded part, stake by stake — the same sum partnerBalances
+  // shares out, so the table and this card can't disagree about how much of the
+  // treasury is capital.
+  let partnerCashInTreasury = 0;
   for (const b of balances.values()) {
-    totalInvested += b.invested;
+    // Both routes into the business, added together: money a partner spent
+    // straight from their pocket, and money they handed to the treasury.
+    totalInvested += b.invested + b.depositedToTreasury;
     totalCapitalWithdrawn += b.capitalWithdrawn;
+    partnerCashInTreasury += Math.max(0, b.depositedToTreasury - b.treasuryCapitalWithdrawn);
   }
   // What's still in. Summing `invested` alone would go on reporting money a
   // partner has already taken back as though it were still funding the shop.
@@ -281,7 +414,12 @@ export async function businessCapitalSummary(
     internalPurchases
       .filter((ip) => ip.onCredit)
       .reduce((s, ip) => s + Number(ip.cost) * ip.quantity, 0);
-  const capitalSpend = totalExpenses - treasuryFundedSpend - supplierDue;
+  // Treasury spending is charged against the partner money in the pot first,
+  // and only the excess is treated as the shop's own takings. Charging none of
+  // it counted partner capital twice: still "unspent" here, and already stock
+  // on the shelf over in inventoryValue.
+  const salesFundedSpend = Math.max(0, treasuryFundedSpend - partnerCashInTreasury);
+  const capitalSpend = totalExpenses - salesFundedSpend - supplierDue;
   const totalRemaining = netInvested - capitalSpend;
 
   return {
@@ -294,6 +432,8 @@ export async function businessCapitalSummary(
     miscExpense: round2(miscExpense),
     totalExpenses: round2(totalExpenses),
     treasuryFundedSpend: round2(treasuryFundedSpend),
+    partnerCashInTreasury: round2(partnerCashInTreasury),
+    salesFundedSpend: round2(salesFundedSpend),
     supplierDue: round2(supplierDue),
     capitalSpend: round2(capitalSpend),
     totalRemaining: round2(totalRemaining),

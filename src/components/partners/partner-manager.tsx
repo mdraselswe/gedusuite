@@ -44,6 +44,8 @@ type PartnerRow = {
   capitalWithdrawn: number;
   expenses: number;
   depositedToTreasury: number;
+  /** Their cut of the treasury's spending, split by what each has in the pot. */
+  treasuryCapitalSpend: number;
   netCapital: number;
   remaining: number;
   profitShareAmount: number;
@@ -184,6 +186,18 @@ export function PartnerManager({
               cell: (p) => <Money value={p.expenses} />,
             },
             {
+              key: "treasurySpend",
+              // Comes off "Remaining" like any other spending, so it has to be
+              // visible next to it — a figure that drops for reasons the row
+              // can't show is the one people stop trusting.
+              header: "Spent from treasury",
+              align: "right",
+              hideable: true,
+              sortValue: (p) => p.treasuryCapitalSpend,
+              cell: (p) =>
+                p.treasuryCapitalSpend > 0 ? <Money value={p.treasuryCapitalSpend} /> : "—",
+            },
+            {
               key: "remaining",
               header: "Remaining",
               align: "right",
@@ -197,7 +211,9 @@ export function PartnerManager({
             },
             {
               key: "toTreasury",
-              header: "To treasury",
+              // Part of "Net capital", not a figure beside it — cash handed to
+              // the treasury is capital in like any other.
+              header: "Cash to treasury",
               align: "right",
               hideable: true,
               sortValue: (p) => p.depositedToTreasury,

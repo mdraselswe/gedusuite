@@ -53,16 +53,24 @@ export default async function PartnerDetailPage({
     };
   });
 
+  // "Invested directly" and "Cash to treasury" are the two halves of net
+  // capital, named so the addition can be read off the cards — they used to be
+  // "Invested" and "To treasury", which read as one figure that counted and one
+  // that didn't.
   const cards: [string, number][] = [
-    ["Invested", balances?.invested ?? 0],
+    ["Invested directly", balances?.invested ?? 0],
     ["Customer products", balances?.customerProductSpend ?? 0],
     ["Internal purchases", balances?.internalPurchaseSpend ?? 0],
     ["Boosting (ads)", balances?.boostSpend ?? 0],
     ["Other (rent, food, etc.)", balances?.miscExpense ?? 0],
     ["Total spent", balances?.expenses ?? 0],
+    // Not part of "Total spent": nothing here was tagged to them, it's their
+    // share of what the treasury spent of the money they'd put into it. Comes
+    // off "Remaining" all the same.
+    ["Spent from treasury", balances?.treasuryCapitalSpend ?? 0],
     ["Remaining (unspent)", balances?.remaining ?? 0],
     ["Withdrawn", balances?.withdrawn ?? 0],
-    ["To treasury", balances?.depositedToTreasury ?? 0],
+    ["Cash to treasury", balances?.depositedToTreasury ?? 0],
     ["Net capital", balances?.netCapital ?? 0],
   ];
 

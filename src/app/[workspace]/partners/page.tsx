@@ -78,6 +78,7 @@ export default async function PartnersPage({
       miscExpense: b?.miscExpense ?? 0,
       expenses: b?.expenses ?? 0,
       depositedToTreasury: b?.depositedToTreasury ?? 0,
+      treasuryCapitalSpend: b?.treasuryCapitalSpend ?? 0,
       netCapital: b?.netCapital ?? 0,
       remaining: b?.remaining ?? 0,
       profitShareAmount: cut?.amount ?? 0,
@@ -292,6 +293,15 @@ export default async function PartnersPage({
                   sub
                 />
               )}
+              {capital.partnerCashInTreasury > 0 && capital.treasuryFundedSpend > 0 && (
+                <FigureRow
+                  label="…of that, the shop's own takings"
+                  hint="the rest of it spent partner money the treasury was holding"
+                  value={capital.salesFundedSpend}
+                  tone="muted"
+                  sub
+                />
+              )}
               {capital.supplierDue > 0 && (
                 <FigureRow
                   label="still owed to suppliers"
@@ -311,15 +321,32 @@ export default async function PartnersPage({
         </Card>
 
         <div className="space-y-3">
-          {capital.treasuryFundedSpend > 0 && (
+          {capital.salesFundedSpend > 0 && (
             <InfoNote title="Not all of that spending used partner capital">
               <p>
-                Treasury money is the business&apos;s own — mostly sales takings — so
-                spending it uses up nobody&apos;s capital. Of the{" "}
-                <Money value={capital.totalExpenses} /> spent,{" "}
-                <Money value={capital.treasuryFundedSpend} /> came from the treasury, and
+                Sales takings are the business&apos;s own money, so spending them uses up
+                nobody&apos;s capital. Of the <Money value={capital.totalExpenses} />{" "}
+                spent, <Money value={capital.salesFundedSpend} /> came out of takings, and
                 only the remaining <Money value={capital.capitalSpend} /> counts against
                 &quot;Still the partners&apos;&quot;.
+              </p>
+            </InfoNote>
+          )}
+          {capital.partnerCashInTreasury > 0 && (
+            <InfoNote title="Part of the treasury is partner money">
+              <p>
+                <Money value={capital.partnerCashInTreasury} /> of what the treasury holds
+                was deposited by partners rather than earned by the shop. Spending that
+                spends their capital wherever the cash happened to be sitting, so treasury
+                purchases are charged against capital until that much of it has gone —
+                otherwise handing money over and spending it yourself would give two
+                different answers for the same purchase.
+              </p>
+              <p>
+                In the table below it&apos;s charged to each partner in proportion to what
+                they still have in the pot, not by profit share. Profit is what the shares
+                divide; capital is whatever each partner put in, and a partner who has
+                deposited nothing pays none of it.
               </p>
             </InfoNote>
           )}
