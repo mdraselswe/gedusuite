@@ -1,7 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { computeOrderTotals, orderNetProfit } from "@/lib/orders";
-import { amountOutstanding, depositAmount } from "@/lib/order-cash";
+import { amountOutstanding, depositAmount, deliveryCostCharged } from "@/lib/order-cash";
 import { inventoryValue } from "@/lib/inventory";
 import { amortizeAll } from "@/lib/amortize";
 import { splitByShare } from "@/lib/profit-share";
@@ -861,17 +861,54 @@ export async function cashHeldByMember(workspaceId: string): Promise<HeldCash[]>
   return [...map.values()].sort((a, b) => b.amount - a.amount);
 }
 
-/** Total the customer still owes, across every non-cancelled UNPAID/PARTIAL order. */
-export async function totalDue(workspaceId: string): Promise<number> {
+export type CustomerDue = {
+  /** What customers have been billed and not paid. The figure to chase them for. */
+  gross: number;
+  /** The courier's cut of that, on the orders it will be collecting. */
+  courierCut: number;
+  /** gross − courierCut: what will actually reach the shop. */
+  net: number;
+};
+
+/**
+ * What customers still owe, across every non-cancelled UNPAID/PARTIAL order —
+ * and what will be left of it once the courier has taken its charges.
+ *
+ * Both, because the two are used for different things and only one number was
+ * ever given. What to chase a customer for is the invoice; what the shop will
+ * receive is the invoice less the delivery charge and COD fee the courier keeps
+ * on the way back. Sat next to "on the way", which has always been net, the
+ * gross figure quietly promised money that was never coming — 667.15 of it on
+ * nine orders, which is most of why the books wouldn't reconcile.
+ */
+export async function totalDue(workspaceId: string): Promise<CustomerDue> {
   const orders = await prisma.order.findMany({
     where: { workspaceId, status: { not: "CANCELLED" }, paymentStatus: { in: ["UNPAID", "PARTIAL"] } },
     include: { items: { include: { returns: true } } },
   });
-  // Net of anything already paid towards each one — the whole point of a
-  // PARTIAL status, and the one thing it never did.
-  return round2(
-    orders.reduce((s, o) => s + amountOutstanding(o, computeOrderTotals(o)), 0),
-  );
+
+  let gross = 0;
+  let courierCut = 0;
+  for (const o of orders) {
+    const totals = computeOrderTotals(o);
+    // Net of anything already paid towards each one — the whole point of a
+    // PARTIAL status, and the one thing it never did.
+    const outstanding = amountOutstanding(o, totals);
+    if (outstanding <= 0) continue;
+    gross += outstanding;
+    // Same rule depositAmount uses: only a courier collection is netted, since
+    // that is the only case where somebody else handles the money first. An
+    // order whose cash is already banked has had its charges taken, and
+    // charging them again would understate what is still coming.
+    if (o.paymentMethod === "COURIER_COLLECTION" && !o.cashInTreasury) {
+      courierCut += deliveryCostCharged(o, totals) + totals.codFeeCost;
+    }
+  }
+  return {
+    gross: round2(gross),
+    courierCut: round2(courierCut),
+    net: round2(gross - courierCut),
+  };
 }
 
 export type PaidNotDeposited = {

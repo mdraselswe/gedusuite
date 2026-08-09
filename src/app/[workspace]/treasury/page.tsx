@@ -102,6 +102,18 @@ export default async function TreasuryPage({
     fromBoost: !!e.boostSpendId,
   }));
 
+  // Paid for, not banked yet: sitting in the courier's app until it remits, or
+  // in a team member's pocket. Net of the courier's cut, so this is what will
+  // actually land rather than what the customer handed over.
+  //
+  // Kept firmly out of `balance`. Every check that guards real money — can this
+  // distribution be covered, can this purchase be paid for — reads that one, and
+  // money still in someone else's app can't pay a supplier. This is the other
+  // question, the one the balance alone can't answer: how much has the shop
+  // taken, whoever is currently holding it.
+  const onTheWay = notDeposited.reduce((s, o) => s + o.amount, 0);
+  const expected = balance + onTheWay;
+
   const partnerOptions = partners.map((p) => ({
     id: p.id,
     label: p.user.name ?? p.user.email,
@@ -130,18 +142,49 @@ export default async function TreasuryPage({
         count={entryCount}
         title={(await serverT())("treasury")}
         action={
-          <div className="flex gap-4 text-sm text-muted-foreground">
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
             <span>
-              Balance:{" "}
+              In hand:{" "}
               <Money
                 value={balance}
                 tone={toneForBalance(balance)}
                 className="text-lg font-bold"
               />
             </span>
+            {onTheWay > 0 && (
+              <>
+                <span>
+                  On the way:{" "}
+                  <Money value={onTheWay} className="text-lg font-bold" />
+                </span>
+                {/* The number somebody actually means by "how much have we
+                    taken" — the balance answers a narrower question and gets
+                    read as this one. */}
+                <span>
+                  Total:{" "}
+                  <Money
+                    value={expected}
+                    tone={toneForBalance(expected)}
+                    className="text-lg font-bold"
+                  />
+                </span>
+              </>
+            )}
             <span>
               Due:{" "}
-              <Money value={due} tone={due > 0 ? "negative" : "muted"} className="text-lg font-bold" />
+              <Money
+                value={due.gross}
+                tone={due.gross > 0 ? "negative" : "muted"}
+                className="text-lg font-bold"
+              />
+              {/* What the customer owes and what the shop gets are not the same
+                  number when a courier collects it. Both, rather than the
+                  invoice alone sitting beside a net figure. */}
+              {due.courierCut > 0 && (
+                <span className="ml-1 text-xs">
+                  (<Money value={due.net} /> after courier)
+                </span>
+              )}
             </span>
           </div>
         }
