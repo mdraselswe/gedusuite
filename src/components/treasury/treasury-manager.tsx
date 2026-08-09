@@ -8,7 +8,11 @@ import {
   createTreasuryEntry,
   deleteTreasuryEntry,
 } from "@/server/actions/treasury";
-import { markCashDeposited, unmarkCashDeposited } from "@/server/actions/cash-custody";
+import {
+  markAllCashDeposited,
+  markCashDeposited,
+  unmarkCashDeposited,
+} from "@/server/actions/cash-custody";
 import { createDistribution, deleteDistribution } from "@/server/actions/distributions";
 import { beyondDistributableProfit, splitByShare } from "@/lib/profit-share";
 import { Money } from "@/components/ui/money";
@@ -130,6 +134,7 @@ export function TreasuryManager({
 }) {
   const router = useRouter();
   const [depositing, setDepositing] = useState<string | null>(null);
+  const [bulkDepositing, setBulkDepositing] = useState(false);
   const [distOpen, setDistOpen] = useState(false);
   const [distAmount, setDistAmount] = useState("");
   const [distLoading, setDistLoading] = useState(false);
@@ -198,6 +203,37 @@ export function TreasuryManager({
     setDepositing(null);
     if (!res.ok) return toast.error(res.error);
     toast.success("Marked as deposited to treasury");
+    router.refresh();
+  }
+
+  /**
+   * One courier payout, one confirmation. The dialog names the figure rather
+   * than the count: fifteen orders means nothing next to the transfer on the
+   * screen, and the amount is what somebody is actually checking against.
+   */
+  async function onMarkAllRemitted() {
+    const ok = await confirmDialog({
+      title: `Mark ${withCourier.length} orders as remitted?`,
+      description:
+        `${formatMoney(courierTotal)} will go into the treasury as ${withCourier.length} separate ` +
+        `entries, one per order. Confirm this only once the money has actually arrived — ` +
+        `each one can be undone individually if not.`,
+      confirmText: "Mark all remitted",
+    });
+    if (!ok) return;
+    setBulkDepositing(true);
+    const res = await markAllCashDeposited(
+      slug,
+      withCourier.map((o) => o.orderId),
+    );
+    setBulkDepositing(false);
+    if (!res.ok) return toast.error(res.error);
+    if (res.banked > 0) {
+      toast.success(`${res.banked} order(s) remitted — ${formatMoney(res.total)} into the treasury`);
+    }
+    // Named, not swallowed. A silent skip is how a row sits unbanked for weeks
+    // while the total on the card quietly disagrees with the courier's app.
+    for (const s of res.skipped) toast.error(`${s.label}: ${s.error}`);
     router.refresh();
   }
 
@@ -429,10 +465,26 @@ export function TreasuryManager({
       {withCourier.length > 0 && (
         <Card className="border-blue-300 dark:border-blue-800">
           <CardHeader>
-            <CardTitle className="text-base text-blue-800 dark:text-blue-300">
-              Cash with courier (paid, not yet remitted) — <Money value={courierTotal} /> across{" "}
-              {withCourier.length} order(s)
-            </CardTitle>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <CardTitle className="text-base text-blue-800 dark:text-blue-300">
+                Cash with courier (paid, not yet remitted) — <Money value={courierTotal} /> across{" "}
+                {withCourier.length} order(s)
+              </CardTitle>
+              {/* A courier settles its collections as one transfer, so the whole
+                  card is usually confirmed in one go. Only worth offering when
+                  there's more than one row — for a single order the button
+                  already sitting in it is the shorter path. */}
+              {canManage && withCourier.length > 1 && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={onMarkAllRemitted}
+                  disabled={bulkDepositing || depositing !== null}
+                >
+                  {bulkDepositing ? "Marking…" : `Mark all ${withCourier.length} remitted`}
+                </Button>
+              )}
+            </div>
             {courierCharges > 0 && (
               <InfoNote
                 title={
@@ -498,7 +550,7 @@ export function TreasuryManager({
                             <Button
                               size="sm"
                               onClick={() => onMarkDeposited(o.orderId)}
-                              disabled={depositing === o.orderId}
+                              disabled={depositing === o.orderId || bulkDepositing}
                             >
                               {depositing === o.orderId ? "Saving…" : "Mark remitted"}
                             </Button>
