@@ -134,7 +134,8 @@ export function TreasuryManager({
 }) {
   const router = useRouter();
   const [depositing, setDepositing] = useState<string | null>(null);
-  const [bulkDepositing, setBulkDepositing] = useState(false);
+  // Which batch is in flight, so only its own button says so.
+  const [bulkDepositing, setBulkDepositing] = useState<string | null>(null);
   const [distOpen, setDistOpen] = useState(false);
   const [distAmount, setDistAmount] = useState("");
   const [distLoading, setDistLoading] = useState(false);
@@ -195,6 +196,21 @@ export function TreasuryManager({
   const courierGross = withCourier.reduce((s, o) => s + o.gross, 0);
   const courierCharges = withCourier.reduce((s, o) => s + o.courierCharges, 0);
   const membersTotal = withMembers.reduce((s, o) => s + o.amount, 0);
+  // Grouped by who is holding it, because that is who hands it over. One
+  // "mark all" across the card would confirm money from people who haven't
+  // handed anything in — a courier settles as one payout, a person doesn't.
+  const byHolder = new Map<string, NotDeposited[]>();
+  for (const o of withMembers) {
+    const who = o.heldByName ?? "Unassigned";
+    byHolder.set(who, [...(byHolder.get(who) ?? []), o]);
+  }
+  const holderGroups = [...byHolder.entries()]
+    .map(([name, rows]) => ({
+      name,
+      rows,
+      total: rows.reduce((s, o) => s + o.amount, 0),
+    }))
+    .sort((a, b) => b.total - a.total);
   const owedToSuppliers = supplierDues.reduce((s, r) => s + r.amount, 0);
 
   async function onMarkDeposited(orderId: string) {
@@ -207,32 +223,41 @@ export function TreasuryManager({
   }
 
   /**
-   * One courier payout, one confirmation. The dialog names the figure rather
-   * than the count: fifteen orders means nothing next to the transfer on the
-   * screen, and the amount is what somebody is actually checking against.
+   * Bank a batch of orders' cash on one confirmation.
+   *
+   * `key` is only which button says "Marking…" — the batch itself is whatever
+   * rows were passed. The dialog names the figure rather than the count:
+   * fifteen orders means nothing next to the payout on somebody's screen, and
+   * the amount is what they are actually checking against.
    */
-  async function onMarkAllRemitted() {
+  async function onBankAll(
+    key: string,
+    rows: NotDeposited[],
+    wording: { title: string; body: string; confirm: string; done: string },
+  ) {
+    const total = rows.reduce((s, o) => s + o.amount, 0);
     const ok = await confirmDialog({
-      title: `Mark ${withCourier.length} orders as remitted?`,
+      title: wording.title,
       description:
-        `${formatMoney(courierTotal)} will go into the treasury as ${withCourier.length} separate ` +
-        `entries, one per order. Confirm this only once the money has actually arrived — ` +
-        `each one can be undone individually if not.`,
-      confirmText: "Mark all remitted",
+        `${formatMoney(total)} will go into the treasury as ${rows.length} separate entries, ` +
+        `one per order. ${wording.body} Each one can be undone individually.`,
+      confirmText: wording.confirm,
     });
     if (!ok) return;
-    setBulkDepositing(true);
+    setBulkDepositing(key);
     const res = await markAllCashDeposited(
       slug,
-      withCourier.map((o) => o.orderId),
+      rows.map((o) => o.orderId),
     );
-    setBulkDepositing(false);
+    setBulkDepositing(null);
     if (!res.ok) return toast.error(res.error);
     if (res.banked > 0) {
-      toast.success(`${res.banked} order(s) remitted — ${formatMoney(res.total)} into the treasury`);
+      toast.success(
+        `${res.banked} order(s) ${wording.done} — ${formatMoney(res.total)} into the treasury`,
+      );
     }
     // Named, not swallowed. A silent skip is how a row sits unbanked for weeks
-    // while the total on the card quietly disagrees with the courier's app.
+    // while the total on the card quietly disagrees with what the payer says.
     for (const s of res.skipped) toast.error(`${s.label}: ${s.error}`);
     router.refresh();
   }
@@ -478,10 +503,19 @@ export function TreasuryManager({
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={onMarkAllRemitted}
-                  disabled={bulkDepositing || depositing !== null}
+                  onClick={() =>
+                    onBankAll("courier", withCourier, {
+                      title: `Mark ${withCourier.length} orders as remitted?`,
+                      body: "Confirm this only once the courier's payout has actually arrived.",
+                      confirm: "Mark all remitted",
+                      done: "remitted",
+                    })
+                  }
+                  disabled={bulkDepositing !== null || depositing !== null}
                 >
-                  {bulkDepositing ? "Marking…" : `Mark all ${withCourier.length} remitted`}
+                  {bulkDepositing === "courier"
+                    ? "Marking…"
+                    : `Mark all ${withCourier.length} remitted`}
                 </Button>
               )}
             </div>
@@ -550,7 +584,7 @@ export function TreasuryManager({
                             <Button
                               size="sm"
                               onClick={() => onMarkDeposited(o.orderId)}
-                              disabled={depositing === o.orderId || bulkDepositing}
+                              disabled={depositing === o.orderId || bulkDepositing !== null}
                             >
                               {depositing === o.orderId ? "Saving…" : "Mark remitted"}
                             </Button>
@@ -567,11 +601,41 @@ export function TreasuryManager({
 
       {withMembers.length > 0 && (
         <Card className="border-blue-300 dark:border-blue-800">
-          <CardHeader>
+          <CardHeader className="space-y-3">
             <CardTitle className="text-base text-blue-800 dark:text-blue-300">
               Cash with team members (paid, not yet deposited) — <Money value={membersTotal} /> across{" "}
               {withMembers.length} order(s)
             </CardTitle>
+            {/* One button per person, because that is how the money arrives:
+                somebody hands over everything they are holding at once. A
+                single button for the card would confirm cash from people who
+                haven't handed anything in. */}
+            {canManage && holderGroups.some((g) => g.rows.length > 1) && (
+              <div className="flex flex-wrap gap-2">
+                {holderGroups
+                  .filter((g) => g.rows.length > 1)
+                  .map((g) => (
+                    <Button
+                      key={g.name}
+                      size="sm"
+                      variant="outline"
+                      onClick={() =>
+                        onBankAll(`member:${g.name}`, g.rows, {
+                          title: `Deposit ${g.rows.length} orders held by ${g.name}?`,
+                          body: `Confirm this only once ${g.name} has actually handed the cash over.`,
+                          confirm: "Mark all deposited",
+                          done: "deposited",
+                        })
+                      }
+                      disabled={bulkDepositing !== null || depositing !== null}
+                    >
+                      {bulkDepositing === `member:${g.name}`
+                        ? "Marking…"
+                        : `${g.name}: all ${g.rows.length} (${formatMoney(g.total)})`}
+                    </Button>
+                  ))}
+              </div>
+            )}
           </CardHeader>
           <CardContent>
             <DataTable
@@ -606,7 +670,7 @@ export function TreasuryManager({
                             <Button
                               size="sm"
                               onClick={() => onMarkDeposited(o.orderId)}
-                              disabled={depositing === o.orderId}
+                              disabled={depositing === o.orderId || bulkDepositing !== null}
                             >
                               {depositing === o.orderId ? "Saving…" : "Mark deposited"}
                             </Button>
