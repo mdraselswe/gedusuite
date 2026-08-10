@@ -963,6 +963,15 @@ model OrderLead {
   altPhone     String?
   address      String?
   itemsText    String   @default("") // "Robotic Aeroplane (Blue) x2" — for reading, not for stock
+  // What was agreed for delivery, kept apart from the goods. `total` is the
+  // grand total the customer was quoted — the figure the caller repeats back —
+  // and without this the two were impossible to separate afterwards: the items
+  // added up to one number and the total said another, with nothing to say
+  // whether the difference was shipping or a discount.
+  //
+  // Zero on anything from WooCommerce: its order total already includes
+  // shipping and the breakdown isn't carried through the webhook.
+  deliveryCharge Decimal @default(0) @db.Decimal(12, 2)
   total        Decimal  @default(0) @db.Decimal(12, 2)
   orderedAt    DateTime @default(now())
 

@@ -139,6 +139,8 @@ export type FromLead = {
   itemsText: string;
   /** The lead's channel, prefilled onto the order's "came from". */
   channel: string | null;
+  /** What the caller agreed for shipping, prefilled onto the order. */
+  deliveryCharge: number;
   address: string | null;
   total: number;
 };
@@ -723,6 +725,9 @@ export function OrderManager({
     // free text and can't be matched to catalogue variants reliably, so the
     // total is offered and the lines are shown for the person to pick.
     setDeliveryType("COURIER");
+    // The caller already agreed a shipping charge; retyping it is how the
+    // order and the call end up quoting the customer two different figures.
+    if (fromLead.deliveryCharge > 0) setDeliveryCharge(String(fromLead.deliveryCharge));
     setOpen(true);
   }, [fromLead, perms.canAdd]);
 

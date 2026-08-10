@@ -47,6 +47,9 @@ const LeadSchema = z.object({
   address: z.string().trim().max(500).optional().or(z.literal("")),
   itemsText: z.string().trim().max(1000).optional().or(z.literal("")),
   orderNo: z.string().trim().max(40).optional().or(z.literal("")),
+  // Kept apart from `total`, which stays the grand total the customer was
+  // quoted — the figure the caller reads back down the phone.
+  deliveryCharge: z.coerce.number().min(0).max(99_999_999).default(0),
   total: z.coerce.number().min(0).max(99_999_999).default(0),
   // Same vocabulary as an order's source, so a lead and the order it becomes
   // describe the channel the same way. Blank stays blank.
@@ -64,6 +67,7 @@ function parseLead(formData: FormData) {
     address: formData.get("address") ?? undefined,
     itemsText: formData.get("itemsText") ?? undefined,
     orderNo: formData.get("orderNo") ?? undefined,
+    deliveryCharge: formData.get("deliveryCharge") ?? 0,
     total: formData.get("total") ?? 0,
     channel: formData.get("channel") ?? undefined,
     orderedAt: formData.get("orderedAt") ?? undefined,
@@ -118,6 +122,7 @@ export async function createLead(slug: string, formData: FormData): Promise<Acti
       altPhone: clean(d.altPhone),
       address: clean(d.address),
       itemsText: d.itemsText?.trim() ?? "",
+      deliveryCharge: d.deliveryCharge,
       total: d.total,
       channel: isOrderSource(d.channel) ? d.channel : null,
       // An order taken on the phone is often written up later, so when it was
@@ -173,6 +178,7 @@ export async function updateLead(
       altPhone: clean(d.altPhone),
       address: clean(d.address),
       itemsText: d.itemsText?.trim() ?? "",
+      deliveryCharge: d.deliveryCharge,
       total: d.total,
       channel: isOrderSource(d.channel) ? d.channel : null,
       // Left alone when the field comes back unparseable, rather than

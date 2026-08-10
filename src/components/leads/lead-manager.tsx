@@ -48,6 +48,7 @@ import {
   type ItemRow,
 } from "@/components/leads/lead-items-editor";
 import { splitLeadItems } from "@/lib/lead-items";
+import { leadBreakdown, suggestedLeadTotal } from "@/lib/lead-total";
 import { LeadChannelCell } from "@/components/leads/lead-channel-cell";
 import { ORDER_SOURCES, ORDER_SOURCE_LABEL, NO_SOURCE_LABEL } from "@/lib/order-source";
 import { toDhakaInputValue } from "@/lib/dhaka-time";
@@ -79,6 +80,8 @@ type Lead = {
   altPhone: string | null;
   address: string | null;
   itemsText: string;
+  /** Agreed shipping, kept apart from the goods. */
+  deliveryCharge: number;
   total: number;
   callStatus: string;
   callAttempts: number;
@@ -197,6 +200,7 @@ export function LeadManager({
   const [addSaving, setAddSaving] = useState(false);
   const [itemRows, setItemRows] = useState<ItemRow[]>([newItemRow()]);
   const [total, setTotal] = useState("0");
+  const [delivery, setDelivery] = useState("0");
   // Once the total is typed in by hand, the items stop overwriting it — the
   // person on the phone may have agreed a different figure.
   const [totalTouched, setTotalTouched] = useState(false);
@@ -214,8 +218,16 @@ export function LeadManager({
 
   // Only offered when every row is a catalogue product with a price — a
   // half-known total is worse than none.
-  const suggestedTotal = itemsTotal(itemRows);
+  // The goods on their own, and what the customer actually pays. Keeping the
+  // two apart is the point: the items add up to one number and the caller
+  // quotes another, and before this there was nothing to say whether the
+  // difference was shipping or a discount — the only way to get delivery into
+  // the figure was to overwrite the total by hand and lose the breakdown.
+  const goodsTotal = itemsTotal(itemRows);
+  const deliveryAmount = Math.max(0, Number(delivery) || 0);
+  const suggestedTotal = suggestedLeadTotal(goodsTotal, deliveryAmount);
   const effectiveTotal = !totalTouched && suggestedTotal !== null ? String(suggestedTotal) : total;
+  const breakdown = leadBreakdown(goodsTotal, deliveryAmount, Number(effectiveTotal) || 0);
   // Matching an old lead to an order entered before the two were ever linked.
   const [linkingFor, setLinkingFor] = useState<Lead | null>(null);
   const [linkQuery, setLinkQuery] = useState("");
@@ -328,6 +340,7 @@ export function LeadManager({
     setEditing(null);
     setItemRows([newItemRow()]);
     setTotal("0");
+    setDelivery("0");
     setTotalTouched(false);
     setChannel(UNTAGGED);
     setOrderedAt(toDhakaInputValue(new Date()));
@@ -355,6 +368,7 @@ export function LeadManager({
     orderNoTouched.current = true;
     setItemRows(rowsFromItemsText(l.itemsText));
     setTotal(String(l.total));
+    setDelivery(String(l.deliveryCharge));
     // An existing order's total was already agreed; the items must not
     // silently rewrite it just because they were loaded back in.
     setTotalTouched(true);
@@ -600,7 +614,19 @@ export function LeadManager({
       header: "Total",
       align: "right",
       sortValue: (l) => l.total,
-      cell: (l) => <Money value={l.total} />,
+      // The grand total, with the shipping inside it named underneath — the
+      // caller quotes the one figure, and the packer needs to know how much of
+      // it isn't goods.
+      cell: (l) => (
+        <span className="block">
+          <Money value={l.total} />
+          {l.deliveryCharge > 0 && (
+            <span className="block text-xs text-muted-foreground">
+              incl. <Money value={l.deliveryCharge} /> delivery
+            </span>
+          )}
+        </span>
+      ),
     },
     {
       key: "status",
@@ -916,7 +942,29 @@ export function LeadManager({
                 <LeadItemsEditor slug={slug} rows={itemRows} onChange={setItemRows} />
               </div>
               <div className="grid content-start gap-1.5">
-                <Label htmlFor="total">Total</Label>
+                <Label htmlFor="deliveryCharge">Delivery charge</Label>
+                <Input
+                  id="deliveryCharge"
+                  name="deliveryCharge"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={delivery}
+                  onChange={(e) => setDelivery(e.target.value)}
+                />
+                {/* Works from whichever end is known. A catalogue order adds
+                    its items up and delivery on top; a phone order with
+                    free-typed items has no price to add, so the split is read
+                    back out of the total the caller agreed. */}
+                {breakdown && (
+                  <p className="text-xs text-muted-foreground">
+                    Products <Money value={breakdown.goods} /> + delivery{" "}
+                    <Money value={breakdown.delivery} />
+                  </p>
+                )}
+              </div>
+              <div className="grid content-start gap-1.5">
+                <Label htmlFor="total">Total (with delivery)</Label>
                 <Input
                   id="total"
                   name="total"
@@ -938,7 +986,8 @@ export function LeadManager({
                       setTotal(String(suggestedTotal));
                     }}
                   >
-                    Use <Money value={suggestedTotal} /> from the items
+                    Use <Money value={suggestedTotal} />
+                    {deliveryAmount > 0 ? " (products + delivery)" : " from the items"}
                   </button>
                 )}
               </div>

@@ -110,6 +110,7 @@ export default async function LeadsPage({
     altPhone: l.altPhone,
     address: l.address,
     itemsText: l.itemsText,
+    deliveryCharge: Number(l.deliveryCharge),
     total: Number(l.total),
     callStatus: l.callStatus as string,
     callAttempts: l.callAttempts,
