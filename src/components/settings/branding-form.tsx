@@ -3,7 +3,11 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { updateWorkspaceLogo, updateWorkspaceName } from "@/server/actions/workspace";
+import {
+  updateWorkspaceLogo,
+  updateWorkspaceName,
+  updateWorkspaceWebsite,
+} from "@/server/actions/workspace";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -47,16 +51,20 @@ export function BrandingForm({
   slug,
   initialName,
   initialLogoUrl,
+  initialWebsiteUrl,
 }: {
   slug: string;
   initialName: string;
   initialLogoUrl: string | null;
+  initialWebsiteUrl: string | null;
 }) {
   const router = useRouter();
   const [name, setName] = useState(initialName);
   const [nameSaving, setNameSaving] = useState(false);
   const [logoUrl, setLogoUrl] = useState(initialLogoUrl);
   const [saving, setSaving] = useState(false);
+  const [website, setWebsite] = useState(initialWebsiteUrl ?? "");
+  const [websiteSaving, setWebsiteSaving] = useState(false);
 
   async function onSaveName(e: React.FormEvent) {
     e.preventDefault();
@@ -65,6 +73,16 @@ export function BrandingForm({
     setNameSaving(false);
     if (!res.ok) return toast.error(res.error);
     toast.success("Name updated");
+    router.refresh();
+  }
+
+  async function onSaveWebsite(e: React.FormEvent) {
+    e.preventDefault();
+    setWebsiteSaving(true);
+    const res = await updateWorkspaceWebsite(slug, website);
+    setWebsiteSaving(false);
+    if (!res.ok) return toast.error(res.error);
+    toast.success("Website updated");
     router.refresh();
   }
 
@@ -121,6 +139,29 @@ export function BrandingForm({
           </div>
           <p className="text-xs text-muted-foreground">
             Shown on invoices and in the header when no logo is set. The URL/address stays the same.
+          </p>
+        </form>
+
+        <form onSubmit={onSaveWebsite} className="space-y-2">
+          <Label htmlFor="ws-website">Website</Label>
+          <div className="flex flex-wrap gap-2">
+            <Input
+              id="ws-website"
+              value={website}
+              onChange={(e) => setWebsite(e.target.value)}
+              placeholder="gedushop.com"
+              maxLength={100}
+              className="max-w-xs flex-1"
+            />
+            <Button
+              type="submit"
+              disabled={websiteSaving || website.trim() === (initialWebsiteUrl ?? "")}
+            >
+              {websiteSaving ? "Saving…" : "Save"}
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Printed on order forms so a customer can reorder. Leave empty to omit the line.
           </p>
         </form>
 

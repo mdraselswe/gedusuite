@@ -27,7 +27,7 @@ export default async function AppearancePage({
     }),
     prisma.workspace.findUnique({
       where: { id: access.workspaceId },
-      select: { name: true, logoUrl: true },
+      select: { name: true, logoUrl: true, websiteUrl: true },
     }),
   ]);
 
@@ -39,6 +39,7 @@ export default async function AppearancePage({
           slug={slug}
           initialName={workspace?.name ?? ""}
           initialLogoUrl={workspace?.logoUrl ?? null}
+          initialWebsiteUrl={workspace?.websiteUrl ?? null}
         />
       )}
       <AppearanceForm

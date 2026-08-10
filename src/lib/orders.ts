@@ -22,6 +22,26 @@ export type OrderWithTotals = {
 const n = (v: Prisma.Decimal | number): number => Number(v);
 const round2 = (v: number): number => Math.round((v + Number.EPSILON) * 100) / 100;
 
+/**
+ * The number a customer-facing document identifies this order by.
+ *
+ * If this went out with a courier and the courier's own order number has been
+ * recorded, that's what actually identifies the shipment — it's the number the
+ * customer quotes and the number the courier can look up. Self-delivery (or a
+ * courier parcel with no id yet) falls back to the internal id. Shared by the
+ * invoice and the printed order form so a customer holding one and a member
+ * searching the other are looking at the same string.
+ */
+export function invoiceNumber(order: {
+  id: string;
+  deliveryType: string;
+  courierTrackingId?: string | null;
+}): string {
+  return order.deliveryType === "COURIER" && order.courierTrackingId
+    ? order.courierTrackingId
+    : order.id.slice(-8).toUpperCase();
+}
+
 export type OrderTotals = {
   grossRevenue: number; // full ordered quantity × price, before returns/discounts
   itemDiscounts: number; // scaled to the quantity still kept

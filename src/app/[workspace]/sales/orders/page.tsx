@@ -4,6 +4,7 @@ import { serverT } from "@/lib/session";
 import { can } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
 import { computeOrderTotals, orderNetProfit } from "@/lib/orders";
+import { orderRecipient } from "@/lib/order-recipient";
 import { amountOutstanding } from "@/lib/order-cash";
 import { OrderManager } from "@/components/sales/order-manager";
 import { variantFullName } from "@/lib/variants";
@@ -104,6 +105,9 @@ export default async function OrdersPage({
       ? {
           OR: [
             { customer: { name: { contains: q, mode: "insensitive" as const } } },
+            // An order shipped under a different name has to be findable by
+            // that name — it's the one on the parcel and on the invoice.
+            { shipName: { contains: q, mode: "insensitive" as const } },
             { courierTrackingId: { contains: q, mode: "insensitive" as const } },
           ],
         }
@@ -141,7 +145,7 @@ export default async function OrdersPage({
       skip: (page - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
       include: {
-        customer: { select: { name: true } },
+        customer: { select: { name: true, phone: true, address: true } },
         heldBy: { include: { user: { select: { name: true, email: true } } } },
         items: {
           include: {
@@ -170,6 +174,7 @@ export default async function OrdersPage({
         select: {
           id: true,
           customerName: true,
+          phone: true,
           convertedCustomerId: true,
           itemsText: true,
           channel: true,
@@ -183,6 +188,7 @@ export default async function OrdersPage({
         leadId: leadRow.id,
         customerId: leadRow.convertedCustomerId,
         customerName: leadRow.customerName,
+        phone: leadRow.phone,
         itemsText: leadRow.itemsText,
         channel: leadRow.channel,
         address: leadRow.address,
@@ -196,7 +202,20 @@ export default async function OrdersPage({
       id: o.id,
       date: o.date.toISOString().slice(0, 10),
       customerId: o.customerId,
+      // The customer record's own name — what the customer picker shows, and
+      // what "this buyer" means across their history.
       customerName: o.customer?.name ?? "Walk-in",
+      // Who THIS parcel went to. Usually identical; different when a repeat
+      // buyer sent one somewhere else, and then the list has to say so or the
+      // order can't be found by the name it shipped under.
+      recipientName: orderRecipient(o).name ?? "Walk-in",
+      // Both halves, so the edit form can show what this parcel was addressed
+      // to AND tell whether that differs from the customer record.
+      customerPhone: o.customer?.phone ?? null,
+      customerAddress: o.customer?.address ?? null,
+      shipName: o.shipName,
+      shipPhone: o.shipPhone,
+      shipAddress: o.shipAddress,
       status: o.status,
       deliveryType: o.deliveryType,
       courierTrackingId: o.courierTrackingId,

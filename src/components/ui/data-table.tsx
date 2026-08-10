@@ -20,6 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
   Table,
@@ -54,6 +55,22 @@ export type Column<T> = {
 const DEFAULT_SORT = "__default__";
 
 /**
+ * Row selection, owned by the caller rather than the table.
+ *
+ * The set lives outside on purpose: this table filters, sorts and pages its
+ * rows client-side, so a selection held internally would quietly reset — or
+ * worse, silently keep rows the user can no longer see with no way to tell.
+ * The page that acts on the selection is the page that should hold it.
+ */
+export type DataTableSelection = {
+  selected: Set<string>;
+  /** Called with every affected row key and the state they should all take. */
+  onChange: (keys: string[], selected: boolean) => void;
+  /** Header checkbox tooltip/aria, e.g. "Select all orders on this page". */
+  label?: string;
+};
+
+/**
  * Responsive data list (TECH_SPEC §10): a real table at md+ and a stacked
  * card layout below md — never a horizontally scrolling page on a phone.
  *
@@ -80,6 +97,7 @@ export function DataTable<T>({
   colorGroupBy,
   colorToggleLabel = "Multicolor",
   rowTone,
+  selection,
 }: {
   columns: Column<T>[];
   rows: T[];
@@ -104,6 +122,8 @@ export function DataTable<T>({
    * this is the data saying something about itself.
    */
   rowTone?: (row: T) => string | undefined;
+  /** Adds a leading checkbox column. Omit for a table nothing acts on in bulk. */
+  selection?: DataTableSelection;
 }) {
   const [pageState, setPageState] = useState(1);
   const [query, setQuery] = useState("");
@@ -168,6 +188,13 @@ export function DataTable<T>({
       return next;
     });
   }
+
+  // Header checkbox acts on what the user can actually see — the current page
+  // after search and sort — never on rows hidden behind a filter or a page
+  // they'd have no way of knowing they'd just selected.
+  const pageKeys = pageRows.map(rowKey);
+  const selectedOnPage = selection ? pageKeys.filter((k) => selection.selected.has(k)).length : 0;
+  const allOnPageSelected = selectedOnPage > 0 && selectedOnPage === pageKeys.length;
 
   const toolbar = hasToolbar && (
     <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -277,6 +304,18 @@ export function DataTable<T>({
             <Table containerClassName={stickyHeader ? "max-h-[75vh] overflow-auto" : undefined}>
               <TableHeader>
                 <TableRow>
+                  {selection && (
+                    <TableHead
+                      className={cn("w-10", stickyHeader && "sticky top-0 z-10 bg-background")}
+                    >
+                      <Checkbox
+                        checked={allOnPageSelected}
+                        indeterminate={selectedOnPage > 0 && !allOnPageSelected}
+                        onCheckedChange={(on) => selection.onChange(pageKeys, on === true)}
+                        aria-label={selection.label ?? "Select all rows"}
+                      />
+                    </TableHead>
+                  )}
                   {visibleColumns.map((c) => (
                     <TableHead
                       key={c.key}
@@ -294,12 +333,25 @@ export function DataTable<T>({
                 {pageRows.map((row) => (
                   <TableRow
                     key={rowKey(row)}
+                    data-selected={selection?.selected.has(rowKey(row)) || undefined}
                     className={cn(
                       "border-l-4 border-l-transparent",
                       colorClassFor(row),
                       rowTone?.(row),
+                      // Wins over the colour-grouping tint so a selected row is
+                      // still obviously selected on a multicolour list.
+                      "data-selected:bg-primary/10",
                     )}
                   >
+                    {selection && (
+                      <TableCell>
+                        <Checkbox
+                          checked={selection.selected.has(rowKey(row))}
+                          onCheckedChange={(on) => selection.onChange([rowKey(row)], on === true)}
+                          aria-label="Select row"
+                        />
+                      </TableCell>
+                    )}
                     {visibleColumns.map((c) => (
                       <TableCell
                         key={c.key}
@@ -322,12 +374,24 @@ export function DataTable<T>({
             {pageRows.map((row) => (
               <div
                 key={rowKey(row)}
+                data-selected={selection?.selected.has(rowKey(row)) || undefined}
                 className={cn(
                   "rounded-lg border border-l-4 border-l-transparent p-3",
                   colorClassFor(row),
                   rowTone?.(row),
+                  "data-selected:bg-primary/10",
                 )}
               >
+                {selection && (
+                  <div className="mb-2 flex items-center gap-2 border-b pb-2">
+                    <Checkbox
+                      checked={selection.selected.has(rowKey(row))}
+                      onCheckedChange={(on) => selection.onChange([rowKey(row)], on === true)}
+                      aria-label="Select row"
+                    />
+                    <span className="text-xs text-muted-foreground">Select</span>
+                  </div>
+                )}
                 {visibleColumns.map((c) => {
                   const value = c.cell(row);
                   if (c.cardFullWidth) {

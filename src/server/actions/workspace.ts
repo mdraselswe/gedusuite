@@ -114,6 +114,43 @@ export async function deleteWorkspace(
   return { ok: true };
 }
 
+/**
+ * Set or clear the shop's website, printed on order forms.
+ *
+ * Stored bare (no scheme) because that's how it's printed and how a customer
+ * types it — "gedushop.com", not "https://gedushop.com/". Anything the owner
+ * pastes with a scheme or a trailing slash is normalised down to that, so the
+ * printed line doesn't depend on how carefully it was pasted.
+ */
+export async function updateWorkspaceWebsite(
+  slug: string,
+  raw: string,
+): Promise<ActionResult> {
+  const access = await workspaceAccess(slug);
+  if (!access) return { ok: false, error: "Workspace not found or access denied" };
+  if (access.role !== "OWNER") {
+    return { ok: false, error: "Only the workspace owner can change the website" };
+  }
+
+  const cleaned = raw
+    .trim()
+    .replace(/^https?:\/\//i, "")
+    .replace(/\/+$/, "");
+  if (cleaned.length > 100) return { ok: false, error: "Website address is too long" };
+  // Deliberately loose — a shop address can be a bare domain, a subdomain or a
+  // Facebook page path. It only has to look like a host, not resolve.
+  if (cleaned && !/^[a-z0-9.-]+\.[a-z]{2,}(\/\S*)?$/i.test(cleaned)) {
+    return { ok: false, error: "Enter a website like gedushop.com" };
+  }
+
+  await prisma.workspace.update({
+    where: { id: access.workspaceId },
+    data: { websiteUrl: cleaned || null },
+  });
+  revalidatePath(`/${slug}`, "layout");
+  return { ok: true };
+}
+
 /** Set or clear the workspace's brand logo (shown in the nav header, invoices, report PDFs). */
 export async function updateWorkspaceLogo(
   slug: string,

@@ -16,8 +16,12 @@ import {
   setOrderSource,
 } from "@/server/actions/orders";
 import { linkLeadToOrder } from "@/server/actions/leads";
-import { createCustomer } from "@/server/actions/customers";
-import { Button } from "@/components/ui/button";
+import {
+  createCustomer,
+  customerContact,
+  findCustomerByPhone,
+} from "@/server/actions/customers";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -55,7 +59,7 @@ import { ORDER_SOURCES, ORDER_SOURCE_LABEL } from "@/lib/order-source";
 import { OrderSourceCell } from "@/components/sales/order-source-cell";
 import { OrderCampaignCell, type CampaignOption } from "@/components/sales/order-campaign-cell";
 import { quoteCourier, breakEvenDeliveryCharge, type CourierRules } from "@/lib/courier";
-import { Columns3, Plus, ShoppingCart, Trash2, MoreVertical, X } from "lucide-react";
+import { Columns3, Plus, Printer, ShoppingCart, Trash2, MoreVertical, X } from "lucide-react";
 import { formatStock } from "@/lib/units";
 import { cn } from "@/lib/utils";
 import { Money } from "@/components/ui/money";
@@ -77,6 +81,14 @@ type OrderRow = {
   date: string;
   customerId: string | null;
   customerName: string;
+  /** Who this parcel was addressed to — the snapshot, or the customer record. */
+  recipientName: string;
+  customerPhone: string | null;
+  customerAddress: string | null;
+  /** This order's own delivery details; null = same as the customer record. */
+  shipName: string | null;
+  shipPhone: string | null;
+  shipAddress: string | null;
   status: string;
   deliveryType: string;
   courierTrackingId: string | null;
@@ -106,6 +118,9 @@ type OrderRow = {
   gifts: { label: string; quantity: number }[];
   items: OrderItem[];
 };
+/** A cleared delivery block. Module scope: both dialogs read it. */
+const EMPTY_SHIP = { name: "", phone: "", address: "" };
+
 type Perms = { canAdd: boolean; canEdit: boolean; canViewProfit: boolean };
 /** A courier's rules plus its zones — everything quoteCourier needs. */
 export type CourierOption = CourierRules & {
@@ -119,6 +134,7 @@ export type FromLead = {
   leadId: string;
   customerId: string | null;
   customerName: string;
+  phone: string;
   /** What the caller wrote down — free text, so it's shown, not auto-added. */
   itemsText: string;
   /** The lead's channel, prefilled onto the order's "came from". */
@@ -460,9 +476,28 @@ export function OrderManager({
   const [editCourierZoneId, setEditCourierZoneId] = useState<string>(NONE);
   const [editWeightKg, setEditWeightKg] = useState("");
   const [editCustomer, setEditCustomer] = useState<ComboOption | null>(null);
+  const [editShip, setEditShip] = useState(EMPTY_SHIP);
   const [editDeliveryType, setEditDeliveryType] = useState("SELF");
   const [editPaymentMethod, setEditPaymentMethod] = useState("CASH");
   const [editSaving, setEditSaving] = useState(false);
+
+  /**
+   * Where this order is being delivered, which is not the same question as who
+   * the customer is. The customer record is one row per phone number and holds
+   * their whole history; a repeat buyer sending a parcel to their office, or to
+   * a relative, is still that customer. Prefilled from their record and edited
+   * freely — anything actually different is stored on the order, so no past
+   * order is rewritten and no new one goes to a stale address.
+   */
+  const [ship, setShip] = useState(EMPTY_SHIP);
+
+  /** Select a customer and pull their current details into the delivery block. */
+  async function chooseCustomer(opt: ComboOption | null) {
+    setCustomer(opt);
+    if (!opt) return setShip(EMPTY_SHIP);
+    const c = await customerContact(slug, opt.value);
+    if (c) setShip({ name: c.name, phone: c.phone ?? "", address: c.address ?? "" });
+  }
 
   // ── Inline "new customer" dialog (shortcut from the order form) ──
   const [newCustomerOpen, setNewCustomerOpen] = useState(false);
@@ -470,14 +505,62 @@ export function OrderManager({
 
   async function onCreateCustomer(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+
+    // A second row for a number that already has one splits that buyer's order
+    // history and outstanding balance across two records — and hides how often
+    // the number has cancelled, which is the thing worth knowing before a COD
+    // parcel. The lead list already matches on phone before creating; this is
+    // the other door into the same table.
+    //
+    // A warning and not a block, deliberately: a shared family or shop number
+    // is a real thing (see lib/phone), and a hard rule would only teach people
+    // to type a stray space to get past it.
+    const typedPhone = String(fd.get("phone") ?? "").trim();
+    if (typedPhone) {
+      const existing = await findCustomerByPhone(slug, typedPhone);
+      if (existing) {
+        // Confirm is the separate record and cancel is the existing one, not
+        // the other way round: dismissing with Escape lands on cancel, and the
+        // outcome of a stray Escape must be the one that writes nothing.
+        const addSeparate = await confirmDialog({
+          title: "This number already has a customer",
+          description: `${typedPhone} belongs to "${existing.name}". Adding a second record splits that buyer's order history between two rows.`,
+          confirmText: "Add separate record",
+          cancelText: `Use ${existing.name}`,
+        });
+        if (!addSeparate) {
+          setCustomer({
+            value: existing.id,
+            label: existing.phone ? `${existing.name} · ${existing.phone}` : existing.name,
+          });
+          // Keep what was just typed rather than reloading the old record over
+          // it. This is exactly the case the snapshot exists for: the same
+          // buyer, a new name or address for this parcel. Overwriting here
+          // silently threw away the address the person had come to enter.
+          setShip({
+            name: String(fd.get("name") ?? "").trim() || existing.name,
+            phone: typedPhone || existing.phone || "",
+            address: String(fd.get("address") ?? "").trim() || existing.address || "",
+          });
+          setNewCustomerOpen(false);
+          toast.success(`Using "${existing.name}" — this order's delivery details kept`);
+          return;
+        }
+      }
+    }
+
     setNewCustomerSaving(true);
-    const res = await createCustomer(slug, new FormData(e.currentTarget));
+    const res = await createCustomer(slug, fd);
     setNewCustomerSaving(false);
     if (!res.ok) return toast.error(res.error ?? "Failed");
     // Select the fresh customer on the order right away (label matches the
     // search results' "Name · phone" format).
     if (res.id && res.name) {
-      setCustomer({ value: res.id, label: res.phone ? `${res.name} · ${res.phone}` : res.name });
+      void chooseCustomer({
+        value: res.id,
+        label: res.phone ? `${res.name} · ${res.phone}` : res.name,
+      });
     }
     toast.success("Customer added & selected");
     setNewCustomerOpen(false);
@@ -589,6 +672,35 @@ export function OrderManager({
 
   const shownOrders = orders;
 
+  // Which orders are ticked for printing. Held here rather than inside
+  // DataTable so paging or searching the list can't quietly drop them, and
+  // pruned to what's actually on screen when the server sends a new page —
+  // otherwise "Print 4 orders" could include two the user can no longer see.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    const visible = new Set(orders.map((o) => o.id));
+    setSelectedIds((prev) => {
+      const next = new Set([...prev].filter((id) => visible.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [orders]);
+
+  function changeSelection(ids: string[], selected: boolean) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const id of ids) {
+        if (selected) next.add(id);
+        else next.delete(id);
+      }
+      return next;
+    });
+  }
+
+  // Printed in the order they appear in the list, not the order they were
+  // clicked — the person collating the printout reads it against the screen.
+  const selectedInListOrder = shownOrders.filter((o) => selectedIds.has(o.id)).map((o) => o.id);
+  const sheetCount = Math.ceil(selectedInListOrder.length / 2);
+
   // Arriving from a call-list row opens the order form already pointed at that
   // customer. Runs once: reopening the dialog after a save would be a trap,
   // and the URL still carries ?fromLead until the next navigation.
@@ -599,6 +711,14 @@ export function OrderManager({
     if (fromLead.customerId) {
       setCustomer({ value: fromLead.customerId, label: fromLead.customerName });
     }
+    // Deliberately the lead's details, not the linked customer's. A repeat
+    // buyer who gave a new address on this order gave it to the caller, and
+    // the customer record still holds the old one.
+    setShip({
+      name: fromLead.customerName,
+      phone: fromLead.phone,
+      address: fromLead.address ?? "",
+    });
     // The call taker already agreed a price with the customer; the items are
     // free text and can't be matched to catalogue variants reliably, so the
     // total is offered and the lines are shown for the person to pick.
@@ -610,6 +730,7 @@ export function OrderManager({
     setItems([emptyItem()]);
     setGifts([]);
     setCustomer(null);
+    setShip(EMPTY_SHIP);
     setHeldById(NONE);
     setStatus("PENDING");
     setDeliveryType("SELF");
@@ -930,6 +1051,13 @@ export function OrderManager({
     setEditPackaging(String(o.packagingCost));
     setEditOrder(o);
     setEditCustomer(o.customerId ? { value: o.customerId, label: o.customerName } : null);
+    // The snapshot where there is one, the customer record where there isn't —
+    // the same fallback the documents use, so what's edited is what prints.
+    setEditShip({
+      name: o.shipName ?? o.customerName ?? "",
+      phone: o.shipPhone ?? o.customerPhone ?? "",
+      address: o.shipAddress ?? o.customerAddress ?? "",
+    });
     setEditDeliveryType(o.deliveryType);
     setEditPaymentMethod(o.paymentMethod);
     setEditHeldById(o.heldByMembershipId ?? NONE);
@@ -1067,6 +1195,11 @@ export function OrderManager({
       <DataTable
         rows={shownOrders}
         rowKey={(o) => o.id}
+        selection={{
+          selected: selectedIds,
+          onChange: changeSelection,
+          label: "Select all orders on this page",
+        }}
         rowTone={(o) => ROW_TONE[o.status]}
         colorGroupBy={(o) => o.date}
         colorToggleLabel="Color by date"
@@ -1087,7 +1220,15 @@ export function OrderManager({
               cardTitle: true,
               cell: (o) => (
                 <span>
-                  {o.customerName}
+                  {o.recipientName}
+                  {/* Only when the two disagree: the row is findable by the
+                      name it shipped under, and the buyer it belongs to is
+                      still visible underneath. */}
+                  {o.recipientName !== o.customerName && (
+                    <span className="ml-1 text-xs text-muted-foreground">
+                      (account: {o.customerName})
+                    </span>
+                  )}
                   {o.gifts.length > 0 && (
                     <span
                       className="ml-1.5 text-xs"
@@ -1290,6 +1431,37 @@ export function OrderManager({
           ] as Column<OrderRow>[]
         }
       />
+
+      {/* Bulk-print bar. Fixed to the bottom of the viewport rather than
+          placed after the table: on a 50-row list the user ticks a row near
+          the top and would otherwise have to scroll to the end to find out
+          what they can do with it. */}
+      {selectedInListOrder.length > 0 && (
+        <div className="fixed inset-x-0 bottom-0 z-40 border-t bg-background/95 p-3 shadow-lg backdrop-blur print:hidden">
+          <div className="mx-auto flex max-w-4xl flex-wrap items-center justify-between gap-3">
+            <span className="text-sm">
+              <strong>{selectedInListOrder.length}</strong> selected ·{" "}
+              <span className="text-muted-foreground">
+                {sheetCount} A4 sheet{sheetCount === 1 ? "" : "s"}
+                {selectedInListOrder.length % 2 === 1 && ", last one half blank"}
+              </span>
+            </span>
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
+                Clear
+              </Button>
+              <Link
+                href={`/${slug}/sales/orders/forms?ids=${selectedInListOrder.join(",")}`}
+                target="_blank"
+                className={buttonVariants({ size: "sm" })}
+              >
+                <Printer data-icon="inline-start" />
+                Print order forms
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* New order dialog */}
       <Dialog open={open} onOpenChange={setOpen}>
@@ -1663,7 +1835,7 @@ export function OrderManager({
                       </div>
                       <AsyncCombobox
                         value={customer}
-                        onChange={setCustomer}
+                        onChange={chooseCustomer}
                         fetchPage={async (q, cursor) => {
                           const res = await searchCustomers(slug, q, cursor);
                           return res.ok ? { items: res.items, next: res.next } : { items: [], next: null };
@@ -1671,6 +1843,7 @@ export function OrderManager({
                         placeholder="Walk-in — search to attach…"
                         emptyText="No customers"
                       />
+                      <ShipFields value={ship} onChange={setShip} />
                     </div>
                     <Field name="date" label="Date" required>
                       <Input id="o-date" name="date" type="date" required defaultValue={todayInputValue()} />
@@ -2323,7 +2496,18 @@ export function OrderManager({
                 <Label>Customer</Label>
                 <AsyncCombobox
                   value={editCustomer}
-                  onChange={setEditCustomer}
+                  onChange={async (opt) => {
+                    setEditCustomer(opt);
+                    if (!opt) return;
+                    const c = await customerContact(slug, opt.value);
+                    if (c) {
+                      setEditShip({
+                        name: c.name,
+                        phone: c.phone ?? "",
+                        address: c.address ?? "",
+                      });
+                    }
+                  }}
                   fetchPage={async (q, cursor) => {
                     const res = await searchCustomers(slug, q, cursor);
                     return res.ok ? { items: res.items, next: res.next } : { items: [], next: null };
@@ -2331,6 +2515,7 @@ export function OrderManager({
                   placeholder="Walk-in — search to attach…"
                   emptyText="No customers"
                 />
+                <ShipFields value={editShip} onChange={setEditShip} />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <Field name="date" label="Date" required>
@@ -2595,6 +2780,54 @@ export function OrderManager({
           )}
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+/**
+ * The delivery block: who this parcel goes to and where.
+ *
+ * Prefilled from the selected customer and then left alone. Only what actually
+ * differs from their record is stored on the order (see shipSnapshot in
+ * server/actions/orders), so an untouched block costs nothing and a corrected
+ * customer record still reaches every document that had nothing else to say.
+ */
+function ShipFields({
+  value,
+  onChange,
+}: {
+  value: { name: string; phone: string; address: string };
+  onChange: (v: { name: string; phone: string; address: string }) => void;
+}) {
+  return (
+    <div className="mt-3 space-y-2 rounded-md border border-dashed p-3">
+      <div className="text-xs font-medium text-muted-foreground">
+        Deliver to — printed on the invoice and the order form
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <Input
+          name="shipName"
+          value={value.name}
+          onChange={(e) => onChange({ ...value, name: e.target.value })}
+          placeholder="Name"
+          aria-label="Delivery name"
+        />
+        <Input
+          name="shipPhone"
+          value={value.phone}
+          onChange={(e) => onChange({ ...value, phone: e.target.value })}
+          placeholder="Phone"
+          aria-label="Delivery phone"
+        />
+      </div>
+      <Textarea
+        name="shipAddress"
+        rows={2}
+        value={value.address}
+        onChange={(e) => onChange({ ...value, address: e.target.value })}
+        placeholder="Full address"
+        aria-label="Delivery address"
+      />
     </div>
   );
 }

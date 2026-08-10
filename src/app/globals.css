@@ -196,6 +196,70 @@ html[lang="bn"] {
   }
 }
 
+/* ── Printed A4 order-form sheets ───────────────────────────────────── */
+
+/*
+ * A sheet is a real A4 landscape page: the element is 297×210mm and its 0.2in
+ * print margin is its own padding, so the on-screen preview and the captured
+ * PDF are the same object at different scales rather than two layouts that
+ * have to be kept in agreement.
+ *
+ * The frame carries the SCALED size and the sheet inside it is transformed.
+ * A transform alone doesn't change the layout box, so without the frame every
+ * sheet after the first would sit under the un-scaled footprint of the one
+ * before it. --sheet-zoom is set by OrderFormSheetView.
+ */
+.sheet-preview [data-sheet-frame] {
+  width: calc(297mm * var(--sheet-zoom, 1));
+  height: calc(210mm * var(--sheet-zoom, 1));
+  flex: none;
+}
+
+.sheet-preview [data-sheet] {
+  width: 297mm;
+  height: 210mm;
+  padding: 0.2in;
+  box-sizing: border-box;
+  background: #fff;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  /* minmax(0,1fr) rather than the default auto row: a grid row sized to its
+     content will happily grow past a fixed-height container, and a slip a few
+     millimetres too tall then pushed its footer over the edge of the page,
+     where the PDF simply cropped it. The row is pinned to the sheet and the
+     slots below clip instead. */
+  grid-template-rows: minmax(0, 1fr);
+  transform: scale(var(--sheet-zoom, 1));
+  transform-origin: top left;
+}
+
+/* Whatever a slip contains, it can never spill onto the other half of the
+   sheet or off the page. Long addresses are clamped in the component; this is
+   the backstop for everything that isn't. */
+.sheet-preview [data-sheet] > div {
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* The cut line. Dashed rather than solid so it reads as "cut here" and not as
+   a table border belonging to either form. It lands at exactly 148.5mm — the
+   true half of A4 — because the two columns are equal and the sheet's padding
+   is symmetric. */
+.sheet-preview [data-slot-divider] {
+  border-left: 1px dashed #9b96c0;
+}
+
+@media print {
+  .sheet-preview [data-sheet-frame] {
+    width: 297mm;
+    height: 210mm;
+    break-after: page;
+  }
+  .sheet-preview [data-sheet] {
+    transform: none;
+  }
+}
+
 /* ── Interaction states ─────────────────────────────────────────────── */
 
 /* Ensure every interactive element shows a focus ring for keyboard users. */

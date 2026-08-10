@@ -3,7 +3,8 @@ import { notFound, redirect } from "next/navigation";
 import { workspaceAccess } from "@/lib/authz";
 import { can } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
-import { computeOrderTotals } from "@/lib/orders";
+import { computeOrderTotals, invoiceNumber } from "@/lib/orders";
+import { orderRecipient } from "@/lib/order-recipient";
 import { amountCollected, amountOutstanding } from "@/lib/order-cash";
 import { DownloadInvoicePdfButton } from "@/components/invoice-actions";
 import { variantFullName } from "@/lib/variants";
@@ -53,14 +54,9 @@ export default async function InvoicePage({
 
   const totals = computeOrderTotals(order);
 
-  // If this was a courier delivery and the courier's own order number has
-  // been recorded, that's what actually identifies the shipment — show it
-  // instead of the internal id. Self-delivery (or no courier id yet) keeps
-  // the auto-generated internal order number.
-  const orderNumber =
-    order.deliveryType === "COURIER" && order.courierTrackingId
-      ? order.courierTrackingId
-      : order.id.slice(-8).toUpperCase();
+  const orderNumber = invoiceNumber(order);
+  // What this order was addressed to, not what the customer record says now.
+  const to = orderRecipient(order);
 
   return (
     <div className="mx-auto max-w-2xl space-y-6 print:max-w-full">
@@ -92,9 +88,9 @@ export default async function InvoicePage({
 
         <div className="mt-6 text-sm">
           <div className="font-semibold">Bill to</div>
-          <div>{order.customer?.name ?? "Walk-in customer"}</div>
-          {order.customer?.phone && <div>{order.customer.phone}</div>}
-          {order.customer?.address && <div>{order.customer.address}</div>}
+          <div>{to.name ?? "Walk-in customer"}</div>
+          {to.phone && <div>{to.phone}</div>}
+          {to.address && <div>{to.address}</div>}
         </div>
 
         <div className="mt-6">

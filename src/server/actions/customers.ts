@@ -138,7 +138,7 @@ export async function updateCustomer(
 export async function findCustomerByPhone(
   slug: string,
   phone: string,
-): Promise<{ id: string; name: string; phone: string | null } | null> {
+): Promise<{ id: string; name: string; phone: string | null; address: string | null } | null> {
   const gate = await requireAccess(slug, "customers", "view");
   if (!gate.ok) return null;
 
@@ -150,7 +150,9 @@ export async function findCustomerByPhone(
       workspaceId: gate.access.workspaceId,
       OR: [{ phone: normalized }, { altPhone: normalized }],
     },
-    select: { id: true, name: true, phone: true },
+    // address included so a caller that finds a match can offer it as this
+    // order's delivery address rather than re-fetching.
+    select: { id: true, name: true, phone: true, address: true },
     orderBy: { createdAt: "asc" },
   });
 }
@@ -179,4 +181,22 @@ export async function deleteCustomer(
   }
   revalidatePath(`/${slug}/customers`);
   return { ok: true };
+}
+
+/**
+ * A customer's current contact details, for prefilling an order's delivery
+ * fields. Separate from searchCustomers because that returns a combobox option
+ * (value/label) and widening it would change every caller for one screen's
+ * benefit.
+ */
+export async function customerContact(
+  slug: string,
+  id: string,
+): Promise<{ name: string; phone: string | null; address: string | null } | null> {
+  const gate = await requireAccess(slug, "customers", "view");
+  if (!gate.ok) return null;
+  return prisma.customer.findFirst({
+    where: { id, workspaceId: gate.access.workspaceId },
+    select: { name: true, phone: true, address: true },
+  });
 }

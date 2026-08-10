@@ -6,6 +6,8 @@ import { prisma } from "@/lib/prisma";
 import { LeadManager } from "@/components/leads/lead-manager";
 import { formatDhakaDate, formatDhakaTime, toDhakaInputValue } from "@/lib/dhaka-time";
 import { leadFulfilment } from "@/lib/lead-fulfilment";
+import { normalizePhone } from "@/lib/phone";
+import { buildBuyerHistory, historyForLead } from "@/lib/buyer-history";
 import { Pagination, parsePage } from "@/components/ui/pagination";
 import { PageHeader } from "@/components/ui/page-header";
 
@@ -68,6 +70,29 @@ export default async function LeadsPage({
     : [];
   const orderById = new Map(linkedOrders.map((o) => [o.id, o]));
 
+  // What each number has ordered before. Two more queries for the whole page
+  // rather than a lookup per row: the phones on screen, the customer records
+  // they match, and those customers' orders.
+  const leadPhones = [
+    ...new Set(leads.map((l) => normalizePhone(l.phone)).filter((p): p is string => !!p)),
+  ];
+  const buyers = leadPhones.length
+    ? await prisma.customer.findMany({
+        where: {
+          workspaceId: access.workspaceId,
+          OR: [{ phone: { in: leadPhones } }, { altPhone: { in: leadPhones } }],
+        },
+        select: { id: true, phone: true, altPhone: true },
+      })
+    : [];
+  const buyerOrders = buyers.length
+    ? await prisma.order.findMany({
+        where: { workspaceId: access.workspaceId, customerId: { in: buyers.map((b) => b.id) } },
+        select: { id: true, customerId: true, status: true },
+      })
+    : [];
+  const histories = buildBuyerHistory(buyers, buyerOrders);
+
   const rows = leads.map((l) => ({
     id: l.id,
     source: l.source,
@@ -94,6 +119,12 @@ export default async function LeadsPage({
     convertedCustomerId: l.convertedCustomerId,
     orderId: l.orderId,
     fulfilment: leadFulfilment(l.orderId ? orderById.get(l.orderId) : null),
+    history: historyForLead(
+      histories,
+      l.phone,
+      l.orderId,
+      (l.orderId ? orderById.get(l.orderId)?.status : null) ?? null,
+    ),
   }));
 
   return (

@@ -43,6 +43,9 @@ const HEADER_AUDIT_FIELDS = [
   "codFeeCost",
   "courierId",
   "courierZoneId",
+  "shipName",
+  "shipPhone",
+  "shipAddress",
   "weightKg",
   "cancelledCollected",
   "paymentMethod",
@@ -89,6 +92,32 @@ const GiftSchema = z
     message: "Each gift needs a product or a name",
   });
 
+/**
+ * The delivery details worth storing on the order itself.
+ *
+ * Anything matching the customer record is stored as null, not copied: a
+ * snapshot taken on every order would freeze whatever was in the record at the
+ * time, so correcting a misspelt name or a typo in an address later would
+ * reach the customer page and nothing else. Null means "read the customer",
+ * which is what orders taken before this existed already do — see
+ * lib/order-recipient.
+ */
+function shipSnapshot(
+  d: { shipName?: string; shipPhone?: string; shipAddress?: string },
+  customer: { name: string; phone: string | null; address: string | null } | null,
+) {
+  const differs = (typed: string | undefined, current: string | null | undefined) => {
+    const t = typed?.trim();
+    if (!t) return null;
+    return t === (current?.trim() ?? "") ? null : t;
+  };
+  return {
+    shipName: differs(d.shipName, customer?.name),
+    shipPhone: differs(d.shipPhone, customer?.phone),
+    shipAddress: differs(d.shipAddress, customer?.address),
+  };
+}
+
 const OrderSchema = z.object({
   customerId: z.string().optional().or(z.literal("")),
   date: z.coerce.date(),
@@ -106,6 +135,12 @@ const OrderSchema = z.object({
   // courier is actually booked, so this is commonly filled in after the order
   // already exists (see updateCourierTrackingId below), not just at creation.
   courierTrackingId: z.string().trim().max(100).optional().or(z.literal("")),
+  // Where this parcel goes, as agreed for THIS order. Blank means "same as the
+  // customer record" and is stored as null, so a later correction to that
+  // record still reaches the documents — see lib/order-recipient.
+  shipName: z.string().trim().max(120).optional().or(z.literal("")),
+  shipPhone: z.string().trim().max(40).optional().or(z.literal("")),
+  shipAddress: z.string().trim().max(500).optional().or(z.literal("")),
   paymentMethod: z.enum(["CASH", "BKASH", "NAGAD", "COURIER_COLLECTION", "OTHER"]),
   paymentStatus: z.enum(["PAID", "UNPAID", "PARTIAL"]),
   /** Only read when paymentStatus is PARTIAL — how much the advance was. */
@@ -303,6 +338,9 @@ export async function createOrder(
     deliveryCharge: formData.get("deliveryCharge") ?? 0,
     deliveryCost: formData.get("deliveryCost") ?? undefined,
     courierTrackingId: formData.get("courierTrackingId") ?? undefined,
+    shipName: formData.get("shipName") ?? undefined,
+    shipPhone: formData.get("shipPhone") ?? undefined,
+    shipAddress: formData.get("shipAddress") ?? undefined,
     paymentMethod: formData.get("paymentMethod"),
     paymentStatus: formData.get("paymentStatus"),
     amountPaid: formData.get("amountPaid") ?? undefined,
@@ -339,7 +377,7 @@ export async function createOrder(
     d.customerId
       ? prisma.customer.findFirst({
           where: { id: d.customerId, workspaceId },
-          select: { id: true, name: true },
+          select: { id: true, name: true, phone: true, address: true },
         })
       : Promise.resolve(null),
     d.heldByMembershipId
@@ -474,6 +512,10 @@ export async function createOrder(
         weightKg: d.weightKg ?? null,
         codFeeCost: courierQuote.codFeeCost,
         courierTrackingId: d.courierTrackingId?.trim() || null,
+        // Only stored when it actually differs from the customer record.
+        // Copying it every time would freeze a typo in place: correct the
+        // customer later and the order would still print the old spelling.
+        ...shipSnapshot(d, customer),
         paymentMethod: d.paymentMethod,
         paymentStatus: d.paymentStatus,
         amountPaid,
@@ -551,6 +593,12 @@ const HeaderSchema = z.object({
     (v) => (v === "" || v == null ? undefined : v),
     z.coerce.number().nonnegative().optional(),
   ),
+  // Where this parcel goes, as agreed for THIS order. Blank means "same as the
+  // customer record" and is stored as null, so a later correction to that
+  // record still reaches the documents — see lib/order-recipient.
+  shipName: z.string().trim().max(120).optional().or(z.literal("")),
+  shipPhone: z.string().trim().max(40).optional().or(z.literal("")),
+  shipAddress: z.string().trim().max(500).optional().or(z.literal("")),
   paymentMethod: z.enum(["CASH", "BKASH", "NAGAD", "COURIER_COLLECTION", "OTHER"]),
   packagingCost: z.coerce.number().nonnegative().default(0),
   // Only used by an order with no gift lines — see the note where it's applied.
@@ -609,6 +657,9 @@ export async function updateOrderHeader(
     deliveryType: formData.get("deliveryType"),
     deliveryCharge: formData.get("deliveryCharge"),
     deliveryCost: formData.get("deliveryCost") ?? undefined,
+    shipName: formData.get("shipName") ?? undefined,
+    shipPhone: formData.get("shipPhone") ?? undefined,
+    shipAddress: formData.get("shipAddress") ?? undefined,
     paymentMethod: formData.get("paymentMethod"),
     packagingCost: formData.get("packagingCost"),
     giftCost: formData.get("giftCost"),
@@ -626,13 +677,15 @@ export async function updateOrderHeader(
   const d = parsed.data;
 
   let customerId: string | null = null;
+  let customer: { name: string; phone: string | null; address: string | null } | null = null;
   if (d.customerId) {
-    const customer = await prisma.customer.findFirst({
+    const found = await prisma.customer.findFirst({
       where: { id: d.customerId, workspaceId },
-      select: { id: true },
+      select: { id: true, name: true, phone: true, address: true },
     });
-    if (!customer) return { ok: false, error: "Customer not found" };
-    customerId = customer.id;
+    if (!found) return { ok: false, error: "Customer not found" };
+    customerId = found.id;
+    customer = found;
   }
 
   // Checked against this workspace: the id comes from a form, and a
@@ -694,6 +747,7 @@ export async function updateOrderHeader(
         ...(d.cancelledCollected !== undefined
           ? { cancelledCollected: d.cancelledCollected }
           : {}),
+        ...shipSnapshot(d, customer),
         paymentMethod: d.paymentMethod,
         packagingCost: d.packagingCost,
         giftCost,

@@ -29,6 +29,10 @@ model Workspace {
   slug       String   @unique // used in /[workspace]/... routes
   logoUrl    String?
   themeColor String?
+  // Shown on printed order forms so a customer holding a parcel knows where to
+  // order again. Stored per workspace rather than hardcoded — the printed
+  // documents are shared code and every shop's address is its own.
+  websiteUrl String?
   createdAt  DateTime @default(now())
 
   memberships           Membership[]
@@ -451,6 +455,22 @@ model Order {
   // cancellation looks like a pure loss when it was nearly break-even.
   cancelledCollected Decimal       @default(0) @db.Decimal(12, 2)
   courierTrackingId  String? // the courier's own order/consignment number (deliveryType=COURIER); shown on the invoice instead of the internal id
+  // Where THIS parcel was actually sent, captured when the order was entered.
+  //
+  // The customer record is the buyer's identity — one row per phone number, so
+  // history, dues and repeat-buyer counts all hold together. It is the wrong
+  // place to read a delivery address from: the same number orders again to a
+  // new address (office instead of home, a gift to a relative), and there is
+  // no answer that works. Leave the record alone and the new parcel prints the
+  // old address; edit it and every past order is retroactively rewritten to an
+  // address it was never sent to.
+  //
+  // Null on every order that predates this, and on any order whose details
+  // simply match the customer's — the documents fall back to the customer
+  // record, which is exactly what they did before.
+  shipName           String?
+  shipPhone          String?
+  shipAddress        String?
   paymentMethod      PaymentMethod @default(CASH)
   paymentStatus      PaymentStatus @default(UNPAID)
   // How much of the order the customer has actually handed over. PARTIAL was

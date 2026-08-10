@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Check, Copy, PhoneCall, RefreshCw, UserPlus } from "lucide-react";
+import { Check, Copy, PhoneCall, RefreshCw, Repeat2, UserPlus } from "lucide-react";
 import {
   createLead,
   setLeadStatus,
@@ -58,6 +58,7 @@ import {
   LEAD_FULFILMENT_TONE,
   type LeadFulfilment,
 } from "@/lib/lead-fulfilment";
+import type { BuyerHistory } from "@/lib/buyer-history";
 import { cn } from "@/lib/utils";
 import { Money } from "@/components/ui/money";
 
@@ -89,6 +90,8 @@ type Lead = {
   orderId: string | null;
   /** Derived from that order — never stored on the lead. */
   fulfilment: LeadFulfilment;
+  /** What this phone number ordered before. null when it's a first-time buyer. */
+  history: BuyerHistory | null;
 };
 type Perms = { canAdd: boolean; canDelete: boolean; canAddCustomer: boolean };
 
@@ -403,8 +406,14 @@ export function LeadManager({
     const res = await createCustomerFromLead(slug, lead.id);
     setBusyId(null);
     if (!res.ok) return toast.error(res.error);
+    // `matched` means nothing was created — this number already had a customer
+    // and the lead was linked to it. Saying "added" there is wrong twice over:
+    // no row was added, and res.customerName is the EXISTING record's name, so
+    // a lead for "Rajib" could report "Rajib Hasan added" with no explanation.
     toast.success(
-      `"${res.customerName}" added — now search this name on the sales page`,
+      res.matched
+        ? `Linked to "${res.customerName}" — this number already ordered before`
+        : `"${res.customerName}" added — now search this name on the sales page`,
     );
     router.refresh();
   }
@@ -542,6 +551,7 @@ export function LeadManager({
           <span className="inline-flex items-center gap-1">
             {l.customerName}
             <CopyButton value={l.customerName} label="name" />
+            <RepeatBadge history={l.history} />
           </span>
           {l.address && (
             <span className="flex items-start gap-1 text-xs font-normal text-muted-foreground">
@@ -1061,5 +1071,43 @@ export function LeadManager({
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+/**
+ * "This number has ordered before" — and how those orders went.
+ *
+ * Shown next to the name because that's where the caller's eye already is when
+ * the phone starts ringing. A cancellation count is the part worth acting on:
+ * a number that has refused two COD parcels is a different conversation from a
+ * returning buyer, and the app knew both facts already without ever putting
+ * them in front of the person making the call.
+ *
+ * Nothing renders for a first-time buyer. Most rows are first-time buyers, and
+ * a badge on every one of them would say nothing.
+ */
+function RepeatBadge({ history }: { history: BuyerHistory | null }) {
+  if (!history) return null;
+
+  const parts = [
+    `${history.previous} previous order${history.previous === 1 ? "" : "s"}`,
+    history.delivered > 0 ? `${history.delivered} delivered` : null,
+    history.cancelled > 0 ? `${history.cancelled} cancelled` : null,
+  ].filter(Boolean);
+
+  return (
+    <span className="inline-flex items-center gap-1">
+      <Badge variant="secondary" title={parts.join(" · ")}>
+        <Repeat2 className="size-3" aria-hidden />
+        {history.previous}
+      </Badge>
+      {/* Separate from the count, and destructive, because it is the one part
+          that should change what the caller does before shipping COD. */}
+      {history.cancelled > 0 && (
+        <Badge variant="destructive" title={`${history.cancelled} cancelled before`}>
+          {history.cancelled} cancelled
+        </Badge>
+      )}
+    </span>
   );
 }
