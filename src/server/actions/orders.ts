@@ -12,7 +12,12 @@ import {
 } from "@/lib/inventory";
 import { ConcurrentWrite, runSerializable } from "@/lib/tx";
 import { variantFullName } from "@/lib/variants";
-import { blockedByDepositedCash, depositAmount, syncOrderCashEntry } from "@/lib/order-cash";
+import {
+  blockedByDepositedCash,
+  codCollectable,
+  depositAmount,
+  syncOrderCashEntry,
+} from "@/lib/order-cash";
 import { computeOrderTotals } from "@/lib/orders";
 import { isOrderSource } from "@/lib/order-source";
 import { quoteCourier } from "@/lib/courier";
@@ -166,24 +171,6 @@ const OrderSchema = z.object({
   gifts: z.array(GiftSchema).default([]),
 });
 
-/**
- * What the courier will collect on the doorstep — the only money its
- * percentage fee is charged on.
- *
- * The test is how the customer pays, not whether the order has been settled
- * yet: an order paid by bKash in advance still travels by courier, but there
- * is nothing for it to hand over and so no fee. (Payment status would be the
- * wrong test — every COD order is UNPAID at the moment it's created.)
- *
- * `amount` is the invoice on a live order and, on a cancelled one, only what
- * was collected on a partial delivery: the courier keeps its percentage of
- * the 120 it handed over, not of the 1,200 nobody ever paid. Quoting a
- * cancellation on the undelivered invoice charged a fee several times the
- * size of the money it was supposedly taken from.
- */
-function codCollectable(paymentMethod: string, amount: number): number {
-  return paymentMethod === "COURIER_COLLECTION" ? Math.max(0, amount) : 0;
-}
 
 /**
  * What the courier will keep for this parcel.
@@ -498,9 +485,17 @@ export async function createOrder(
     for (const [vid, qty] of need) {
       if ((fresh.get(vid) ?? 0) < qty) throw new OutOfStock(byLabel.get(vid) ?? "item");
     }
+    // The next number in this workspace's own sequence. Safe as max+1 because
+    // the whole block is SERIALIZABLE — two people saving at once serialize,
+    // and the unique index is the backstop if that ever stops being true.
+    const highest = await tx.order.aggregate({
+      where: { workspaceId },
+      _max: { orderNo: true },
+    });
     const created = await tx.order.create({
       data: {
         workspaceId,
+        orderNo: (highest._max.orderNo ?? 0) + 1,
         customerId,
         date: d.date,
         status: d.status as OrderStatus,

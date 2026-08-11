@@ -4,6 +4,7 @@ import { workspaceAccess } from "@/lib/authz";
 import { can } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
 import { CourierManager } from "@/components/settings/courier-manager";
+import { apiStateOf } from "@/lib/courier-credentials";
 import { PageHeader } from "@/components/ui/page-header";
 
 /**
@@ -51,6 +52,8 @@ export default async function CouriersPage({
           returnChargeType: c.returnChargeType,
           returnChargeValue: Number(c.returnChargeValue),
           notes: c.notes,
+          // Whether a key is stored and which one, never the key itself.
+          api: apiStateOf(c),
           zones: c.zones.map((z) => ({ id: z.id, name: z.name, rate: Number(z.rate) })),
           orderCount: c._count.orders,
         }))}

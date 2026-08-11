@@ -77,6 +77,30 @@ type SettleableOrder = Pick<
 >;
 
 /**
+ * What the courier will collect on the doorstep — the only money its
+ * percentage fee is charged on, and the figure the booking API is given.
+ *
+ * The test is how the customer pays, not whether the order has been settled
+ * yet: an order paid by bKash in advance still travels by courier, but there
+ * is nothing for it to hand over and so no fee. (Payment status would be the
+ * wrong test — every COD order is UNPAID at the moment it's created.)
+ *
+ * `amount` is the invoice on a live order and, on a cancelled one, only what
+ * was collected on a partial delivery: the courier keeps its percentage of
+ * the 120 it handed over, not of the 1,200 nobody ever paid. Quoting a
+ * cancellation on the undelivered invoice charged a fee several times the
+ * size of the money it was supposedly taken from.
+ *
+ * Lives here rather than in the orders action because booking a parcel needs
+ * the same answer: the amount printed on the courier's label and the amount
+ * its fee was quoted on have to be one number, or the reconciliation page is
+ * comparing two different orders.
+ */
+export function codCollectable(paymentMethod: string, amount: number): number {
+  return paymentMethod === "COURIER_COLLECTION" ? Math.max(0, amount) : 0;
+}
+
+/**
  * What the customer has actually handed over so far.
  *
  * PAID is taken to mean the whole customer total whatever `amountPaid` holds —

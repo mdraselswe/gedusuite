@@ -58,8 +58,9 @@ import { ANY_VALUE, UrlFilterBar, type FilterDef } from "@/components/ui/filter-
 import { ORDER_SOURCES, ORDER_SOURCE_LABEL } from "@/lib/order-source";
 import { OrderSourceCell } from "@/components/sales/order-source-cell";
 import { OrderCampaignCell, type CampaignOption } from "@/components/sales/order-campaign-cell";
+import { ParcelBookingDialog } from "@/components/sales/parcel-booking-dialog";
 import { quoteCourier, breakEvenDeliveryCharge, type CourierRules } from "@/lib/courier";
-import { Columns3, Plus, Printer, ShoppingCart, Trash2, MoreVertical, X } from "lucide-react";
+import { Columns3, Plus, Printer, Send, ShoppingCart, Trash2, MoreVertical, X } from "lucide-react";
 import { formatStock } from "@/lib/units";
 import { cn } from "@/lib/utils";
 import { Money } from "@/components/ui/money";
@@ -92,6 +93,8 @@ type OrderRow = {
   status: string;
   deliveryType: string;
   courierTrackingId: string | null;
+  /** What the courier last said about the parcel — not the order's own status. */
+  courierStatus: string | null;
   paymentStatus: string;
   /** Only meaningful while paymentStatus is PARTIAL. */
   amountPaid: number;
@@ -127,6 +130,8 @@ export type CourierOption = CourierRules & {
   id: string;
   name: string;
   isDefault: boolean;
+  /** True when this courier has API credentials stored, so parcels can be booked. */
+  apiConnected: boolean;
   zones: { id: string; name: string; rate: number }[];
 };
 /** A call-list row the sales page was sent here to turn into an order. */
@@ -327,19 +332,51 @@ function formatEnum(value: string) {
 
 /** Inline click-to-edit courier order/consignment number — usually unknown
  * at order creation time and filled in later once the courier is booked. */
+/** How each courier status reads, and how loudly. */
+const COURIER_STATUS_TONE: Record<string, string> = {
+  delivered: "text-emerald-600 dark:text-emerald-400",
+  partial_delivered: "text-amber-600 dark:text-amber-400",
+  cancelled: "text-destructive",
+  hold: "text-amber-600 dark:text-amber-400",
+};
+
+/**
+ * Which courier statuses have an unambiguous order status behind them.
+ *
+ * partial_delivered is deliberately absent. It means the customer took some of
+ * the parcel and paid for that much — which of DELIVERED or CANCELLED that is
+ * depends on figures only the person holding the courier's statement has.
+ * Offering a one-click answer would be inventing one.
+ */
+const COURIER_STATUS_APPLIES: Record<string, string> = {
+  delivered: "DELIVERED",
+  cancelled: "CANCELLED",
+};
+
 function CourierIdCell({
   slug,
   orderId,
   value,
+  courierStatus,
+  orderStatus,
+  canBook,
   canEdit,
+  onApplyStatus,
 }: {
   slug: string;
   orderId: string;
   value: string | null;
+  courierStatus: string | null;
+  orderStatus: string;
+  /** The order's courier has an API key, and nothing is booked yet. */
+  canBook: boolean;
   canEdit: boolean;
+  /** The list's own status handler — cancelling still asks what it cost. */
+  onApplyStatus: (orderId: string, status: string) => void;
 }) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
+  const [booking, setBooking] = useState(false);
   const [draft, setDraft] = useState(value ?? "");
   const [saving, setSaving] = useState(false);
 
@@ -352,22 +389,83 @@ function CourierIdCell({
     router.refresh();
   }
 
+  // What the courier last said, under the id it said it about. Shown rather
+  // than applied: moving the order's own status consumes stock and re-quotes
+  // the COD fee, and cancelling needs figures the courier never sends. So the
+  // webhook writes the badge and a person presses Apply — which routes through
+  // the list's normal status handler, so a cancellation still asks what it cost.
+  const applies = courierStatus ? COURIER_STATUS_APPLIES[courierStatus] : undefined;
+  const statusLine = courierStatus ? (
+    <span className="flex items-center gap-1.5">
+      <span
+        className={cn(
+          "text-xs whitespace-nowrap",
+          COURIER_STATUS_TONE[courierStatus] ?? "text-muted-foreground",
+        )}
+      >
+        {formatEnum(courierStatus)}
+      </span>
+      {canEdit && applies && applies !== orderStatus && (
+        <button
+          type="button"
+          onClick={() => onApplyStatus(orderId, applies)}
+          className="text-xs text-primary underline-offset-4 hover:underline"
+        >
+          apply
+        </button>
+      )}
+    </span>
+  ) : null;
+
   if (!canEdit) {
-    return <span>{value ?? "—"}</span>;
+    return (
+      <span>
+        {value ?? "—"}
+        {statusLine}
+      </span>
+    );
   }
 
   if (!editing) {
     return (
-      <button
-        type="button"
-        onClick={() => {
-          setDraft(value ?? "");
-          setEditing(true);
-        }}
-        className="text-left underline-offset-4 hover:underline"
-      >
-        {value ?? <span className="text-muted-foreground">Add courier ID</span>}
-      </button>
+      <div className="space-y-0.5">
+        {value ? (
+          <button
+            type="button"
+            onClick={() => {
+              setDraft(value);
+              setEditing(true);
+            }}
+            className="text-left underline-offset-4 hover:underline"
+          >
+            {value}
+          </button>
+        ) : canBook ? (
+          <>
+            <Button size="sm" variant="outline" onClick={() => setBooking(true)}>
+              <Send className="size-3.5" /> Send to courier
+            </Button>
+            <ParcelBookingDialog
+              slug={slug}
+              orderId={orderId}
+              open={booking}
+              onOpenChange={setBooking}
+            />
+          </>
+        ) : (
+          <button
+            type="button"
+            onClick={() => {
+              setDraft("");
+              setEditing(true);
+            }}
+            className="text-left text-muted-foreground underline-offset-4 hover:underline"
+          >
+            Add courier ID
+          </button>
+        )}
+        {statusLine}
+      </div>
     );
   }
 
@@ -1325,6 +1423,14 @@ export function OrderManager({
                           slug={slug}
                           orderId={o.id}
                           value={o.courierTrackingId}
+                          courierStatus={o.courierStatus}
+                          orderStatus={o.status}
+                          onApplyStatus={onStatusChange}
+                          canBook={
+                            !o.courierTrackingId &&
+                            o.status !== "CANCELLED" &&
+                            couriers.some((c) => c.id === o.courierId && c.apiConnected)
+                          }
                           canEdit={perms.canEdit}
                         />
                       ) : (

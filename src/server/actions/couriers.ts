@@ -6,6 +6,12 @@ import { prisma } from "@/lib/prisma";
 import { requireAccess } from "@/lib/authz";
 import { failed, type ActionFailure } from "@/lib/form";
 import { diffFields, recordActivity } from "@/lib/activity";
+import { getBalance } from "@/lib/steadfast";
+import {
+  encryptCredentials,
+  newWebhookToken,
+  webhookUrlFor,
+} from "@/lib/courier-credentials";
 
 export type ActionResult = { ok: true; id?: string } | ActionFailure;
 
@@ -225,6 +231,100 @@ export async function deleteCourier(slug: string, id: string): Promise<ActionRes
     entityId: id,
     entityLabel: courier.name,
     summary: "Deleted — no order had used it",
+  });
+
+  revalidateCouriers(slug);
+  return { ok: true };
+}
+
+const ApiCredentialsSchema = z.object({
+  apiKey: z.string().trim().min(8, "That does not look like an API key").max(200),
+  secretKey: z.string().trim().min(8, "That does not look like a secret key").max(200),
+});
+
+/**
+ * Store a courier's API credentials so parcels can be booked from here.
+ *
+ * The key is verified against the courier before it is saved — `get_balance`
+ * is the cheapest call that proves both halves work. Saving an unchecked key
+ * only moves the failure to the first person trying to book a real parcel,
+ * with a parcel already packed and a customer already waiting.
+ *
+ * Nothing about the key reaches the activity log. "Connected" is the event
+ * worth recording; the credential is not.
+ */
+export async function connectCourierApi(
+  slug: string,
+  courierId: string,
+  input: { apiKey: string; secretKey: string },
+): Promise<ActionResult & { webhookUrl?: string }> {
+  const gate = await requireAccess(slug, MODULE, "edit");
+  if (!gate.ok) return gate;
+  const workspaceId = gate.access.workspaceId;
+
+  const parsed = ApiCredentialsSchema.safeParse(input);
+  if (!parsed.success) return failed(parsed.error);
+
+  const courier = await prisma.courier.findFirst({
+    where: { id: courierId, workspaceId },
+    select: { id: true, name: true, webhookToken: true },
+  });
+  if (!courier) return { ok: false, error: "Courier not found" };
+
+  const check = await getBalance(parsed.data);
+  if (!check.ok) return { ok: false, error: check.error };
+
+  const token = courier.webhookToken ?? newWebhookToken();
+  await prisma.courier.update({
+    where: { id: courier.id },
+    data: {
+      apiProvider: "STEADFAST",
+      ...encryptCredentials(parsed.data),
+      webhookToken: token,
+    },
+  });
+
+  await recordActivity(gate.access, {
+    action: "UPDATE",
+    entity: "Courier",
+    entityId: courier.id,
+    entityLabel: courier.name,
+    summary: "API connected — parcels can now be booked from GeduSuite",
+  });
+
+  revalidateCouriers(slug);
+  return { ok: true, webhookUrl: webhookUrlFor(token) ?? undefined };
+}
+
+/**
+ * Forget the stored credentials. The webhook token stays: the courier may
+ * still post an update about a parcel booked before this, and a 404 on its
+ * side is a worse answer than recording it.
+ */
+export async function disconnectCourierApi(
+  slug: string,
+  courierId: string,
+): Promise<ActionResult> {
+  const gate = await requireAccess(slug, MODULE, "edit");
+  if (!gate.ok) return gate;
+
+  const courier = await prisma.courier.findFirst({
+    where: { id: courierId, workspaceId: gate.access.workspaceId },
+    select: { id: true, name: true },
+  });
+  if (!courier) return { ok: false, error: "Courier not found" };
+
+  await prisma.courier.update({
+    where: { id: courier.id },
+    data: { apiKeyEnc: null, apiSecretEnc: null, apiProvider: null },
+  });
+
+  await recordActivity(gate.access, {
+    action: "UPDATE",
+    entity: "Courier",
+    entityId: courier.id,
+    entityLabel: courier.name,
+    summary: "API disconnected — parcels go back to being booked by hand",
   });
 
   revalidateCouriers(slug);

@@ -370,6 +370,29 @@ model Courier {
   notes             String?
   createdAt         DateTime         @default(now())
 
+  /**
+   * Which courier's API this row can book parcels through — "STEADFAST", or
+   * null for a courier that is only ever booked by hand. A string rather than
+   * an enum so the second integration is a client file, not a migration.
+   */
+  apiProvider  String?
+  /**
+   * The courier's API credentials, AES-256-GCM encrypted by lib/crypto (the
+   * same helper that holds Google OAuth tokens). Per workspace and not in the
+   * environment, because every workspace books through its own account — an
+   * env var would ship one shop's key to all of them.
+   */
+  apiKeyEnc    String?
+  apiSecretEnc String?
+  /**
+   * Random path segment on this workspace's webhook URL. The courier posts
+   * delivery updates to /api/cron/steadfast/<webhookToken>; that prefix is
+   * public (proxy.ts), so the token is the only thing standing between the
+   * open internet and a status write. Rotating it is a new random value here
+   * and a paste into the courier's portal.
+   */
+  webhookToken String? @unique
+
   workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   zones     CourierZone[]
   orders    Order[]
@@ -434,6 +457,18 @@ model Customer {
 model Order {
   id                 String        @id @default(cuid())
   workspaceId        String
+  /**
+   * A short per-workspace number — 1, 2, 3… — for humans and for couriers.
+   *
+   * The id is a cuid, which is the right thing for a primary key and the wrong
+   * thing to read down a phone line or match against a courier's statement.
+   * Steadfast wants a unique `invoice` string per parcel and shows it in its
+   * app; "GS-1042" is findable there, "clx8f2k9p0001..." is not.
+   *
+   * Nullable only so the backfill migration could run; every row has one, and
+   * createOrder always assigns one.
+   */
+  orderNo            Int?
   customerId         String?
   date               DateTime      @default(now())
   status             OrderStatus   @default(PENDING)
@@ -455,6 +490,39 @@ model Order {
   // cancellation looks like a pure loss when it was nearly break-even.
   cancelledCollected Decimal       @default(0) @db.Decimal(12, 2)
   courierTrackingId  String? // the courier's own order/consignment number (deliveryType=COURIER); shown on the invoice instead of the internal id
+  /**
+   * The courier's own tracking code, as distinct from the consignment id:
+   * Steadfast returns both and its app searches by either.
+   */
+  courierTrackingCode String?
+  /**
+   * What the courier last said about this parcel — "in_review", "delivered",
+   * "cancelled" — and when it said it.
+   *
+   * Deliberately NOT the order's status. updateOrderStatus consumes stock,
+   * re-quotes the COD fee and, on a cancellation, needs figures a webhook
+   * cannot know: what the return trip cost and what the customer handed over
+   * at the door. A webhook that wrote straight into `status` would book those
+   * as zero and quietly wreck the profit reports. So the courier's word is
+   * recorded here, shown as a badge, and applied by a person in one click.
+   */
+  courierStatus      String?
+  courierStatusAt    DateTime?
+  /**
+   * Set the moment a booking request starts, cleared if it fails.
+   *
+   * Reading courierTrackingId and then calling the courier leaves a window as
+   * long as the courier takes to answer — up to twenty seconds — in which a
+   * second click passes the same check and books the same parcel again. This
+   * column closes it: the booking claims the order in one conditional write
+   * before any HTTP happens, so the second request finds it taken.
+   *
+   * A timestamp rather than a boolean so a request that dies mid-flight (a
+   * crash, a cold serverless container) does not lock the order forever — the
+   * claim is treated as stale after two minutes, which is well past the
+   * client's own timeout.
+   */
+  courierBookingAt   DateTime?
   // Where THIS parcel was actually sent, captured when the order was entered.
   //
   // The customer record is the buyer's identity — one row per phone number, so
@@ -471,6 +539,17 @@ model Order {
   shipName           String?
   shipPhone          String?
   shipAddress        String?
+  /**
+   * Which district this parcel's address appears to name, tagged when it was
+   * booked. For reports — "how many orders went to Sylhet" — and nothing else.
+   *
+   * Best-effort and labelled as such: it comes from matching district names in
+   * the address text, which is not something to trust for a delivery decision.
+   * It is not sent to the courier (there is no field for it — the address line
+   * carries everything), it does not decide whether a parcel goes, and nobody
+   * types it. Null on an address written in Bangla, or in shorthand, or badly.
+   */
+  shipDistrict       String?
   paymentMethod      PaymentMethod @default(CASH)
   paymentStatus      PaymentStatus @default(UNPAID)
   // How much of the order the customer has actually handed over. PARTIAL was
@@ -512,6 +591,7 @@ model Order {
   gifts         OrderGift[]
   treasuryEntry TreasuryEntry?
 
+  @@unique([workspaceId, orderNo])
   @@index([workspaceId])
   @@index([workspaceId, date])
   @@index([customerId])

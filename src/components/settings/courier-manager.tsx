@@ -3,12 +3,14 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Truck, Plus, Trash2 } from "lucide-react";
+import { Truck, Plus, Plug, Trash2 } from "lucide-react";
 import {
   createCourier,
   updateCourier,
   deleteCourier,
   createSteadfastPreset,
+  connectCourierApi,
+  disconnectCourierApi,
 } from "@/server/actions/couriers";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { Button } from "@/components/ui/button";
@@ -46,6 +48,8 @@ export type CourierRow = {
   returnChargeType: "NONE" | "FLAT" | "PERCENT_OF_DELIVERY";
   returnChargeValue: number;
   notes: string | null;
+  /** Whether parcels can be booked through this courier, and where its webhook points. */
+  api: { connected: boolean; keyHint: string | null; webhookUrl: string | null };
   zones: CourierZoneRow[];
   orderCount: number;
 };
@@ -258,6 +262,7 @@ export function CourierManager({
                 {c.orderCount > 0 && <span>{c.orderCount} order(s) sent</span>}
               </div>
               {c.notes && <p className="text-muted-foreground">{c.notes}</p>}
+              {canEdit && <CourierApiPanel slug={slug} courier={c} />}
             </CardContent>
           </Card>
         ))
@@ -471,6 +476,149 @@ export function CourierManager({
             <DialogFooter>
               <Button type="submit" disabled={saving}>
                 {saving ? "Saving…" : editingId ? "Save changes" : "Add courier"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+/**
+ * Connecting a courier's API, so orders can be booked from the orders page
+ * instead of retyped into the courier's own app.
+ *
+ * The key is verified against the courier before it is stored — pasting a
+ * wrong one should fail here, in a settings page with nobody waiting, rather
+ * than later in front of a packed parcel. Once stored it is encrypted and
+ * never sent back to the browser; all this panel can ever show is the last
+ * four characters, which is enough to tell two keys apart.
+ */
+function CourierApiPanel({ slug, courier }: { slug: string; courier: CourierRow }) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [apiKey, setApiKey] = useState("");
+  const [secretKey, setSecretKey] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function connect(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    const res = await connectCourierApi(slug, courier.id, { apiKey, secretKey });
+    setSaving(false);
+    if (!res.ok) return toast.error(res.error);
+    toast.success("Connected — the key works");
+    setApiKey("");
+    setSecretKey("");
+    setOpen(false);
+    router.refresh();
+  }
+
+  async function disconnect() {
+    const ok = await confirmDialog({
+      title: `Disconnect ${courier.name}?`,
+      description:
+        "Parcels go back to being booked by hand in the courier's app. Nothing already booked is affected.",
+      confirmText: "Disconnect",
+    });
+    if (!ok) return;
+    const res = await disconnectCourierApi(slug, courier.id);
+    if (!res.ok) return toast.error(res.error);
+    toast.success("Disconnected");
+    router.refresh();
+  }
+
+  return (
+    <div className="space-y-2 rounded-lg border border-dashed p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="flex items-center gap-2 font-medium">
+          <Plug className="size-4" />
+          {courier.api.connected ? (
+            <>
+              Booking enabled
+              <span className="font-normal text-muted-foreground">
+                key {courier.api.keyHint}
+              </span>
+            </>
+          ) : (
+            <span className="font-normal text-muted-foreground">
+              Not connected — parcels are booked by hand
+            </span>
+          )}
+        </span>
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
+            {courier.api.connected ? "Replace key" : "Connect API"}
+          </Button>
+          {courier.api.connected && (
+            <Button size="sm" variant="ghost" onClick={disconnect}>
+              Disconnect
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {courier.api.connected && courier.api.webhookUrl && (
+        <div className="space-y-1">
+          <p className="text-xs text-muted-foreground">
+            Paste this into the courier app under <strong>Update Webhook</strong> so delivery
+            statuses come back on their own:
+          </p>
+          <div className="flex items-center gap-2">
+            <code className="flex-1 truncate rounded bg-muted px-2 py-1 text-xs">
+              {courier.api.webhookUrl}
+            </code>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                navigator.clipboard.writeText(courier.api.webhookUrl!);
+                toast.success("Copied");
+              }}
+            >
+              Copy
+            </Button>
+          </div>
+        </div>
+      )}
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Connect {courier.name}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={connect} className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              In the courier&apos;s app: API Integration → Generate Key. Both values are stored
+              encrypted and never shown again.
+            </p>
+            <Field name="api-key" label="API key" required>
+              <Input
+                id="api-key"
+                required
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                autoComplete="off"
+                spellCheck={false}
+              />
+            </Field>
+            <Field name="secret-key" label="Secret key" required>
+              <Input
+                id="secret-key"
+                required
+                type="password"
+                value={secretKey}
+                onChange={(e) => setSecretKey(e.target.value)}
+                autoComplete="off"
+              />
+            </Field>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={saving}>
+                {saving ? "Checking the key…" : "Connect"}
               </Button>
             </DialogFooter>
           </form>

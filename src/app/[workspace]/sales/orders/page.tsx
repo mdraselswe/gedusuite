@@ -221,6 +221,7 @@ export default async function OrdersPage({
       status: o.status,
       deliveryType: o.deliveryType,
       courierTrackingId: o.courierTrackingId,
+      courierStatus: o.courierStatus,
       paymentStatus: o.paymentStatus,
       amountPaid: Number(o.amountPaid),
       // What is still owed after any advance — the number the list should show,
@@ -280,6 +281,9 @@ export default async function OrdersPage({
           codFeeBase: c.codFeeBase,
           returnChargeType: c.returnChargeType,
           returnChargeValue: Number(c.returnChargeValue),
+          // Whether this courier can be booked from here at all. The encrypted
+          // key never leaves the server — only the fact that there is one.
+          apiConnected: !!c.apiKeyEnc,
           zones: c.zones.map((z) => ({ id: z.id, name: z.name, rate: Number(z.rate) })),
         }))}
         fromLead={fromLead}
