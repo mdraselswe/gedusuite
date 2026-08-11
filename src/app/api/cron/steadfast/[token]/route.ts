@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { courierByWebhookToken } from "@/lib/courier-credentials";
+import { courierByWebhookToken, webhookSecretMatches } from "@/lib/courier-credentials";
 import { recordSystemActivity } from "@/lib/activity";
 
 /**
@@ -56,6 +56,18 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ token: str
     return NextResponse.json({ error: "Unknown webhook token" }, { status: 404 });
   }
   const workspaceSlug = courier.workspace.slug;
+
+  // The courier's portal takes a callback URL and a bearer token, so the token
+  // in the path only says which workspace this concerns — this is what says
+  // the caller is really the courier. Checked before the body is even read.
+  //
+  // A courier connected before this column existed has no secret stored, and
+  // refusing its webhooks would break a working integration to add a check it
+  // was never given the token for. Those fall back to the URL alone until the
+  // API is reconnected, which mints one.
+  if (courier.webhookSecret && !webhookSecretMatches(courier.webhookSecret, req.headers)) {
+    return NextResponse.json({ error: "Bad auth token" }, { status: 401 });
+  }
 
   let body: Payload;
   try {

@@ -48,8 +48,13 @@ export type CourierRow = {
   returnChargeType: "NONE" | "FLAT" | "PERCENT_OF_DELIVERY";
   returnChargeValue: number;
   notes: string | null;
-  /** Whether parcels can be booked through this courier, and where its webhook points. */
-  api: { connected: boolean; keyHint: string | null; webhookUrl: string | null };
+  /** Whether parcels can be booked through this courier, and what its webhook needs. */
+  api: {
+    connected: boolean;
+    keyHint: string | null;
+    webhookUrl: string | null;
+    webhookSecret: string | null;
+  };
   zones: CourierZoneRow[];
   orderCount: number;
 };
@@ -486,6 +491,49 @@ export function CourierManager({
 }
 
 /**
+ * One value to carry across to the courier's portal, with the button that
+ * carries it. Both fields on that form are long random strings that nobody
+ * retypes correctly, so copying is the only realistic way in.
+ */
+function CopyRow({
+  label,
+  value,
+  secret,
+}: {
+  label: string;
+  value: string;
+  /** Masked until asked for — it authenticates every status write. */
+  secret?: boolean;
+}) {
+  const [shown, setShown] = useState(!secret);
+  return (
+    <div className="space-y-1">
+      <p className="text-xs font-medium">{label}</p>
+      <div className="flex items-center gap-2">
+        <code className="flex-1 truncate rounded bg-muted px-2 py-1 text-xs">
+          {shown ? value : "•".repeat(32)}
+        </code>
+        {secret && (
+          <Button size="sm" variant="ghost" onClick={() => setShown((s) => !s)}>
+            {shown ? "Hide" : "Show"}
+          </Button>
+        )}
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => {
+            navigator.clipboard.writeText(value);
+            toast.success(`${label} copied`);
+          }}
+        >
+          Copy
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/**
  * Connecting a courier's API, so orders can be booked from the orders page
  * instead of retyped into the courier's own app.
  *
@@ -560,26 +608,15 @@ function CourierApiPanel({ slug, courier }: { slug: string; courier: CourierRow 
       </div>
 
       {courier.api.connected && courier.api.webhookUrl && (
-        <div className="space-y-1">
+        <div className="space-y-2">
           <p className="text-xs text-muted-foreground">
-            Paste this into the courier app under <strong>Update Webhook</strong> so delivery
-            statuses come back on their own:
+            In the courier app under <strong>Update Webhook</strong>, so delivery statuses come
+            back on their own. The field names there match these two:
           </p>
-          <div className="flex items-center gap-2">
-            <code className="flex-1 truncate rounded bg-muted px-2 py-1 text-xs">
-              {courier.api.webhookUrl}
-            </code>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => {
-                navigator.clipboard.writeText(courier.api.webhookUrl!);
-                toast.success("Copied");
-              }}
-            >
-              Copy
-            </Button>
-          </div>
+          <CopyRow label="Callback URL" value={courier.api.webhookUrl} />
+          {courier.api.webhookSecret && (
+            <CopyRow label="Auth token (bearer)" value={courier.api.webhookSecret} secret />
+          )}
         </div>
       )}
 

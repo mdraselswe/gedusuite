@@ -392,6 +392,17 @@ model Courier {
    * and a paste into the courier's portal.
    */
   webhookToken String? @unique
+  /**
+   * The bearer token the courier is told to send back on every webhook call.
+   *
+   * Steadfast's webhook form takes a callback URL *and* an auth token, which
+   * makes the URL's own token an identifier rather than the whole of the
+   * security: the path says which workspace this is about, and this says the
+   * caller is really Steadfast. Kept separate from webhookToken so that a URL
+   * leaking through a proxy log does not hand anyone the ability to write
+   * delivery statuses.
+   */
+  webhookSecret String?
 
   workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   zones     CourierZone[]

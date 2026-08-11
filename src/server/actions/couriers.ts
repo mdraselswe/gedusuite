@@ -9,6 +9,7 @@ import { diffFields, recordActivity } from "@/lib/activity";
 import { getBalance } from "@/lib/steadfast";
 import {
   encryptCredentials,
+  newWebhookSecret,
   newWebhookToken,
   webhookUrlFor,
 } from "@/lib/courier-credentials";
@@ -267,20 +268,24 @@ export async function connectCourierApi(
 
   const courier = await prisma.courier.findFirst({
     where: { id: courierId, workspaceId },
-    select: { id: true, name: true, webhookToken: true },
+    select: { id: true, name: true, webhookToken: true, webhookSecret: true },
   });
   if (!courier) return { ok: false, error: "Courier not found" };
 
   const check = await getBalance(parsed.data);
   if (!check.ok) return { ok: false, error: check.error };
 
+  // Both kept if they already exist: replacing an API key must not silently
+  // invalidate a webhook that is already configured in the courier's portal.
   const token = courier.webhookToken ?? newWebhookToken();
+  const secret = courier.webhookSecret ?? newWebhookSecret();
   await prisma.courier.update({
     where: { id: courier.id },
     data: {
       apiProvider: "STEADFAST",
       ...encryptCredentials(parsed.data),
       webhookToken: token,
+      webhookSecret: secret,
     },
   });
 
