@@ -48,6 +48,28 @@ type Payload = {
   updated_at?: string;
 };
 
+/**
+ * Saving a webhook URL makes the portal check that something answers there,
+ * and it refuses to save unless it gets a 200 — the same behaviour the
+ * WooCommerce hook next door already has to live with. What it sends to check
+ * is not documented, so every shape that carries no delivery news is answered
+ * cheerfully: a GET, a HEAD, an empty POST, a body that is not JSON, a payload
+ * naming no parcel.
+ *
+ * None of those write anything, which is what makes answering them safe. The
+ * bearer token is still required by everything that does.
+ */
+const PONG = { ok: true, pong: true };
+
+export async function GET(_req: NextRequest, ctx: { params: Promise<{ token: string }> }) {
+  const { token } = await ctx.params;
+  const courier = await courierByWebhookToken(token);
+  if (!courier) {
+    return NextResponse.json({ error: "Unknown webhook token" }, { status: 404 });
+  }
+  return NextResponse.json(PONG);
+}
+
 export async function POST(req: NextRequest, ctx: { params: Promise<{ token: string }> }) {
   const { token } = await ctx.params;
 
@@ -57,9 +79,31 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ token: str
   }
   const workspaceSlug = courier.workspace.slug;
 
-  // The courier's portal takes a callback URL and a bearer token, so the token
-  // in the path only says which workspace this concerns — this is what says
-  // the caller is really the courier. Checked before the body is even read.
+  // An unreadable or empty body is a probe, not news. Answered before the
+  // auth check on purpose: the portal validates the URL at the moment it is
+  // saved, which may well be before it starts sending the token it is being
+  // given on the same screen.
+  let body: Payload;
+  try {
+    body = (await req.json()) as Payload;
+  } catch {
+    return NextResponse.json(PONG);
+  }
+  if (!body || typeof body !== "object") return NextResponse.json(PONG);
+
+  const consignmentId = body.consignment_id != null ? String(body.consignment_id) : null;
+  if (!consignmentId && !body.invoice) {
+    return NextResponse.json(PONG);
+  }
+
+  const status = (body.delivery_status ?? body.status ?? "").trim().toLowerCase();
+  if (!status) {
+    return NextResponse.json({ ok: true, skipped: "no status in payload" });
+  }
+
+  // Past this line the request is asking to change an order, so the token in
+  // the path — which only says which workspace this concerns — is no longer
+  // enough. This is what says the caller is really the courier.
   //
   // A courier connected before this column existed has no secret stored, and
   // refusing its webhooks would break a working integration to add a check it
@@ -67,25 +111,6 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ token: str
   // API is reconnected, which mints one.
   if (courier.webhookSecret && !webhookSecretMatches(courier.webhookSecret, req.headers)) {
     return NextResponse.json({ error: "Bad auth token" }, { status: 401 });
-  }
-
-  let body: Payload;
-  try {
-    body = (await req.json()) as Payload;
-  } catch {
-    return NextResponse.json({ error: "Bad JSON" }, { status: 400 });
-  }
-
-  // Steadfast pings a newly saved webhook URL to check it answers. Nothing to
-  // match on, and refusing it would stop the webhook being saved at all.
-  const consignmentId = body.consignment_id != null ? String(body.consignment_id) : null;
-  if (!consignmentId && !body.invoice) {
-    return NextResponse.json({ ok: true, pong: true });
-  }
-
-  const status = (body.delivery_status ?? body.status ?? "").trim().toLowerCase();
-  if (!status) {
-    return NextResponse.json({ ok: true, skipped: "no status in payload" });
   }
 
   // Matched on the consignment id this app stored when it booked the parcel,
