@@ -668,7 +668,15 @@ export function OrderManager({
 
   // ── List toolbar: URL-driven search/filter/sort (server queries all pages) ──
   const [search, setSearch] = useState(query);
-  const [visibleCols, setVisibleCols] = useState<Set<string>>(new Set(["profit"]));
+  // Courier ID rides along by default once a courier can actually be booked
+  // through: the column stopped being a place to read a number and became the
+  // place the "Send to courier" button lives. Left off, the feature is behind
+  // a menu that forgets — column choices are useState, so a reload puts it
+  // back — and every parcel would start with three clicks nobody asked for.
+  // Shops that book by hand see the list exactly as they did before.
+  const [visibleCols, setVisibleCols] = useState<Set<string>>(() =>
+    new Set(couriers.some((c) => c.apiConnected) ? ["profit", "courier"] : ["profit"]),
+  );
   const searchDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function pushListParams(next: {
