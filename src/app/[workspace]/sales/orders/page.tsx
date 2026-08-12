@@ -36,6 +36,7 @@ export default async function OrdersPage({
     source?: string;
     held?: string;
     delivery?: string;
+    free?: string;
     /** Set by the call list's "+ Order" button. */
     fromLead?: string;
   }>;
@@ -57,6 +58,8 @@ export default async function OrdersPage({
     // Validated against the enum: an unknown value must narrow to nothing
     // rather than reach Prisma as a bare string.
     delivery: DELIVERY_TYPES.includes(sp.delivery as never) ? (sp.delivery as string) : "",
+    // "__yes__" only: there is no reason to filter for orders that AREN'T gifts.
+    free: sp.free === "__yes__" ? sp.free : "",
   };
   // Both ends are Dhaka days, not UTC ones. Orders carry a real time of day
   // now, so a UTC window would drop an order taken before 6 AM Dhaka out of its
@@ -108,6 +111,7 @@ export default async function OrdersPage({
     ...(listFilters.delivery
       ? { deliveryType: listFilters.delivery as (typeof DELIVERY_TYPES)[number] }
       : {}),
+    ...(listFilters.free ? { isGiveaway: true } : {}),
     ...dateWhere,
     ...heldWhere,
     ...(q
@@ -251,6 +255,7 @@ export default async function OrdersPage({
       source: o.source,
       boostCampaignId: o.boostCampaignId,
       cashInTreasury: o.cashInTreasury,
+      isGiveaway: o.isGiveaway,
       deliveryCharge: Number(o.deliveryCharge),
       deliveryCost: o.deliveryCost !== null ? Number(o.deliveryCost) : null,
       courierId: o.courierId,

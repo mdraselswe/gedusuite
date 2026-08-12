@@ -26,6 +26,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -106,6 +107,8 @@ type OrderRow = DhakaStamp & {
   boostCampaignId: string | null;
   /** True once this PAID order's cash was marked deposited in the treasury. */
   cashInTreasury: boolean;
+  /** The goods were given away — the customer paid nothing for them. */
+  isGiveaway: boolean;
   deliveryCharge: number;
   deliveryCost: number | null;
   courierId: string | null;
@@ -529,6 +532,10 @@ export function OrderManager({
   // defaultValue that changes under an uncontrolled input is exactly what Base
   // UI warns about.
   const [orderDate, setOrderDate] = useState(() => toDhakaInputValue(new Date()));
+  // The goods are a gift. The discount that makes them free is worked out on the
+  // server (see goodsDiscount), so this is a decision, not an arithmetic task.
+  const [giveaway, setGiveaway] = useState(false);
+  const [editGiveaway, setEditGiveaway] = useState(false);
   const [loading, setLoading] = useState(false);
   // The order awaiting a "what did this cancellation cost?" answer.
   const [cancelling, setCancelling] = useState<OrderRow | null>(null);
@@ -725,12 +732,19 @@ export function OrderManager({
         ...members.map((m) => ({ value: m.id, label: m.label })),
       ],
     },
+    {
+      key: "free",
+      label: "Free orders",
+      kind: "select",
+      options: [{ value: "__yes__", label: "Given away free" }],
+    },
     { key: "date", label: "Order date", kind: "dateRange" },
   ];
   const BAR_TO_URL: Record<string, string> = {
     source: "source",
     delivery: "delivery",
     held: "held",
+    free: "free",
     "date:from": "from",
     "date:to": "to",
   };
@@ -857,6 +871,7 @@ export function OrderManager({
     setWeightKg("");
     setPackagingCost("0");
     setOrderDiscount("0");
+    setGiveaway(false);
   }
 
   const selectedCourier = couriers.find((c) => c.id === courierId) ?? null;
@@ -1025,6 +1040,7 @@ export function OrderManager({
     fd.set("status", status);
     fd.set("deliveryType", deliveryType);
     fd.set("paymentMethod", paymentMethod);
+    fd.set("isGiveaway", giveaway ? "1" : "");
     fd.set("paymentStatus", paymentStatus);
     fd.set("items", JSON.stringify(cleanItems));
     fd.set("gifts", JSON.stringify(cleanGifts));
@@ -1162,6 +1178,7 @@ export function OrderManager({
 
   function openEdit(o: OrderRow) {
     setEditPackaging(String(o.packagingCost));
+    setEditGiveaway(o.isGiveaway);
     setEditOrder(o);
     setEditCustomer(o.customerId ? { value: o.customerId, label: o.customerName } : null);
     // The snapshot where there is one, the customer record where there isn't —
@@ -1189,6 +1206,7 @@ export function OrderManager({
     fd.set("deliveryType", editDeliveryType);
     fd.set("paymentMethod", editPaymentMethod);
     fd.set("heldByMembershipId", editHeldById === NONE ? "" : editHeldById);
+    fd.set("isGiveaway", editGiveaway ? "1" : "");
     const res = await updateOrderHeader(slug, editOrder.id, fd);
     setEditSaving(false);
     if (!res.ok) return toast.error(res.error);
@@ -1349,6 +1367,18 @@ export function OrderManager({
                     >
                       🎁
                     </span>
+                  )}
+                  {/* Said in the row rather than left to be inferred from a
+                      total of 0: a giveaway and an order somebody hasn't been
+                      invoiced for read the same in a list otherwise. */}
+                  {o.isGiveaway && (
+                    <Badge
+                      variant="outline"
+                      className="ml-1.5 border-violet-500/60 text-violet-700 dark:text-violet-400"
+                      title="The goods went out free"
+                    >
+                      Free
+                    </Badge>
                   )}
                 </span>
               ),
@@ -2326,11 +2356,29 @@ export function OrderManager({
                           step="0.01"
                           min="0"
                           inputMode="decimal"
-                          value={orderDiscount}
+                          value={giveaway ? "" : orderDiscount}
                           onChange={(e) => setOrderDiscount(e.target.value)}
+                          readOnly={giveaway}
+                          placeholder={giveaway ? "Whole amount — it's free" : undefined}
+                          className={giveaway ? "text-muted-foreground" : undefined}
                         />
                       </div>
                     </div>
+                    <label className="flex items-start gap-2 text-sm">
+                      <Checkbox
+                        checked={giveaway}
+                        onCheckedChange={(v) => setGiveaway(v === true)}
+                        className="mt-0.5"
+                      />
+                      <span>
+                        Free — the customer pays nothing for the goods
+                        <span className="block text-xs text-muted-foreground">
+                          The price comes off automatically. Delivery is separate: leave the
+                          charge at 0 and fill in the delivery cost for the shop to pay the
+                          courier too.
+                        </span>
+                      </span>
+                    </label>
                   </div>
                 </section>
 
@@ -2867,7 +2915,26 @@ export function OrderManager({
                     min="0"
                     required
                     defaultValue={editOrder.discount}
+                    // A giveaway's discount is the goods total, worked out on
+                    // save — so it isn't editable, rather than accepting a
+                    // number it will then ignore (as the gift cost does).
+                    readOnly={editGiveaway}
+                    className={editGiveaway ? "text-muted-foreground" : undefined}
                   />
+                  <label className="mt-2 flex items-start gap-2 text-sm">
+                    <Checkbox
+                      checked={editGiveaway}
+                      onCheckedChange={(v) => setEditGiveaway(v === true)}
+                      className="mt-0.5"
+                    />
+                    <span>
+                      Free — the customer pays nothing for the goods
+                      <span className="block text-xs text-muted-foreground">
+                        Delivery is separate: set the charge to 0 and keep the delivery cost
+                        for the shop to pay the courier too.
+                      </span>
+                    </span>
+                  </label>
                 </Field>
               </div>
               <div className="grid grid-cols-2 gap-3">

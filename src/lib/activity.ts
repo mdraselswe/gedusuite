@@ -242,6 +242,7 @@ export const FIELD_LABEL: Record<string, string> = {
   heldByMembershipId: "Held by",
   customerId: "Customer",
   date: "Date",
+  isGiveaway: "Free giveaway",
   notes: "Notes",
   name: "Name",
   phone: "Phone",

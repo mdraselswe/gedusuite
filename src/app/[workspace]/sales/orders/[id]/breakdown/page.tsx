@@ -77,6 +77,11 @@ export default async function OrderBreakdownPage({
       <div>
         <h1 className="text-2xl font-bold">Order calculation breakdown</h1>
         <p className="text-sm text-muted-foreground">
+          {order.isGiveaway && (
+            <span className="mr-1 rounded border border-violet-500/60 px-1.5 py-0.5 text-xs font-medium text-violet-700 dark:text-violet-400">
+              Free giveaway
+            </span>
+          )}
           #{order.id.slice(-8).toUpperCase()} ·{" "}
           <Stamp {...dhakaRecordStamp(order.date, order.createdAt, order.dateHasTime)} /> ·{" "}
           {order.customer?.name ?? "Walk-in customer"}

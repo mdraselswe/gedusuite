@@ -584,6 +584,17 @@ model Order {
   packagingCost       Decimal       @default(0) @db.Decimal(12, 2)
   giftCost            Decimal       @default(0) @db.Decimal(12, 2)
   discount            Decimal       @default(0) @db.Decimal(12, 2) // order-level discount
+  /// The goods on this order were given away: the customer pays nothing for
+  /// them. Kept as its own fact rather than inferred from a 100% discount,
+  /// because the two mean different things — a discount is a price somebody
+  /// negotiated, a giveaway is a decision the business made and will want to
+  /// count. The server keeps `discount` equal to the goods total while this is
+  /// set, so the arithmetic stays in one place and nobody has to type it.
+  ///
+  /// Says nothing about delivery. A free product can still be shipped at the
+  /// customer's expense; leave deliveryCharge at 0 and record deliveryCost for
+  /// the shop to bear the trip too.
+  isGiveaway          Boolean       @default(false)
   // Where the order came from: website, Facebook, a referral, a stall… Kept as
   // a plain string rather than an enum so adding a channel later is a one-line
   // change instead of a Postgres type migration on a live table. Nullable

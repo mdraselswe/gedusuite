@@ -1,0 +1,11 @@
+-- An order whose goods were given away free.
+--
+-- Recorded as its own fact rather than read back out of a 100% discount. The two
+-- are different things: a discount is a price somebody negotiated, a giveaway is
+-- a decision the business made — and one it will want to count, which a discount
+-- that happens to equal the goods total can't be counted as without also
+-- catching every haggled order that landed on the same number.
+--
+-- Unbackfilled on purpose. Nothing in the existing rows says which of them were
+-- gifts, and guessing from the numbers would put that label on real sales.
+ALTER TABLE "Order" ADD COLUMN "isGiveaway" BOOLEAN NOT NULL DEFAULT false;

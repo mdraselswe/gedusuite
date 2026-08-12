@@ -18,7 +18,7 @@ import {
   depositAmount,
   syncOrderCashEntry,
 } from "@/lib/order-cash";
-import { computeOrderTotals } from "@/lib/orders";
+import { computeOrderTotals, goodsDiscount } from "@/lib/orders";
 import { isOrderSource } from "@/lib/order-source";
 import { quoteCourier } from "@/lib/courier";
 import type { OrderStatus, PaymentStatus } from "@prisma/client";
@@ -59,6 +59,7 @@ const HEADER_AUDIT_FIELDS = [
   "packagingCost",
   "giftCost",
   "discount",
+  "isGiveaway",
   "heldByMembershipId",
   "notes",
 ] as const;
@@ -99,6 +100,15 @@ const GiftSchema = z
     message: "Each gift needs a product or a name",
   });
 
+/**
+ * A checkbox, from a form. `z.coerce.boolean()` is no good here: it reads "0" and
+ * "false" as true, being nothing but `Boolean(value)`.
+ */
+const giveawayField = z.preprocess(
+  (v) => v === true || v === "1" || v === "on" || v === "true",
+  z.boolean(),
+);
+
 const OrderSchema = z.object({
   customerId: z.string().optional().or(z.literal("")),
   date: dhakaDateField,
@@ -132,6 +142,11 @@ const OrderSchema = z.object({
   packagingCost: z.coerce.number().nonnegative().default(0),
   giftCost: z.coerce.number().nonnegative().default(0),
   discount: z.coerce.number().nonnegative().default(0),
+  /**
+   * The goods are a gift. What the customer pays for them is worked out here
+   * rather than typed — see `goodsDiscount`.
+   */
+  isGiveaway: giveawayField,
   heldByMembershipId: z.string().optional().or(z.literal("")),
   notes: z.string().trim().max(500).optional().or(z.literal("")),
   // Which courier and zone carried it. Given these, the real cost — including
@@ -310,6 +325,7 @@ export async function createOrder(
     packagingCost: formData.get("packagingCost") ?? 0,
     giftCost: formData.get("giftCost") ?? 0,
     discount: formData.get("discount") ?? 0,
+    isGiveaway: formData.get("isGiveaway"),
     heldByMembershipId: formData.get("heldByMembershipId") ?? undefined,
     notes: formData.get("notes") ?? undefined,
     courierId: formData.get("courierId") ?? undefined,
@@ -422,7 +438,8 @@ export async function createOrder(
   // Descriptive notification: who ordered, for how much. Mirrors the
   // customer-total math in computeOrderTotals for a fresh order (no returns).
   const itemsNet = d.items.reduce((s, it) => s + it.unitPrice * it.quantity - it.discount, 0);
-  const customerTotal = round2(itemsNet - d.discount + d.deliveryCharge);
+  const discount = goodsDiscount(d.isGiveaway, d.discount, itemsNet);
+  const customerTotal = round2(itemsNet - discount + d.deliveryCharge);
   const itemCount = d.items.reduce((s, it) => s + it.quantity, 0);
   const notifMessage = `New order — ${customer?.name ?? "Walk-in"} · ৳${customerTotal.toFixed(2)} (${itemCount} item${itemCount > 1 ? "s" : ""})`;
 
@@ -493,7 +510,8 @@ export async function createOrder(
         amountPaid,
         packagingCost: d.packagingCost,
         giftCost,
-        discount: d.discount,
+        discount,
+        isGiveaway: d.isGiveaway,
         heldByMembershipId,
         notes: d.notes?.trim() || null,
         items: {
@@ -576,6 +594,8 @@ const HeaderSchema = z.object({
   // Only used by an order with no gift lines — see the note where it's applied.
   giftCost: z.coerce.number().nonnegative().default(0),
   discount: z.coerce.number().nonnegative().default(0),
+  /** The goods are a gift — see `goodsDiscount`. */
+  isGiveaway: giveawayField,
   notes: z.string().trim().max(500).optional().or(z.literal("")),
   // Who holds this order's cash. Was set-once at creation with no way back —
   // and the one field most likely to be wrong, since cash changes hands.
@@ -690,10 +710,11 @@ export async function updateOrderHeader(
     (s, it) => s + Number(it.unitPrice) * it.quantity - Number(it.discount),
     0,
   );
+  const discount = goodsDiscount(d.isGiveaway, d.discount, itemsNet);
   const collectable =
     order.status === "CANCELLED"
       ? (d.cancelledCollected ?? Number(order.cancelledCollected))
-      : Math.max(0, itemsNet - d.discount + d.deliveryCharge);
+      : Math.max(0, itemsNet - discount + d.deliveryCharge);
   const courierQuote = await quoteForOrder(workspaceId, {
     courierId: d.courierId || undefined,
     courierZoneId: d.courierZoneId || undefined,
@@ -724,7 +745,8 @@ export async function updateOrderHeader(
         paymentMethod: d.paymentMethod,
         packagingCost: d.packagingCost,
         giftCost,
-        discount: d.discount,
+        discount,
+        isGiveaway: d.isGiveaway,
         notes: d.notes?.trim() || null,
       },
     });

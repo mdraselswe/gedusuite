@@ -42,6 +42,28 @@ export function invoiceNumber(order: {
     : order.id.slice(-8).toUpperCase();
 }
 
+/**
+ * What comes off the goods on this order.
+ *
+ * A giveaway is priced by the server, not by whoever filled the form: the
+ * discount is made exactly the goods total, so the customer owes nothing for
+ * them and the shop's cost lands where it belongs (see lib/giveaway.test.ts).
+ * Typing that figure by hand meant getting it right — 130 for the goods, not the
+ * 210 that includes delivery, which would have turned shipping the shop was
+ * absorbing into negative revenue — and getting it right again every time an
+ * item changed.
+ *
+ * Delivery is deliberately untouched. "Free product, customer pays shipping" is
+ * a real offer, so what the parcel costs stays the delivery fields' business.
+ */
+export function goodsDiscount(
+  isGiveaway: boolean,
+  typedDiscount: number,
+  itemsNet: number,
+): number {
+  return isGiveaway ? round2(Math.max(0, itemsNet)) : typedDiscount;
+}
+
 export type OrderTotals = {
   grossRevenue: number; // full ordered quantity × price, before returns/discounts
   itemDiscounts: number; // scaled to the quantity still kept

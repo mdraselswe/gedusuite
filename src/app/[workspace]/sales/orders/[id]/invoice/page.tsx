@@ -87,6 +87,9 @@ export default async function InvoicePage({
               <Stamp {...dhakaRecordStamp(order.date, order.createdAt, order.dateHasTime)} />
             </div>
             <div className="text-muted-foreground">{order.status}</div>
+            {/* On the customer's own copy too: a 0 total with no word for it
+                looks like a billing mistake. */}
+            {order.isGiveaway && <div className="font-medium">Free of charge</div>}
           </div>
         </div>
 
