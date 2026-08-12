@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hasOwnAddress, orderRecipient } from "@/lib/order-recipient";
+import { hasOwnAddress, orderRecipient, shipSnapshot } from "@/lib/order-recipient";
 
 const customer = { name: "Rajib", phone: "01712345678", address: "Mirpur 14, Dhaka" };
 
@@ -57,6 +57,58 @@ describe("orderRecipient", () => {
       phone: null,
       address: null,
     });
+  });
+});
+
+describe("shipSnapshot", () => {
+  const typed = { shipName: "Rajib", shipPhone: "01712345678", shipAddress: "Mirpur 14, Dhaka" };
+
+  it("stores nothing when the parcel goes to the customer's own details", () => {
+    expect(shipSnapshot(typed, customer)).toEqual({
+      shipName: null,
+      shipPhone: null,
+      shipAddress: null,
+    });
+  });
+
+  it("recognises the customer's number typed in another shape", () => {
+    // The record holds 01712345678; these are the same number, so there is
+    // nothing to snapshot — otherwise a corrected number would stop reaching
+    // this order.
+    for (const phone of ["+8801712345678", "01712 345678", "1712345678"]) {
+      expect(shipSnapshot({ ...typed, shipPhone: phone }, customer).shipPhone).toBeNull();
+    }
+  });
+
+  it("normalizes a genuinely different number, so the list can find it", () => {
+    expect(shipSnapshot({ ...typed, shipPhone: "+880 1812-345678" }, customer).shipPhone).toBe(
+      "01812345678",
+    );
+  });
+
+  it("normalizes a walk-in's number, with no customer to compare against", () => {
+    expect(shipSnapshot({ shipPhone: "+8801912345678" }, null)).toEqual({
+      shipName: null,
+      shipPhone: "01912345678",
+      shipAddress: null,
+    });
+  });
+
+  it("keeps a note in the phone field rather than losing it", () => {
+    // Nothing to reshape and nothing worth dropping: whoever typed it meant it
+    // to be read by a human.
+    expect(shipSnapshot({ ...typed, shipPhone: "ask at the shop" }, customer).shipPhone).toBe(
+      "ask at the shop",
+    );
+  });
+
+  it("treats a blank phone as no snapshot", () => {
+    expect(shipSnapshot({ ...typed, shipPhone: "   " }, customer).shipPhone).toBeNull();
+  });
+
+  it("still snapshots the name and address that differ", () => {
+    expect(shipSnapshot({ ...typed, shipName: "Rajib Hasan", shipAddress: "Banani" }, customer))
+      .toEqual({ shipName: "Rajib Hasan", shipPhone: null, shipAddress: "Banani" });
   });
 });
 

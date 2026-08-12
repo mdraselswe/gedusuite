@@ -45,20 +45,11 @@ import {
 import { Columns3, MoreVertical, PackageOpen, X } from "lucide-react";
 import { Money } from "@/components/ui/money";
 import { Field, type FieldError } from "@/components/ui/field";
+import { Stamp } from "@/components/ui/stamp";
+import { toDhakaInputValue, type DhakaStamp } from "@/lib/dhaka-time";
 
-// Local calendar date (not UTC) as a stable "today" default — must NOT depend
-// on props/state that change after mount (e.g. the newest purchase's date),
-// or an uncontrolled <Input defaultValue> on this always-mounted form would
-// get a changing defaultValue post-init and trip Base UI's dev warning.
-function todayInputValue() {
-  const date = new Date();
-  date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
-  return date.toISOString().slice(0, 10);
-}
-
-type PurchaseRow = {
+type PurchaseRow = DhakaStamp & {
   id: string;
-  date: string;
   productVariantId: string;
   product: string;
   expiryTracked: boolean;
@@ -260,6 +251,11 @@ export function PurchaseManager({
   // Edit dialog state — separate controlled fields from the always-visible
   // "record a purchase" form above.
   const [editing, setEditing] = useState<PurchaseRow | null>(null);
+  // Now, in Dhaka. Controlled on purpose: this form is always mounted and the
+  // value moves with the clock, so a defaultValue would change under an
+  // uncontrolled input — which is what Base UI warns about — and a form.reset()
+  // would put back whatever the time was when the page loaded.
+  const [purchaseDate, setPurchaseDate] = useState(() => toDhakaInputValue(new Date()));
   const [editVariant, setEditVariant] = useState<VariantOption | null>(null);
   const [editSupplier, setEditSupplier] = useState<ComboOption | null>(null);
   const [editFundingSource, setEditFundingSource] = useState<FundingSource>("NONE");
@@ -342,6 +338,7 @@ export function PurchaseManager({
     }
     toast.success(res.queued ? "Saved offline — will sync when online" : "Purchase recorded");
     (e.target as HTMLFormElement).reset();
+    setPurchaseDate(toDhakaInputValue(new Date()));
     setVariant(null);
     setSupplier(null);
     // Kept for the next purchase, which is nearly always funded the same way.
@@ -514,7 +511,14 @@ export function PurchaseManager({
                   </div>
                 )}
                 <Field name="date" error={formError} label="Date" required>
-                  <Input id="date" name="date" type="date" required defaultValue={todayInputValue()} />
+                  <Input
+                    id="date"
+                    name="date"
+                    type="datetime-local"
+                    required
+                    value={purchaseDate}
+                    onChange={(e) => setPurchaseDate(e.target.value)}
+                  />
                 </Field>
                 <Field name="unitCost" error={formError} label={<>{buyingByPack ? "Cost per packet" : "Unit cost"}</>} required>
                   <Input id="unitCost" name="unitCost" type="number" step="0.01" min="0" required />
@@ -649,7 +653,11 @@ export function PurchaseManager({
           }}
           columns={
             [
-              { key: "date", header: "Date", cell: (p) => p.date },
+              {
+                key: "date",
+                header: "Date",
+                cell: (p) => <Stamp date={p.date} time={p.time} entered={p.entered} />,
+              },
               {
                 key: "product",
                 header: "Product",
@@ -857,9 +865,9 @@ export function PurchaseManager({
                 <Input
                   id="edit-date"
                   name="date"
-                  type="date"
+                  type="datetime-local"
                   required
-                  defaultValue={editing.date}
+                  defaultValue={editing.dateInput}
                 />
               </Field>
               <Field name="edit-unitCost" error={formError} label={<>{editByPack ? "Cost per packet" : "Unit cost"}</>} required>

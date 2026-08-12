@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CustomerOrdersTable } from "@/components/customers/customer-orders-table";
 import { Money } from "@/components/ui/money";
 import { RecordHistory } from "@/components/activity/record-history";
+import { dhakaRecordStamp } from "@/lib/dhaka-time";
 
 export default async function CustomerDetailPage({
   params,
@@ -36,7 +37,7 @@ export default async function CustomerDetailPage({
 
   const orders = customer.orders.map((o) => ({
     id: o.id,
-    date: o.date.toISOString().slice(0, 10),
+    ...dhakaRecordStamp(o.date, o.createdAt, o.dateHasTime),
     status: o.status,
     paymentStatus: o.paymentStatus,
     itemCount: o.items.length,
@@ -128,6 +129,9 @@ export default async function CustomerDetailPage({
           rows={orders.map((o) => ({
             id: o.id,
             date: o.date,
+            time: o.time,
+            entered: o.entered,
+            dateInput: o.dateInput,
             status: o.status,
             paymentStatus: o.paymentStatus,
             itemCount: o.itemCount,

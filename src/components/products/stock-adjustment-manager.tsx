@@ -26,10 +26,11 @@ import { DataTable, type Column } from "@/components/ui/data-table";
 import { useFilterBar, type FilterDef } from "@/components/ui/filter-bar";
 import { ClipboardList } from "lucide-react";
 import { Field, FormError, type FieldError } from "@/components/ui/field";
+import { Stamp } from "@/components/ui/stamp";
+import { toDhakaInputValue, type DhakaStamp } from "@/lib/dhaka-time";
 
-type Adjustment = {
+type Adjustment = DhakaStamp & {
   id: string;
-  date: string;
   product: string;
   type: string;
   delta: number;
@@ -60,6 +61,10 @@ export function StockAdjustmentManager({
   const [type, setType] = useState("DAMAGED");
   const [direction, setDirection] = useState("REMOVE");
   const [loading, setLoading] = useState(false);
+  // Now, in Dhaka — the form records a moment, not just a day. Controlled so the
+  // value can move with the clock without a defaultValue changing under an
+  // uncontrolled input, and so a form.reset() doesn't put back a stale time.
+  const [dateInput, setDateInput] = useState(() => toDhakaInputValue(new Date()));
   // The last refusal, kept so the Field it names can show it. A toast alone
   // left the message hovering over a form with no sign of which box it meant.
   const [formError, setFormError] = useState<FieldError>(null);
@@ -82,6 +87,7 @@ export function StockAdjustmentManager({
     setFormError(null);
     toast.success("Adjustment recorded");
     (e.target as HTMLFormElement).reset();
+    setDateInput(toDhakaInputValue(new Date()));
     setVariant(null);
     router.refresh();
   }
@@ -209,7 +215,14 @@ export function StockAdjustmentManager({
                   <Input id="sa-qty" name="quantity" type="number" min="1" required />
                 </Field>
                 <Field name="date" error={formError} label="Date" required>
-                  <Input id="sa-date" name="date" type="date" required />
+                  <Input
+                    id="sa-date"
+                    name="date"
+                    type="datetime-local"
+                    required
+                    value={dateInput}
+                    onChange={(e) => setDateInput(e.target.value)}
+                  />
                 </Field>
                 <div className="space-y-2 sm:col-span-2">
                   <Label htmlFor="sa-reason">Reason</Label>
@@ -242,7 +255,12 @@ export function StockAdjustmentManager({
           empty={{ icon: ClipboardList, title: "No adjustments recorded" }}
           columns={
             [
-              { key: "date", header: "Date", cell: (a) => a.date, sortValue: (a) => a.date },
+              {
+                key: "date",
+                header: "Date",
+                cell: (a) => <Stamp date={a.date} time={a.time} entered={a.entered} />,
+                sortValue: (a) => a.date,
+              },
               {
                 key: "product",
                 header: "Product",

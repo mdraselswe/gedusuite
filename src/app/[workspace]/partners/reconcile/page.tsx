@@ -7,9 +7,10 @@ import { variantFullName } from "@/lib/variants";
 import { ReconcileManager, type ReconcileGroup } from "@/components/partners/reconcile-manager";
 import { PageHeader } from "@/components/ui/page-header";
 import { Scale } from "lucide-react";
+import { dhakaDayKey, dhakaRecordStamp } from "@/lib/dhaka-time";
 
 const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
-const day = (d: Date) => d.toISOString().slice(0, 10);
+const day = (d: Date) => dhakaDayKey(d);
 
 /**
  * One-time cleanup for purchases made before the partner credit was derived
@@ -46,6 +47,8 @@ export default async function ReconcilePartnerCreditsPage({
       select: {
         id: true,
         date: true,
+        createdAt: true,
+        dateHasTime: true,
         unitCost: true,
         quantity: true,
         paidByPartnerId: true,
@@ -58,6 +61,8 @@ export default async function ReconcilePartnerCreditsPage({
       select: {
         id: true,
         date: true,
+        createdAt: true,
+        dateHasTime: true,
         cost: true,
         quantity: true,
         itemName: true,
@@ -75,7 +80,15 @@ export default async function ReconcilePartnerCreditsPage({
         purchaseId: null,
         internalPurchaseId: null,
       },
-      select: { id: true, partnerId: true, date: true, amount: true, purpose: true },
+      select: {
+        id: true,
+        partnerId: true,
+        date: true,
+        createdAt: true,
+        dateHasTime: true,
+        amount: true,
+        purpose: true,
+      },
       orderBy: { date: "desc" },
     }),
   ]);
@@ -90,7 +103,7 @@ export default async function ReconcilePartnerCreditsPage({
           .map((r) => ({
             kind: "PURCHASE" as const,
             id: r.id,
-            date: day(r.date),
+            ...dhakaRecordStamp(r.date, r.createdAt, r.dateHasTime),
             label: variantFullName(r.productVariant.product.name, r.productVariant.attributes),
             amount: round2(Number(r.unitCost) * r.quantity),
           })),
@@ -99,7 +112,7 @@ export default async function ReconcilePartnerCreditsPage({
           .map((r) => ({
             kind: "INTERNAL" as const,
             id: r.id,
-            date: day(r.date),
+            ...dhakaRecordStamp(r.date, r.createdAt, r.dateHasTime),
             label: r.itemName,
             amount: round2(Number(r.cost) * r.quantity),
           })),
@@ -108,7 +121,7 @@ export default async function ReconcilePartnerCreditsPage({
         .filter((t) => t.partnerId === p.id)
         .map((t) => ({
           id: t.id,
-          date: day(t.date),
+          ...dhakaRecordStamp(t.date, t.createdAt, t.dateHasTime),
           purpose: t.purpose,
           amount: round2(Number(t.amount)),
         })),

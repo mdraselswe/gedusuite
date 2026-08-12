@@ -24,6 +24,7 @@ import {
   type SpendingSummary,
 } from "@/lib/spending";
 import { cn } from "@/lib/utils";
+import { Stamp } from "@/components/ui/stamp";
 
 /** One day either side of the current start date. */
 function shiftDay(day: string, by: number): string {
@@ -153,9 +154,25 @@ export function ExpensesView({
         />
       ),
     },
+    // One day on screen: the date is in the heading already, so the column
+    // carries the part that isn't — when in the day each of these was entered.
     ...(singleDay
-      ? []
-      : [{ key: "date", header: "Date", cell: (r: SpendRow) => r.date } as Column<SpendRow>]),
+      ? [
+          {
+            key: "time",
+            header: "Time",
+            cell: (r: SpendRow) => (
+              <Stamp date={r.date} time={r.time} entered={r.entered} timeOnly />
+            ),
+          } as Column<SpendRow>,
+        ]
+      : [
+          {
+            key: "date",
+            header: "Date",
+            cell: (r: SpendRow) => <Stamp date={r.date} time={r.time} entered={r.entered} />,
+          } as Column<SpendRow>,
+        ]),
     {
       key: "category",
       header: "Category",

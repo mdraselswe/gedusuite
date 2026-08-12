@@ -5,6 +5,8 @@ import { can } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
 import { computeOrderTotals, orderNetProfit } from "@/lib/orders";
 import { orderRecipient } from "@/lib/order-recipient";
+import { phoneSearchTerms } from "@/lib/phone";
+import { dhakaDayEnd, dhakaDayStart, dhakaRecordStamp } from "@/lib/dhaka-time";
 import { amountOutstanding } from "@/lib/order-cash";
 import { OrderManager } from "@/components/sales/order-manager";
 import { variantFullName } from "@/lib/variants";
@@ -56,14 +58,15 @@ export default async function OrdersPage({
     // rather than reach Prisma as a bare string.
     delivery: DELIVERY_TYPES.includes(sp.delivery as never) ? (sp.delivery as string) : "",
   };
-  // A date-only string is midnight UTC, so the "to" end has to cover the
-  // whole day or a same-day range would match nothing.
+  // Both ends are Dhaka days, not UTC ones. Orders carry a real time of day
+  // now, so a UTC window would drop an order taken before 6 AM Dhaka out of its
+  // own day — the day the shop, the reports and this filter all mean.
   const dateWhere =
     listFilters.from || listFilters.to
       ? {
           date: {
-            ...(listFilters.from ? { gte: new Date(listFilters.from) } : {}),
-            ...(listFilters.to ? { lte: new Date(`${listFilters.to}T23:59:59.999Z`) } : {}),
+            ...(listFilters.from ? { gte: dhakaDayStart(listFilters.from) } : {}),
+            ...(listFilters.to ? { lte: dhakaDayEnd(listFilters.to) } : {}),
           },
         }
       : {};
@@ -90,7 +93,13 @@ export default async function OrdersPage({
   // product/customer pickers search them on demand (async combobox). We only
   // need a cheap existence check to gate the "add a product first" message.
   // Search/filter narrow the whole table server-side (all pages, not just the
-  // visible one): customer name or courier tracking id, plus status filters.
+  // visible one): customer name, phone number or courier tracking id, plus the
+  // status filters.
+  // A phone number is what a customer is actually identified by on the call —
+  // the courier, bKash and the buyer themselves all quote the number, not the
+  // spelling of a name — so the list has to be searchable by it. Matched in
+  // every shape a number is stored in here; see lib/phone.
+  const phoneTerms = phoneSearchTerms(q);
   const where = {
     workspaceId,
     ...(statusFilter ? { status: statusFilter as (typeof ORDER_STATUSES)[number] } : {}),
@@ -109,6 +118,15 @@ export default async function OrdersPage({
             // that name — it's the one on the parcel and on the invoice.
             { shipName: { contains: q, mode: "insensitive" as const } },
             { courierTrackingId: { contains: q, mode: "insensitive" as const } },
+            // The customer's own numbers — main and alt, since a repeat buyer
+            // is as likely to call from the second one — plus the number this
+            // particular parcel was addressed to, which is the only number on
+            // an order sent to someone else.
+            ...phoneTerms.flatMap((p) => [
+              { customer: { phone: { contains: p } } },
+              { customer: { altPhone: { contains: p } } },
+              { shipPhone: { contains: p } },
+            ]),
           ],
         }
       : {}),
@@ -202,7 +220,9 @@ export default async function OrdersPage({
     const totals = computeOrderTotals(o);
     return {
       id: o.id,
-      date: o.date.toISOString().slice(0, 10),
+      // The day it was sold, plus the time it was entered — two orders an hour
+      // apart used to read as one moment.
+      ...dhakaRecordStamp(o.date, o.createdAt, o.dateHasTime),
       customerId: o.customerId,
       // The customer record's own name — what the customer picker shows, and
       // what "this buyer" means across their history.

@@ -4,6 +4,7 @@ import { variantStockMap } from "@/lib/inventory";
 import { variantChip } from "@/lib/variants";
 import type { DateRange } from "@/lib/reports";
 import { dhakaDayKey } from "@/lib/dhaka-time";
+import { dhakaRecordStamp, type DhakaStamp } from "@/lib/dhaka-time";
 
 const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
 
@@ -34,9 +35,8 @@ export type ProductVariantPerf = {
   stock: number;
 };
 
-export type ProductOrderRow = {
+export type ProductOrderRow = DhakaStamp & {
   orderId: string;
-  date: string;
   status: string;
   paymentStatus: string;
   customerId: string | null;
@@ -54,9 +54,8 @@ export type ProductOrderRow = {
   cancelledCost: number;
 };
 
-export type ProductPurchaseRow = {
+export type ProductPurchaseRow = DhakaStamp & {
   id: string;
-  date: string;
   supplier: string | null;
   variant: string;
   quantity: number;
@@ -65,9 +64,8 @@ export type ProductPurchaseRow = {
   expiryDate: string | null;
 };
 
-export type ProductReturnRow = {
+export type ProductReturnRow = DhakaStamp & {
   id: string;
-  date: string;
   orderId: string;
   variant: string;
   quantity: number;
@@ -75,9 +73,8 @@ export type ProductReturnRow = {
   refundAmount: number;
 };
 
-export type ProductAdjustmentRow = {
+export type ProductAdjustmentRow = DhakaStamp & {
   id: string;
-  date: string;
   variant: string;
   type: string;
   delta: number;
@@ -384,7 +381,9 @@ export async function buildProductReport(
         refunds += Number(r.refundAmount);
         returnRows.push({
           id: r.id,
-          date: r.date.toISOString().slice(0, 10),
+          // A return has no date picker: its date IS the moment it was
+          // recorded, so it always carries a time.
+          ...dhakaRecordStamp(r.date, r.createdAt, true),
           orderId: o.id,
           variant: variantLabel.get(it.productVariantId) ?? "—",
           quantity: r.quantity,
@@ -408,7 +407,7 @@ export async function buildProductReport(
 
     orderRows.push({
       orderId: o.id,
-      date: day,
+      ...dhakaRecordStamp(o.date, o.createdAt, o.dateHasTime),
       status: o.status,
       paymentStatus: o.paymentStatus,
       customerId: o.customer?.id ?? null,
@@ -452,7 +451,7 @@ export async function buildProductReport(
 
     orderRows.push({
       orderId: o.id,
-      date: o.date.toISOString().slice(0, 10),
+      ...dhakaRecordStamp(o.date, o.createdAt, o.dateHasTime),
       status: o.status,
       paymentStatus: o.paymentStatus,
       customerId: o.customer?.id ?? null,
@@ -527,7 +526,7 @@ export async function buildProductReport(
       spend: round2(purchaseSpend),
       rows: purchases.map((p) => ({
         id: p.id,
-        date: p.date.toISOString().slice(0, 10),
+        ...dhakaRecordStamp(p.date, p.createdAt, p.dateHasTime),
         supplier: p.supplier?.name ?? null,
         variant: variantChip(p.productVariant.attributes),
         quantity: p.quantity,
@@ -549,7 +548,7 @@ export async function buildProductReport(
     returns: returnRows.sort((a, b) => b.date.localeCompare(a.date)),
     adjustments: adjustments.map((a) => ({
       id: a.id,
-      date: a.date.toISOString().slice(0, 10),
+      ...dhakaRecordStamp(a.date, a.createdAt, a.dateHasTime),
       variant: variantChip(a.productVariant.attributes),
       type: a.type,
       delta: a.delta,

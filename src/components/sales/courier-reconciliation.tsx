@@ -10,10 +10,11 @@ import { Label } from "@/components/ui/label";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { cn } from "@/lib/utils";
 import { formatMoney as money } from "@/lib/money";
+import { Stamp } from "@/components/ui/stamp";
+import type { DhakaStamp } from "@/lib/dhaka-time";
 
-type Parcel = {
+type Parcel = DhakaStamp & {
   id: string;
-  date: string;
   customerName: string;
   trackingId: string | null;
   status: string;
@@ -68,7 +69,12 @@ export function CourierReconciliation({
   }
 
   const columns: Column<Parcel>[] = [
-    { key: "date", header: "Date", cell: (p) => p.date, sortValue: (p) => p.date },
+    {
+      key: "date",
+      header: "Date",
+      cell: (p) => <Stamp date={p.date} time={p.time} entered={p.entered} />,
+      sortValue: (p) => p.date,
+    },
     {
       key: "customer",
       header: "Customer",

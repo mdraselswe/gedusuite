@@ -31,9 +31,11 @@ import {
 } from "@/components/ui/table";
 import { EmptyState } from "@/components/ui/empty-state";
 import { formatMoney as money } from "@/lib/money";
+import { Stamp } from "@/components/ui/stamp";
+import type { DhakaStamp } from "@/lib/dhaka-time";
 
-type Source = { kind: SourceKind; id: string; date: string; label: string; amount: number };
-type Manual = { id: string; date: string; purpose: string | null; amount: number };
+type Source = DhakaStamp & { kind: SourceKind; id: string; label: string; amount: number };
+type Manual = DhakaStamp & { id: string; purpose: string | null; amount: number };
 
 export type ReconcileGroup = {
   partnerId: string;
@@ -204,7 +206,7 @@ export function ReconcileManager({
                       return (
                         <TableRow key={key(s)}>
                           <TableCell className="whitespace-nowrap tabular-nums">
-                            {s.date}
+                            <Stamp date={s.date} time={s.time} entered={s.entered} />
                           </TableCell>
                           <TableCell>
                             <span className="block">{s.label}</span>
@@ -302,7 +304,7 @@ export function ReconcileManager({
                         {g.manual.map((m) => (
                           <TableRow key={m.id}>
                             <TableCell className="whitespace-nowrap tabular-nums">
-                              {m.date}
+                              <Stamp date={m.date} time={m.time} entered={m.entered} />
                             </TableCell>
                             <TableCell>{m.purpose ?? "—"}</TableCell>
                             <TableCell className="text-right tabular-nums">

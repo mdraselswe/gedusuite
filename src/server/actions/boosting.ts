@@ -9,6 +9,7 @@ import { ConcurrentWrite, runSerializable } from "@/lib/tx";
 import { isOrderSource } from "@/lib/order-source";
 import { failed, type ActionFailure } from "@/lib/form";
 import { diffFields, recordActivity } from "@/lib/activity";
+import { dhakaDateField } from "@/lib/date-field";
 
 export type ActionResult =
   | { ok: true; id?: string }
@@ -43,7 +44,7 @@ const AdSetSchema = z.object({
 });
 
 const SpendSchema = z.object({
-  date: z.coerce.date(),
+  date: dhakaDateField,
   amount: z.coerce.number().positive("Amount must be > 0"),
   note: z.string().trim().max(300).optional().or(z.literal("")),
   // Funding source is one of three mutually exclusive states — same model as
@@ -417,10 +418,13 @@ export async function addDailySpend(
   }
   const paidFromTreasury = d.fundingSource === "TREASURY";
 
-  // Normalize to date-only so per-day grouping works regardless of what
-  // time-of-day the input parsed to. No same-day uniqueness: Facebook charges
-  // a card as many times per day as it hits billing thresholds.
-  const day = new Date(d.date.toISOString().slice(0, 10));
+  // Stored as the moment it was entered for, not flattened to a day. Per-day
+  // grouping reads the Dhaka day off the timestamp (lib/dhaka-time), so cutting
+  // the time off here bought nothing and moved an entry made after midnight to
+  // the day before. No same-day uniqueness either way: Facebook charges a card
+  // as many times per day as it hits billing thresholds.
+  const day = d.date.at;
+  const dateHasTime = d.date.hasTime;
 
   let spendId: string;
   try {
@@ -432,6 +436,7 @@ export async function addDailySpend(
         workspaceId,
         adSetId,
         date: day,
+        dateHasTime,
         amount: d.amount,
         note: d.note?.trim() || null,
         paidByPartnerId,
@@ -447,6 +452,7 @@ export async function addDailySpend(
           source: `Boosting: ${adSet.campaign.name} / ${adSet.name}`,
           boostSpendId: spend.id,
           date: day,
+          dateHasTime,
         },
       });
     }
@@ -463,6 +469,7 @@ export async function addDailySpend(
           purpose: `Boosting: ${adSet.campaign.name} / ${adSet.name}`,
           boostSpendId: spend.id,
           date: day,
+          dateHasTime,
         },
       });
     }

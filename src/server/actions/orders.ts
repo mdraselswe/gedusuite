@@ -24,6 +24,8 @@ import { quoteCourier } from "@/lib/courier";
 import type { OrderStatus, PaymentStatus } from "@prisma/client";
 import { failed, type ActionFailure } from "@/lib/form";
 import { diffFields, newActivityGroup, recordActivity } from "@/lib/activity";
+import { shipSnapshot } from "@/lib/order-recipient";
+import { dhakaDateField } from "@/lib/date-field";
 
 /**
  * How an order reads in the history — the same short id the breakdown page
@@ -97,35 +99,9 @@ const GiftSchema = z
     message: "Each gift needs a product or a name",
   });
 
-/**
- * The delivery details worth storing on the order itself.
- *
- * Anything matching the customer record is stored as null, not copied: a
- * snapshot taken on every order would freeze whatever was in the record at the
- * time, so correcting a misspelt name or a typo in an address later would
- * reach the customer page and nothing else. Null means "read the customer",
- * which is what orders taken before this existed already do — see
- * lib/order-recipient.
- */
-function shipSnapshot(
-  d: { shipName?: string; shipPhone?: string; shipAddress?: string },
-  customer: { name: string; phone: string | null; address: string | null } | null,
-) {
-  const differs = (typed: string | undefined, current: string | null | undefined) => {
-    const t = typed?.trim();
-    if (!t) return null;
-    return t === (current?.trim() ?? "") ? null : t;
-  };
-  return {
-    shipName: differs(d.shipName, customer?.name),
-    shipPhone: differs(d.shipPhone, customer?.phone),
-    shipAddress: differs(d.shipAddress, customer?.address),
-  };
-}
-
 const OrderSchema = z.object({
   customerId: z.string().optional().or(z.literal("")),
-  date: z.coerce.date(),
+  date: dhakaDateField,
   status: z.enum(["PENDING", "CONFIRMED", "PACKED", "SHIPPED", "DELIVERED", "CANCELLED"]),
   deliveryType: z.enum(["SELF", "COURIER"]),
   deliveryCharge: z.coerce.number().nonnegative().default(0),
@@ -497,7 +473,8 @@ export async function createOrder(
         workspaceId,
         orderNo: (highest._max.orderNo ?? 0) + 1,
         customerId,
-        date: d.date,
+        date: d.date.at,
+        dateHasTime: d.date.hasTime,
         status: d.status as OrderStatus,
         deliveryType: d.deliveryType,
         deliveryCharge: d.deliveryCharge,
@@ -581,7 +558,7 @@ export async function createOrder(
 // own flows (stock and returns hang off items, so those stay out of here).
 const HeaderSchema = z.object({
   customerId: z.string().optional().or(z.literal("")),
-  date: z.coerce.date(),
+  date: dhakaDateField,
   deliveryType: z.enum(["SELF", "COURIER"]),
   deliveryCharge: z.coerce.number().nonnegative().default(0),
   deliveryCost: z.preprocess(
@@ -731,7 +708,8 @@ export async function updateOrderHeader(
       data: {
         customerId,
         heldByMembershipId,
-        date: d.date,
+        date: d.date.at,
+        dateHasTime: d.date.hasTime,
         deliveryType: d.deliveryType,
         deliveryCharge: d.deliveryCharge,
         deliveryCost: courierQuote.deliveryCost,

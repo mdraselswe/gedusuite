@@ -11,17 +11,18 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { DatabaseBackup } from "lucide-react";
+import { Stamp } from "@/components/ui/stamp";
+import type { DhakaStamp } from "@/lib/dhaka-time";
 
 type Setting = {
   lastJsonAt: string | null;
 };
-type Log = {
+type Log = DhakaStamp & {
   id: string;
   type: string;
   status: string;
   fileUrl: string | null;
   note: string | null;
-  createdAt: string;
 };
 
 export function BackupManager({
@@ -167,12 +168,21 @@ export function BackupManager({
         <DataTable
           rows={logs}
           rowKey={(l) => l.id}
-          colorGroupBy={(l) => l.createdAt.slice(0, 10)}
+          colorGroupBy={(l) => l.date}
           colorToggleLabel="Color by date"
           empty={{ icon: DatabaseBackup, title: "No backups yet" }}
           columns={
             [
-              { key: "when", header: "When", cardTitle: true, sortValue: (l) => l.createdAt, cell: (l) => l.createdAt },
+              {
+                key: "when",
+                header: "When",
+                cardTitle: true,
+                // The day only: a 12-hour clock string doesn't sort, and the
+                // rows arrive newest-first, which a stable sort preserves
+                // within a day.
+                sortValue: (l) => l.date,
+                cell: (l) => <Stamp date={l.date} time={l.time} entered={l.entered} />,
+              },
               { key: "type", header: "Type", hideable: true, cell: (l) => l.type },
               {
                 key: "status",

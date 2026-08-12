@@ -1,6 +1,7 @@
 import { google } from "googleapis";
 import type { Snapshot } from "@/lib/backup";
 import { variantFullName } from "@/lib/variants";
+import { dhakaInstant } from "@/lib/dhaka-time";
 
 /**
  * Personal per-user backup uses each user's own OAuth token (see
@@ -205,17 +206,28 @@ const TAB_SPECS: TabSpec[] = [
 ];
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-function fmtDate(v: unknown): string {
+/**
+ * Read in Dhaka, not UTC — a sale made at 9 PM belongs to the day the shop says
+ * it does, and this used to export the day before. The time comes along when the
+ * record has one of its own (`dateHasTime`); a date-only row would otherwise
+ * export as 6 AM, which it never was.
+ */
+function fmtDate(v: unknown, withTime: boolean): string {
   if (!v) return "";
   const d = new Date(v as string);
   if (Number.isNaN(d.getTime())) return String(v);
-  return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+  const { date, time } = dhakaInstant(d);
+  const [year, month, day] = date.split("-");
+  const human = `${Number(day)} ${MONTHS[Number(month) - 1]} ${year}`;
+  return withTime && time ? `${human}, ${time}` : human;
 }
 
 function cellValue(row: Record<string, unknown>, col: Col): string | number {
   const raw = row[col.key];
   if (raw === null || raw === undefined) return "";
-  if (col.date) return fmtDate(raw);
+  // Only the record's own date can carry a time; an expiry or a campaign end is
+  // a day by definition.
+  if (col.date) return fmtDate(raw, col.key === "date" && row.dateHasTime === true);
   if (col.currency) return Number(raw);
   if (typeof raw === "boolean") return raw ? "Yes" : "No";
   return typeof raw === "number" ? raw : String(raw);

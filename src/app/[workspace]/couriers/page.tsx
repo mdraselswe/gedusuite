@@ -9,6 +9,7 @@ import { deliveryCostCharged } from "@/lib/order-cash";
 import { PageHeader } from "@/components/ui/page-header";
 import { buttonVariants } from "@/components/ui/button";
 import { CourierReconciliation, type CourierAccount } from "@/components/sales/courier-reconciliation";
+import { dhakaRecordStamp } from "@/lib/dhaka-time";
 
 /**
  * What each courier is holding.
@@ -88,7 +89,7 @@ export default async function CouriersPage({
     const acc = account(o.courier?.id ?? UNASSIGNED, o.courier?.name ?? "No courier set");
     const row = {
       id: o.id,
-      date: o.date.toISOString().slice(0, 10),
+      ...dhakaRecordStamp(o.date, o.createdAt, o.dateHasTime),
       customerName: o.customer?.name ?? "Walk-in",
       trackingId: o.courierTrackingId,
       status: o.status as string,

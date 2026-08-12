@@ -102,6 +102,9 @@ import { summarizeRows, type SpendRow } from "@/lib/spending";
 const row = (over: Partial<SpendRow> & { amount: number }): SpendRow => ({
   id: Math.random().toString(36).slice(2),
   date: "2026-08-01",
+  time: "3:42 PM",
+  entered: null,
+  dateInput: "2026-08-01T15:42",
   category: "PRODUCT_PURCHASE",
   label: "x",
   detail: null,

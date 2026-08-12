@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { variantFullName } from "@/lib/variants";
 import type { DateRange } from "@/lib/reports";
+import { dhakaRecordStamp, type DhakaStamp } from "@/lib/dhaka-time";
 
 const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
 const n = (v: unknown) => Number(v ?? 0);
@@ -51,9 +52,8 @@ export const spendFundingLabel: Record<SpendFunding, string> = {
   UNRECORDED: "Nobody recorded who paid",
 };
 
-export type SpendRow = {
+export type SpendRow = DhakaStamp & {
   id: string;
-  date: string;
   category: SpendCategory;
   /** What it was — a product name, an item, a campaign. */
   label: string;
@@ -73,9 +73,8 @@ export type SpendRow = {
  * as one would report a shop that paid its partners as having had an expensive
  * day.
  */
-export type PayoutRow = {
+export type PayoutRow = DhakaStamp & {
   id: string;
-  date: string;
   label: string;
   paidBy: string | null;
   amount: number;
@@ -214,11 +213,14 @@ export async function spendingForRange(
       }),
     ]);
 
-  const day = (d: Date) => d.toISOString().slice(0, 10);
+  // The day in Dhaka, and the time the line was entered — both of which a
+  // day's spending is read in the order of.
+  const stamp = (r: { date: Date; createdAt: Date; dateHasTime: boolean }) =>
+    dhakaRecordStamp(r.date, r.createdAt, r.dateHasTime);
   const rows: SpendRow[] = [
     ...purchases.map((p) => ({
       id: `pu-${p.id}`,
-      date: day(p.date),
+      ...stamp(p),
       category: "PRODUCT_PURCHASE" as const,
       label: variantFullName(p.productVariant.product.name, p.productVariant.attributes),
       detail: p.supplier?.name ? `${p.quantity} × from ${p.supplier.name}` : `${p.quantity} pcs`,
@@ -229,7 +231,7 @@ export async function spendingForRange(
     })),
     ...internals.map((ip) => ({
       id: `ip-${ip.id}`,
-      date: day(ip.date),
+      ...stamp(ip),
       category: "INTERNAL_PURCHASE" as const,
       label: ip.itemName,
       detail: ip.supplierName ?? (ip.quantity > 1 ? `${ip.quantity} pcs` : null),
@@ -240,7 +242,7 @@ export async function spendingForRange(
     })),
     ...boosts.map((b) => ({
       id: `bs-${b.id}`,
-      date: day(b.date),
+      ...stamp(b),
       category: "BOOSTING" as const,
       label: b.adSet.campaign.name,
       detail: b.adSet.name,
@@ -256,7 +258,7 @@ export async function spendingForRange(
     })),
     ...partnerExpenses.map((t) => ({
       id: `px-${t.id}`,
-      date: day(t.date),
+      ...stamp(t),
       category: "PARTNER_EXPENSE" as const,
       label: t.purpose ?? "Expense",
       detail: null,
@@ -268,7 +270,7 @@ export async function spendingForRange(
     })),
     ...treasuryOut.map((e) => ({
       id: `te-${e.id}`,
-      date: day(e.date),
+      ...stamp(e),
       category: "TREASURY_MANUAL" as const,
       label: e.source,
       detail: e.note,
@@ -282,14 +284,14 @@ export async function spendingForRange(
   const payouts: PayoutRow[] = [
     ...distributions.map((d) => ({
       id: `pd-${d.id}`,
-      date: day(d.date),
+      ...stamp(d),
       label: "Profit distribution",
       paidBy: null,
       amount: round2(n(d.totalAmount)),
     })),
     ...withdrawals.map((w) => ({
       id: `pw-${w.id}`,
-      date: day(w.date),
+      ...stamp(w),
       label: w.purpose ?? "Capital taken back",
       paidBy: partnerName(w.partner),
       amount: round2(n(w.amount)),

@@ -5,10 +5,11 @@ import { Badge } from "@/components/ui/badge";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { ShoppingBag } from "lucide-react";
 import { Money } from "@/components/ui/money";
+import { Stamp } from "@/components/ui/stamp";
+import type { DhakaStamp } from "@/lib/dhaka-time";
 
-type Row = {
+type Row = DhakaStamp & {
   id: string;
-  date: string;
   status: string;
   paymentStatus: string;
   itemCount: number;
@@ -36,7 +37,12 @@ export function CustomerOrdersTable({
       empty={{ icon: ShoppingBag, title: "No orders yet" }}
       columns={
         [
-          { key: "date", header: "Date", cardTitle: true, cell: (o) => o.date },
+          {
+            key: "date",
+            header: "Date",
+            cardTitle: true,
+            cell: (o) => <Stamp date={o.date} time={o.time} entered={o.entered} />,
+          },
           {
             key: "status",
             header: "Status",

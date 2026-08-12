@@ -4,9 +4,9 @@ import { workspaceAccess } from "@/lib/authz";
 import { can } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
 import { LeadManager } from "@/components/leads/lead-manager";
-import { formatDhakaDate, formatDhakaTime, toDhakaInputValue } from "@/lib/dhaka-time";
+import { dhakaInstant } from "@/lib/dhaka-time";
 import { leadFulfilment } from "@/lib/lead-fulfilment";
-import { normalizePhone } from "@/lib/phone";
+import { normalizePhone, phoneSearchTerms } from "@/lib/phone";
 import { buildBuyerHistory, historyForLead } from "@/lib/buyer-history";
 import { Pagination, parsePage } from "@/components/ui/pagination";
 import { PageHeader } from "@/components/ui/page-header";
@@ -27,10 +27,12 @@ export default async function LeadsPage({
   searchParams,
 }: {
   params: Promise<{ workspace: string }>;
-  searchParams: Promise<{ page?: string }>;
+  searchParams: Promise<{ page?: string; q?: string }>;
 }) {
   const { workspace: slug } = await params;
-  const page = parsePage((await searchParams).page);
+  const sp = await searchParams;
+  const page = parsePage(sp.page);
+  const q = (sp.q ?? "").trim();
   const access = await workspaceAccess(slug);
   if (!access) redirect("/");
   if (!can(access.role, "sales", "view", access.permissions)) {
@@ -43,10 +45,41 @@ export default async function LeadsPage({
     canAddCustomer: can(access.role, "customers", "add", access.permissions),
   };
 
-  const [leadCount, leads] = await Promise.all([
+  // The search reaches the database rather than the rows already on screen.
+  // Somebody calls back and the number is what they give you — it has to find
+  // their lead whichever page it happens to be on, which a filter over the
+  // visible 50 could not do. Numbers are matched in every shape one is stored
+  // in here: a lead pulled off the website keeps whatever the customer typed at
+  // checkout, so "+8801712345678" and "01712345678" are both real (see
+  // lib/phone).
+  const phoneTerms = phoneSearchTerms(q);
+  const where = {
+    workspaceId: access.workspaceId,
+    ...(q
+      ? {
+          OR: [
+            { customerName: { contains: q, mode: "insensitive" as const } },
+            { orderNo: { contains: q, mode: "insensitive" as const } },
+            { address: { contains: q, mode: "insensitive" as const } },
+            { itemsText: { contains: q, mode: "insensitive" as const } },
+            ...phoneTerms.flatMap((p) => [
+              { phone: { contains: p } },
+              // The second number is worth searching for the same reason it is
+              // worth storing: it's the one that gets picked up.
+              { altPhone: { contains: p } },
+            ]),
+          ],
+        }
+      : {}),
+  };
+
+  const [leadCount, totalLeadCount, leads] = await Promise.all([
+    prisma.orderLead.count({ where }),
+    // Unfiltered, for the bar's "showing N of M" — the list is bigger than the
+    // page of it that was fetched.
     prisma.orderLead.count({ where: { workspaceId: access.workspaceId } }),
     prisma.orderLead.findMany({
-      where: { workspaceId: access.workspaceId },
+      where,
       orderBy: { orderedAt: "desc" },
       skip: (page - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
@@ -100,11 +133,12 @@ export default async function LeadsPage({
     orderNo: l.orderNo,
     wooStatus: l.wooStatus,
     // Date and time stay separate: `date` is also the colour-grouping key and
-    // what the date-range filter compares, and both need it date-only.
-    date: formatDhakaDate(l.orderedAt),
-    time: formatDhakaTime(l.orderedAt),
-    // What the edit form's datetime-local input needs, already in Dhaka time.
-    orderedAtInput: toDhakaInputValue(l.orderedAt),
+    // what the date-range filter compares, and both need it date-only. A
+    // website order carries its own placed-at time, so nothing is inferred from
+    // when the row was written.
+    // Carries dateInput too — what the edit form's datetime-local input needs,
+    // already in Dhaka time.
+    ...dhakaInstant(l.orderedAt),
     customerName: l.customerName,
     phone: l.phone,
     altPhone: l.altPhone,
@@ -131,11 +165,18 @@ export default async function LeadsPage({
   return (
     <div className="space-y-6">
       <PageHeader icon={<PhoneCall />} color="sky" title="Call list" count={leadCount} />
-      <LeadManager slug={slug} leads={rows} perms={perms} />
+      <LeadManager
+        slug={slug}
+        leads={rows}
+        perms={perms}
+        query={q}
+        totalCount={totalLeadCount}
+      />
       <Pagination
         page={page}
         totalPages={Math.ceil(leadCount / PAGE_SIZE)}
         basePath={`/${slug}/leads`}
+        query={{ q: q || undefined }}
       />
     </div>
   );

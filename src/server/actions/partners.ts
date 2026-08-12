@@ -15,6 +15,7 @@ import { InsufficientTreasury, assertTreasuryCovers } from "@/lib/finance";
 import { ConcurrentWrite, runSerializable } from "@/lib/tx";
 import { failed, type ActionFailure } from "@/lib/form";
 import { diffFields, recordActivity } from "@/lib/activity";
+import { dhakaDateField } from "@/lib/date-field";
 
 export type ActionResult = { ok: true } | ActionFailure;
 
@@ -195,7 +196,7 @@ const TxnSchema = z.object({
   type: z.enum(["INVESTMENT", "EXPENSE", "WITHDRAWAL", "DEPOSIT_TO_TREASURY"]),
   amount: z.coerce.number().positive("Amount must be > 0"),
   purpose: z.string().trim().max(300).optional().or(z.literal("")),
-  date: z.coerce.date(),
+  date: dhakaDateField,
   /**
    * Withdrawal only: the money came out of the shared treasury rather than
    * from wherever else the partner was holding it.
@@ -270,7 +271,8 @@ export async function createPartnerTxn(
           type: d.type,
           amount: d.amount,
           purpose: d.purpose?.trim() || null,
-          date: d.date,
+          date: d.date.at,
+          dateHasTime: d.date.hasTime,
           treasuryEntry: linkedEntry
             ? {
                 create: {
@@ -280,7 +282,8 @@ export async function createPartnerTxn(
                   source: linkedEntry.source,
                   note: d.purpose?.trim() || null,
                   partnerId: d.partnerId,
-                  date: d.date,
+                  date: d.date.at,
+                  dateHasTime: d.date.hasTime,
                 },
               }
             : undefined,
@@ -369,6 +372,8 @@ type UnlinkedSource = {
   partnerId: string;
   amount: number;
   date: Date;
+  /** Mirrored onto the credit, so it says the same thing about time as its source. */
+  dateHasTime: boolean;
   purpose: string;
   alreadyLinked: boolean;
   link: CreditLink;
@@ -388,6 +393,7 @@ async function loadSource(
         unitCost: true,
         quantity: true,
         date: true,
+        dateHasTime: true,
         partnerTxn: { select: { id: true } },
         productVariant: {
           select: { attributes: true, product: { select: { name: true } } },
@@ -400,6 +406,7 @@ async function loadSource(
       partnerId: p.paidByPartnerId,
       amount: round2(Number(p.unitCost) * p.quantity),
       date: p.date,
+      dateHasTime: p.dateHasTime,
       purpose: `Product purchase: ${label}`,
       alreadyLinked: !!p.partnerTxn,
       link: { purchaseId: p.id },
@@ -413,6 +420,7 @@ async function loadSource(
       cost: true,
       quantity: true,
       date: true,
+      dateHasTime: true,
       itemName: true,
       partnerTxn: { select: { id: true } },
     },
@@ -422,6 +430,7 @@ async function loadSource(
     partnerId: ip.paidByPartnerId,
     amount: round2(Number(ip.cost) * ip.quantity),
     date: ip.date,
+    dateHasTime: ip.dateHasTime,
     purpose: `Internal purchase: ${ip.itemName}`,
     alreadyLinked: !!ip.partnerTxn,
     link: { internalPurchaseId: ip.id },
@@ -448,12 +457,20 @@ async function loadUnlinkedSources(
         unitCost: true,
         quantity: true,
         date: true,
+        dateHasTime: true,
         productVariant: { select: { attributes: true, product: { select: { name: true } } } },
       },
     }),
     prisma.internalPurchase.findMany({
       where,
-      select: { id: true, cost: true, quantity: true, date: true, itemName: true },
+      select: {
+        id: true,
+        cost: true,
+        quantity: true,
+        date: true,
+        dateHasTime: true,
+        itemName: true,
+      },
     }),
   ]);
 
@@ -462,6 +479,7 @@ async function loadUnlinkedSources(
       partnerId,
       amount: round2(Number(p.unitCost) * p.quantity),
       date: p.date,
+      dateHasTime: p.dateHasTime,
       purpose: `Product purchase: ${variantFullName(
         p.productVariant.product.name,
         p.productVariant.attributes,
@@ -473,6 +491,7 @@ async function loadUnlinkedSources(
       partnerId,
       amount: round2(Number(ip.cost) * ip.quantity),
       date: ip.date,
+      dateHasTime: ip.dateHasTime,
       purpose: `Internal purchase: ${ip.itemName}`,
       alreadyLinked: false,
       link: { internalPurchaseId: ip.id } as CreditLink,
@@ -500,6 +519,7 @@ export async function generatePartnerCredit(
       link: src.link,
       partnerId: src.partnerId,
       amount: src.amount,
+      dateHasTime: src.dateHasTime,
       purpose: src.purpose,
       date: src.date,
     });

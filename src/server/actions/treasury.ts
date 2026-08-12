@@ -8,6 +8,7 @@ import { InsufficientTreasury, assertTreasuryCovers } from "@/lib/finance";
 import { ConcurrentWrite, runSerializable } from "@/lib/tx";
 import { failed, type ActionFailure } from "@/lib/form";
 import { recordActivity } from "@/lib/activity";
+import { dhakaDateField } from "@/lib/date-field";
 
 export type ActionResult = { ok: true } | ActionFailure;
 
@@ -17,7 +18,7 @@ const EntrySchema = z.object({
   source: z.string().trim().min(1, "Source is required").max(120),
   note: z.string().trim().max(300).optional().or(z.literal("")),
   partnerId: z.string().optional().or(z.literal("")),
-  date: z.coerce.date(),
+  date: dhakaDateField,
 });
 
 export async function createTreasuryEntry(
@@ -69,7 +70,8 @@ export async function createTreasuryEntry(
           source: d.source,
           note: d.note?.trim() || null,
           partnerId,
-          date: d.date,
+          date: d.date.at,
+          dateHasTime: d.date.hasTime,
         },
       });
       return created.id;

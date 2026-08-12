@@ -14,6 +14,8 @@ let seq = 0;
 const sold = (over: Partial<AttributableOrder> = {}): AttributableOrder => ({
   id: `o${++seq}`,
   date: day("2026-08-05"),
+  createdAt: day("2026-08-05"),
+  dateHasTime: false,
   customerName: "Asha",
   source: "FACEBOOK",
   boostCampaignId: "c1",

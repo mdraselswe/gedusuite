@@ -9,6 +9,7 @@ import { PartnerTxnManager } from "@/components/partners/partner-txn-manager";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Money } from "@/components/ui/money";
 import { RecordHistory } from "@/components/activity/record-history";
+import { dhakaRecordStamp } from "@/lib/dhaka-time";
 
 export default async function PartnerDetailPage({
   params,
@@ -44,7 +45,7 @@ export default async function PartnerDetailPage({
     const from = derivedSource(t);
     return {
       id: t.id,
-      date: t.date.toISOString().slice(0, 10),
+      ...dhakaRecordStamp(t.date, t.createdAt, t.dateHasTime),
       type: t.type,
       amount: Number(t.amount),
       purpose: t.purpose,

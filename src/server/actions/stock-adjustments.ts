@@ -8,6 +8,7 @@ import { refreshInventoryAlerts } from "@/lib/inventory";
 import { failed, type ActionFailure } from "@/lib/form";
 import { recordActivity } from "@/lib/activity";
 import { variantFullName } from "@/lib/variants";
+import { dhakaDateField } from "@/lib/date-field";
 
 export type ActionResult = { ok: true } | ActionFailure;
 
@@ -17,7 +18,7 @@ const Schema = z.object({
   quantity: z.coerce.number().int().positive("Quantity must be > 0"),
   direction: z.enum(["ADD", "REMOVE"]).default("REMOVE"),
   reason: z.string().trim().max(300).optional().or(z.literal("")),
-  date: z.coerce.date(),
+  date: dhakaDateField,
 });
 
 export async function createStockAdjustment(
@@ -62,7 +63,8 @@ export async function createStockAdjustment(
       type: d.type,
       delta,
       reason: d.reason?.trim() || null,
-      date: d.date,
+      date: d.date.at,
+      dateHasTime: d.date.hasTime,
     },
   });
 

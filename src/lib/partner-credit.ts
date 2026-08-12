@@ -80,9 +80,11 @@ export async function syncPartnerCredit(
     amount: number;
     purpose: string;
     date: Date;
+    /** Whether `date` is a moment or only a day — mirrored from the source row. */
+    dateHasTime: boolean;
   },
 ): Promise<void> {
-  const { workspaceId, link, partnerId, amount, purpose, date } = args;
+  const { workspaceId, link, partnerId, amount, purpose, date, dateHasTime } = args;
   if (!partnerId) {
     await removePartnerCredit(tx, workspaceId, link);
     return;
@@ -97,12 +99,21 @@ export async function syncPartnerCredit(
     // to a different partner — the credit follows the purchase in every case.
     await tx.partnerTxn.update({
       where: { id: existing.id },
-      data: { partnerId, type: "INVESTMENT", amount, purpose, date },
+      data: { partnerId, type: "INVESTMENT", amount, purpose, date, dateHasTime },
     });
     return;
   }
   await tx.partnerTxn.create({
-    data: { workspaceId, partnerId, type: "INVESTMENT", amount, purpose, date, ...link },
+    data: {
+      workspaceId,
+      partnerId,
+      type: "INVESTMENT",
+      amount,
+      purpose,
+      date,
+      dateHasTime,
+      ...link,
+    },
   });
 }
 

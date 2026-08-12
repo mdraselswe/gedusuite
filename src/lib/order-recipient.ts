@@ -19,6 +19,8 @@
  * had anything different to say.
  */
 
+import { normalizePhone, samePhone } from "@/lib/phone";
+
 export type RecipientSource = {
   shipName?: string | null;
   shipPhone?: string | null;
@@ -48,6 +50,43 @@ export function orderRecipient(order: RecipientSource): Recipient {
     name: pick(order.shipName, order.customer?.name),
     phone: pick(order.shipPhone, order.customer?.phone),
     address: pick(order.shipAddress, order.customer?.address),
+  };
+}
+
+/**
+ * The delivery details worth storing on the order itself — the write side of
+ * what orderRecipient reads back.
+ *
+ * Anything matching the customer record is stored as null, not copied: a
+ * snapshot taken on every order would freeze whatever was in the record at the
+ * time, so correcting a misspelt name or a typo in an address later would
+ * reach the customer page and nothing else. Null means "read the customer",
+ * which is what orders taken before this existed already do.
+ */
+export function shipSnapshot(
+  d: { shipName?: string; shipPhone?: string; shipAddress?: string },
+  customer: { name: string; phone: string | null; address: string | null } | null,
+): { shipName: string | null; shipPhone: string | null; shipAddress: string | null } {
+  const differs = (typed: string | undefined, current: string | null | undefined) => {
+    const t = typed?.trim();
+    if (!t) return null;
+    return t === (current?.trim() ?? "") ? null : t;
+  };
+  // The phone is compared and stored as a number rather than as text. A
+  // customer's own number is already normalized, so "+8801712345678" typed
+  // against a record holding "01712345678" is the same number and must snapshot
+  // as null — and a number that really is different has to go in in the one
+  // shape everything else here matches on, or the order list can't be searched
+  // by it (see lib/phone). Something with no digits in it at all is kept
+  // verbatim: that is somebody leaving a note in the field, and reshaping it
+  // would only lose it.
+  const shipPhone = samePhone(d.shipPhone, customer?.phone)
+    ? null
+    : (normalizePhone(d.shipPhone) ?? differs(d.shipPhone, customer?.phone));
+  return {
+    shipName: differs(d.shipName, customer?.name),
+    shipPhone,
+    shipAddress: differs(d.shipAddress, customer?.address),
   };
 }
 

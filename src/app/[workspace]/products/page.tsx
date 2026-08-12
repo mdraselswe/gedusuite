@@ -13,6 +13,7 @@ import { listProductCategories } from "@/server/actions/product-categories";
 import { Pagination, parsePage } from "@/components/ui/pagination";
 import { PageHeader } from "@/components/ui/page-header";
 import { Package } from "lucide-react";
+import { dhakaRecordStamp } from "@/lib/dhaka-time";
 
 const PAGE_SIZE = 50;
 
@@ -94,7 +95,7 @@ export default async function ProductsPage({
 
   const adjustmentRows = adjustments.map((a) => ({
     id: a.id,
-    date: a.date.toISOString().slice(0, 10),
+    ...dhakaRecordStamp(a.date, a.createdAt, a.dateHasTime),
     product: variantFullName(a.productVariant.product.name, a.productVariant.attributes),
     type: a.type,
     delta: a.delta,

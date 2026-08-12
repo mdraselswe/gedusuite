@@ -17,6 +17,8 @@ import { variantFullName } from "@/lib/variants";
 import { Money } from "@/components/ui/money";
 import { RecordHistory } from "@/components/activity/record-history";
 import { formatMoney as money } from "@/lib/money";
+import { dhakaRecordStamp } from "@/lib/dhaka-time";
+import { Stamp } from "@/components/ui/stamp";
 
 export default async function OrderBreakdownPage({
   params,
@@ -75,7 +77,8 @@ export default async function OrderBreakdownPage({
       <div>
         <h1 className="text-2xl font-bold">Order calculation breakdown</h1>
         <p className="text-sm text-muted-foreground">
-          #{order.id.slice(-8).toUpperCase()} · {order.date.toISOString().slice(0, 10)} ·{" "}
+          #{order.id.slice(-8).toUpperCase()} ·{" "}
+          <Stamp {...dhakaRecordStamp(order.date, order.createdAt, order.dateHasTime)} /> ·{" "}
           {order.customer?.name ?? "Walk-in customer"}
         </p>
       </div>

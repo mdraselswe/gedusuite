@@ -42,3 +42,29 @@ export function samePhone(a?: string | null, b?: string | null) {
   const y = normalizePhone(b);
   return Boolean(x && y && x === y);
 }
+
+/**
+ * The substrings a typed search should be matched against a stored phone with.
+ *
+ * A number does not sit in the database in one single shape: a customer's is
+ * stored normalized, while the delivery phone on an order is kept exactly as
+ * the parcel was addressed. So the query is what has to vary — searching for
+ * "+880 1712-345678" must still reach a row holding "01712345678", and a
+ * partial "345678" has to keep working as a plain substring.
+ *
+ * Empty when the query holds no digits: a search for a name must not also drag
+ * in whatever numbers happen to contain those letters.
+ */
+export function phoneSearchTerms(raw?: string | null): string[] {
+  const typed = (raw ?? "").trim();
+  const digits = typed.replace(/\D/g, "");
+  if (!digits) return [];
+  const terms = [digits];
+  // The query as typed, but only when it reads as a number rather than a name:
+  // a delivery phone is stored as written, so "01712 345678" may be in the
+  // column with its separators intact.
+  if (typed !== digits && /^[\d\s+()./-]+$/.test(typed)) terms.push(typed);
+  const normalized = normalizePhone(digits);
+  if (normalized) terms.push(normalized);
+  return [...new Set(terms)];
+}

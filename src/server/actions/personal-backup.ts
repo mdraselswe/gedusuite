@@ -13,6 +13,7 @@ import {
 } from "@/lib/google-personal";
 import { encrypt } from "@/lib/crypto";
 import type { ActionFailure } from "@/lib/form";
+import { dhakaStampLine } from "@/lib/dhaka-time";
 
 export type Result<T = unknown> = ({ ok: true } & T) | ActionFailure;
 
@@ -31,7 +32,7 @@ export async function getPersonalStatus(): Promise<{
     connected: !!conn,
     sheetUrl: conn?.sheetId ? `https://docs.google.com/spreadsheets/d/${conn.sheetId}` : null,
     lastJsonUrl: conn?.lastJsonUrl ?? null,
-    lastSyncedAt: conn?.lastSyncedAt?.toISOString().slice(0, 16).replace("T", " ") ?? null,
+    lastSyncedAt: conn?.lastSyncedAt ? dhakaStampLine(conn.lastSyncedAt) : null,
   };
 }
 

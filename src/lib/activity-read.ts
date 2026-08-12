@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import type { FieldChanges } from "@/lib/activity";
 import type { ActivityEntry } from "@/components/activity/activity-entries";
+import { dhakaDayEnd, dhakaDayStart } from "@/lib/dhaka-time";
 
 /**
  * Reading the audit trail.
@@ -73,9 +74,11 @@ export async function readActivity(
     ...(filters.entity ? { entity: filters.entity } : {}),
     ...(filters.from || filters.to
       ? {
+          // Dhaka days — the log is stamped in Dhaka time, so a UTC window
+          // would leave the evening's entries out of the day they show under.
           createdAt: {
-            ...(filters.from ? { gte: new Date(`${filters.from}T00:00:00.000Z`) } : {}),
-            ...(filters.to ? { lte: new Date(`${filters.to}T23:59:59.999Z`) } : {}),
+            ...(filters.from ? { gte: dhakaDayStart(filters.from) } : {}),
+            ...(filters.to ? { lte: dhakaDayEnd(filters.to) } : {}),
           },
         }
       : {}),

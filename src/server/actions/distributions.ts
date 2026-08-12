@@ -15,6 +15,7 @@ import { ConcurrentWrite, runSerializable } from "@/lib/tx";
 import { beyondDistributableProfit, splitByShare } from "@/lib/profit-share";
 import { failed, type ActionFailure } from "@/lib/form";
 import { recordActivity } from "@/lib/activity";
+import { dhakaDateField } from "@/lib/date-field";
 
 const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
 
@@ -28,7 +29,7 @@ export type ActionResult =
 const DistributionSchema = z.object({
   amount: z.coerce.number().positive("Amount must be > 0"),
   note: z.string().trim().max(300).optional().or(z.literal("")),
-  date: z.coerce.date(),
+  date: dhakaDateField,
   /** Set once the person has been told the amount exceeds profit. */
   confirmBeyondProfit: z.coerce.boolean().default(false),
 });
@@ -156,7 +157,8 @@ export async function createDistribution(
         workspaceId,
         totalAmount: d.amount,
         note,
-        date: d.date,
+        date: d.date.at,
+        dateHasTime: d.date.hasTime,
       },
     });
     await tx.treasuryEntry.create({
@@ -167,7 +169,8 @@ export async function createDistribution(
         source: "Profit distribution",
         note,
         distributionId: distribution.id,
-        date: d.date,
+        date: d.date.at,
+        dateHasTime: d.date.hasTime,
       },
     });
     for (const cut of cuts) {
@@ -180,7 +183,8 @@ export async function createDistribution(
           amount: cut.amount,
           purpose: beyondProfit > 0 ? "Distribution (beyond profit)" : "Profit distribution",
           distributionId: distribution.id,
-          date: d.date,
+          date: d.date.at,
+        dateHasTime: d.date.hasTime,
         },
       });
     }

@@ -9,6 +9,7 @@ import { ConcurrentWrite, runSerializable } from "@/lib/tx";
 import { removePartnerCredit, syncPartnerCredit } from "@/lib/partner-credit";
 import { failed, type ActionFailure } from "@/lib/form";
 import { diffFields, recordActivity } from "@/lib/activity";
+import { dhakaDateField } from "@/lib/date-field";
 
 export type ActionResult = { ok: true } | ActionFailure;
 
@@ -33,7 +34,7 @@ const Schema = z.object({
   cost: z.coerce.number().nonnegative("Cost must be ≥ 0"),
   quantity: z.coerce.number().int().positive("Quantity must be > 0"),
   category: z.enum(CATEGORIES),
-  date: z.coerce.date(),
+  date: dhakaDateField,
   // Blank means "charge it in full on its date" — not zero months, which would
   // be a window of no length. Stripped before coercion so "" doesn't become 0.
   spreadMonths: z.preprocess(
@@ -135,7 +136,8 @@ export async function createInternalPurchase(
         cost: d.cost,
         quantity: d.quantity,
         category: d.category,
-        date: d.date,
+        date: d.date.at,
+        dateHasTime: d.date.hasTime,
         spreadMonths: d.spreadMonths ?? null,
       },
     });
@@ -147,7 +149,8 @@ export async function createInternalPurchase(
           amount: cost,
           source: `Internal purchase: ${d.itemName}`,
           internalPurchaseId: item.id,
-          date: d.date,
+          date: d.date.at,
+          dateHasTime: d.date.hasTime,
         },
       });
     }
@@ -158,7 +161,8 @@ export async function createInternalPurchase(
         partnerId: paidByPartnerId,
         amount: cost,
         purpose: `Internal purchase: ${d.itemName}`,
-        date: d.date,
+        date: d.date.at,
+        dateHasTime: d.date.hasTime,
       });
     }
     return item.id;
@@ -251,7 +255,8 @@ export async function updateInternalPurchase(
         cost: d.cost,
         quantity: d.quantity,
         category: d.category,
-        date: d.date,
+        date: d.date.at,
+        dateHasTime: d.date.hasTime,
         spreadMonths: d.spreadMonths ?? null,
       },
     });
@@ -268,14 +273,20 @@ export async function updateInternalPurchase(
           amount: newCost,
           source: `Internal purchase: ${d.itemName}`,
           internalPurchaseId: id,
-          date: d.date,
+          date: d.date.at,
+          dateHasTime: d.date.hasTime,
         },
       });
     } else if (wasTreasuryFunded && paidFromTreasury && existing.treasuryEntry) {
       // Still treasury-funded — keep the linked entry in sync with the new cost.
       await tx.treasuryEntry.update({
         where: { id: existing.treasuryEntry.id },
-        data: { amount: newCost, source: `Internal purchase: ${d.itemName}`, date: d.date },
+        data: {
+          amount: newCost,
+          source: `Internal purchase: ${d.itemName}`,
+          date: d.date.at,
+          dateHasTime: d.date.hasTime,
+        },
       });
     }
 
@@ -287,7 +298,8 @@ export async function updateInternalPurchase(
       partnerId: paidByPartnerId,
       amount: newCost,
       purpose: `Internal purchase: ${d.itemName}`,
-      date: d.date,
+      date: d.date.at,
+      dateHasTime: d.date.hasTime,
     });
     });
   } catch (e) {

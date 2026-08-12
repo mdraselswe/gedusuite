@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import type { WorkspaceAccess } from "@/lib/authz";
+import { dhakaDayKey, dhakaStampLine } from "@/lib/dhaka-time";
 
 /**
  * The audit trail: who changed what, and when.
@@ -46,12 +47,20 @@ export function newActivityGroup(): string {
  * Values a person can read, from values Prisma returns.
  *
  * Decimal and Date both stringify into something unreadable or misleading
- * (`{"s":1,"e":2,"d":[115]}`, an ISO timestamp for a date-only field), and the
- * history is read by a shopkeeper, not a debugger.
+ * (`{"s":1,"e":2,"d":[115]}`, a UTC ISO timestamp for a date a shopkeeper reads
+ * in Dhaka), and the history is read by a shopkeeper, not a debugger.
+ *
+ * A date keeps its time of day. The forms record one now, so cutting the stamp
+ * at the day would report "changed the date from 12 Aug to 12 Aug" when somebody
+ * corrected the hour — a history entry saying nothing happened. A date-only
+ * value still reads as its day, because 6 AM Dhaka is where midnight UTC lands
+ * and printing that would invent a time the record never had.
  */
 function plain(v: unknown): unknown {
   if (v === null || v === undefined) return null;
-  if (v instanceof Date) return v.toISOString().slice(0, 10);
+  if (v instanceof Date) {
+    return v.getTime() % 86_400_000 === 0 ? dhakaDayKey(v) : dhakaStampLine(v);
+  }
   if (typeof v === "object" && v !== null && "toNumber" in v) {
     return Number((v as { toNumber(): number }).toNumber());
   }

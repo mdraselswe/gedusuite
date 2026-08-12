@@ -13,6 +13,7 @@ import {
   overlappingCampaigns,
   toAttributable,
 } from "@/lib/boost-results";
+import { dhakaRecordStamp } from "@/lib/dhaka-time";
 
 /** Ad set dates are date-only, so a window's last day counts in full. */
 function endOfDay(date: Date): Date {
@@ -94,7 +95,7 @@ export default async function BoostCampaignPage({
       totalSpent,
       spends: a.spends.map((x) => ({
         id: x.id,
-        date: x.date.toISOString().slice(0, 10),
+        ...dhakaRecordStamp(x.date, x.createdAt, x.dateHasTime),
         amount: Number(x.amount),
         note: x.note,
         paidFrom: x.paidFromTreasury
@@ -129,6 +130,8 @@ export default async function BoostCampaignPage({
       status: true,
       source: true,
       boostCampaignId: true,
+      createdAt: true,
+      dateHasTime: true,
       customer: { select: { name: true } },
       discount: true,
       deliveryCharge: true,

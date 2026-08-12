@@ -64,6 +64,8 @@ import { Columns3, Plus, Printer, Send, ShoppingCart, Trash2, MoreVertical, X } 
 import { formatStock } from "@/lib/units";
 import { cn } from "@/lib/utils";
 import { Money } from "@/components/ui/money";
+import { Stamp } from "@/components/ui/stamp";
+import { toDhakaInputValue, type DhakaStamp } from "@/lib/dhaka-time";
 import { formatMoney } from "@/lib/money";
 import { Field } from "@/components/ui/field";
 import { MoneyInput } from "@/components/ui/money-input";
@@ -77,9 +79,8 @@ type OrderItem = {
   remaining: number;
   unitPrice: number;
 };
-type OrderRow = {
+type OrderRow = DhakaStamp & {
   id: string;
-  date: string;
   customerId: string | null;
   customerName: string;
   /** Who this parcel was addressed to — the snapshot, or the customer record. */
@@ -316,12 +317,6 @@ function emptyGift(): GiftDraft {
   return { mode: "PRODUCT", variant: null, label: "", quantity: "1", unitCost: "0", costEdited: false };
 }
 
-function todayInputValue() {
-  const date = new Date();
-  date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
-  return date.toISOString().slice(0, 10);
-}
-
 function formatEnum(value: string) {
   return value
     .toLowerCase()
@@ -530,6 +525,10 @@ export function OrderManager({
 
   // ── New-order dialog state ──
   const [open, setOpen] = useState(false);
+  // Controlled rather than a defaultValue: the value moves with the clock, and a
+  // defaultValue that changes under an uncontrolled input is exactly what Base
+  // UI warns about.
+  const [orderDate, setOrderDate] = useState(() => toDhakaInputValue(new Date()));
   const [loading, setLoading] = useState(false);
   // The order awaiting a "what did this cancellation cost?" answer.
   const [cancelling, setCancelling] = useState<OrderRow | null>(null);
@@ -838,6 +837,9 @@ export function OrderManager({
   }, [fromLead, perms.canAdd]);
 
   function resetForm() {
+    // Now, in Dhaka — the form asks for a time as well as a day, so a new order
+    // opens on the moment it is being taken rather than on midnight.
+    setOrderDate(toDhakaInputValue(new Date()));
     setItems([emptyItem()]);
     setGifts([]);
     setCustomer(null);
@@ -1201,7 +1203,7 @@ export function OrderManager({
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative w-full max-w-xs">
             <Input
-              placeholder="Search customer or courier ID…"
+              placeholder="Search name, phone or courier ID…"
               value={search}
               onChange={(e) => onSearchChange(e.target.value)}
               className={search ? "pr-8" : undefined}
@@ -1351,7 +1353,11 @@ export function OrderManager({
                 </span>
               ),
             },
-            { key: "date", header: "Date", cell: (o) => o.date },
+            {
+              key: "date",
+              header: "Date",
+              cell: (o) => <Stamp date={o.date} time={o.time} entered={o.entered} />,
+            },
             {
               key: "status",
               header: "Status",
@@ -1965,7 +1971,14 @@ export function OrderManager({
                       <ShipFields value={ship} onChange={setShip} />
                     </div>
                     <Field name="date" label="Date" required>
-                      <Input id="o-date" name="date" type="date" required defaultValue={todayInputValue()} />
+                      <Input
+                        id="o-date"
+                        name="date"
+                        type="datetime-local"
+                        required
+                        value={orderDate}
+                        onChange={(e) => setOrderDate(e.target.value)}
+                      />
                     </Field>
                     <div className="space-y-2">
                       <Label>Status</Label>
@@ -2638,7 +2651,13 @@ export function OrderManager({
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <Field name="date" label="Date" required>
-                  <Input id="eo-date" name="date" type="date" required defaultValue={editOrder.date} />
+                  <Input
+                    id="eo-date"
+                    name="date"
+                    type="datetime-local"
+                    required
+                    defaultValue={editOrder.dateInput}
+                  />
                 </Field>
                 <div className="space-y-2">
                   <Label>Delivery type</Label>

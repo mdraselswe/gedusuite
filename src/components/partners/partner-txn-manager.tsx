@@ -24,10 +24,11 @@ import { MANUAL, SOURCE_OPTIONS, totalsByType } from "@/lib/partner-ledger-filte
 import { ArrowLeftRight } from "lucide-react";
 import { Money } from "@/components/ui/money";
 import { Field, FormError, type FieldError } from "@/components/ui/field";
+import { Stamp } from "@/components/ui/stamp";
+import { toDhakaInputValue, type DhakaStamp } from "@/lib/dhaka-time";
 
-type Txn = {
+type Txn = DhakaStamp & {
   id: string;
-  date: string;
   type: string;
   amount: number;
   purpose: string | null;
@@ -63,6 +64,10 @@ export function PartnerTxnManager({
   const [type, setType] = useState("INVESTMENT");
   const [fromTreasury, setFromTreasury] = useState(false);
   const [loading, setLoading] = useState(false);
+  // Now, in Dhaka — the form records a moment, not just a day. Controlled so the
+  // value can move with the clock without a defaultValue changing under an
+  // uncontrolled input, and so a form.reset() doesn't put back a stale time.
+  const [dateInput, setDateInput] = useState(() => toDhakaInputValue(new Date()));
   // The last refusal, kept so the Field it names can show it. A toast alone
   // left the message hovering over a form with no sign of which box it meant.
   const [formError, setFormError] = useState<FieldError>(null);
@@ -115,6 +120,7 @@ export function PartnerTxnManager({
     setFormError(null);
     toast.success("Transaction added");
     (e.target as HTMLFormElement).reset();
+    setDateInput(toDhakaInputValue(new Date()));
     // form.reset() only clears the native inputs; the tick is React state.
     setFromTreasury(false);
     router.refresh();
@@ -175,7 +181,14 @@ export function PartnerTxnManager({
                 <Input id="t-amount" name="amount" type="number" step="0.01" min="0" required />
               </Field>
               <Field name="date" error={formError} label="Date" required>
-                <Input id="t-date" name="date" type="date" required />
+                <Input
+                  id="t-date"
+                  name="date"
+                  type="datetime-local"
+                  required
+                  value={dateInput}
+                  onChange={(e) => setDateInput(e.target.value)}
+                />
               </Field>
               <Field name="purpose" error={formError} label="Purpose">
                 <Input id="t-purpose" name="purpose" />
@@ -233,7 +246,12 @@ export function PartnerTxnManager({
           }}
           columns={
             [
-              { key: "date", header: "Date", sortValue: (t) => t.date, cell: (t) => t.date },
+              {
+                key: "date",
+                header: "Date",
+                sortValue: (t) => t.date,
+                cell: (t) => <Stamp date={t.date} time={t.time} entered={t.entered} />,
+              },
               {
                 key: "type",
                 header: "Type",

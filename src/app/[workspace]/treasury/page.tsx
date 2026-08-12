@@ -18,6 +18,7 @@ import { Pagination, parsePage } from "@/components/ui/pagination";
 import { PageHeader } from "@/components/ui/page-header";
 import { Money } from "@/components/ui/money";
 import { toneForBalance } from "@/lib/money";
+import { dhakaRecordStamp } from "@/lib/dhaka-time";
 import { Wallet } from "lucide-react";
 
 const PAGE_SIZE = 50;
@@ -89,7 +90,9 @@ export default async function TreasuryPage({
 
   const entryRows = entries.map((e) => ({
     id: e.id,
-    date: e.date.toISOString().slice(0, 10),
+    // The money's own date, plus when the line was written — a day's entries
+    // are read in the order they happened.
+    ...dhakaRecordStamp(e.date, e.createdAt, e.dateHasTime),
     type: e.type,
     amount: Number(e.amount),
     source: e.source,
@@ -129,7 +132,7 @@ export default async function TreasuryPage({
 
   const distributionRows = distributions.map((d) => ({
     id: d.id,
-    date: d.date.toISOString().slice(0, 10),
+    ...dhakaRecordStamp(d.date, d.createdAt, d.dateHasTime),
     totalAmount: Number(d.totalAmount),
     note: d.note,
   }));

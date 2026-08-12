@@ -17,6 +17,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Money } from "@/components/ui/money";
+import { dhakaRecordStamp } from "@/lib/dhaka-time";
+import { Stamp } from "@/components/ui/stamp";
 
 export default async function InvoicePage({
   params,
@@ -81,7 +83,9 @@ export default async function InvoicePage({
           </div>
           <div className="text-right text-sm">
             <div>#{orderNumber}</div>
-            <div className="text-muted-foreground">{order.date.toISOString().slice(0, 10)}</div>
+            <div className="text-muted-foreground">
+              <Stamp {...dhakaRecordStamp(order.date, order.createdAt, order.dateHasTime)} />
+            </div>
             <div className="text-muted-foreground">{order.status}</div>
           </div>
         </div>

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Check, Copy, PhoneCall, RefreshCw, Repeat2, UserPlus } from "lucide-react";
+import { Check, Copy, PhoneCall, RefreshCw, Repeat2, UserPlus, X } from "lucide-react";
 import {
   createLead,
   setLeadStatus,
@@ -62,19 +62,16 @@ import {
 import type { BuyerHistory } from "@/lib/buyer-history";
 import { cn } from "@/lib/utils";
 import { Money } from "@/components/ui/money";
+import { Stamp } from "@/components/ui/stamp";
+import type { DhakaStamp } from "@/lib/dhaka-time";
 
-type Lead = {
+type Lead = DhakaStamp & {
   id: string;
   source: string;
   /** Which channel the customer came through; null until somebody tags it. */
   channel: string | null;
   orderNo: string | null;
   wooStatus: string | null;
-  date: string;
-  /** Dhaka clock time, e.g. "9:30 PM". Separate from `date`, which groups. */
-  time: string;
-  /** "2026-08-04T21:30" — what the edit form's datetime input needs. */
-  orderedAtInput: string;
   customerName: string;
   phone: string;
   altPhone: string | null;
@@ -187,10 +184,16 @@ export function LeadManager({
   slug,
   leads,
   perms,
+  query,
+  totalCount,
 }: {
   slug: string;
   leads: Lead[];
   perms: Perms;
+  /** The search the server ran, so the box survives the refresh it triggers. */
+  query: string;
+  /** Leads in the whole call list, not just this page — for "showing N of M". */
+  totalCount: number;
 }) {
   const router = useRouter();
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -325,7 +328,34 @@ export function LeadManager({
         </span>
       </span>
     ),
+    total: totalCount,
   });
+
+  // ── Search: URL-driven, so the server queries every page ──
+  // The filters above stay in memory — they narrow a list somebody is reading.
+  // A number is the opposite: it's asked when the phone rings and the lead may
+  // be pages back, so it has to be a query rather than a filter over the rows
+  // that happen to be on screen.
+  const [search, setSearch] = useState(query);
+  const searchDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function pushSearch(v: string) {
+    const params = new URLSearchParams();
+    const qv = v.trim();
+    if (qv) params.set("q", qv);
+    // No page param: a new search starts at the first page of its own results.
+    router.replace(`/${slug}/leads${params.size ? `?${params}` : ""}`);
+  }
+  function onSearchChange(v: string) {
+    setSearch(v);
+    if (searchDebounce.current) clearTimeout(searchDebounce.current);
+    searchDebounce.current = setTimeout(() => pushSearch(v), 400);
+  }
+  useEffect(() => {
+    return () => {
+      if (searchDebounce.current) clearTimeout(searchDebounce.current);
+    };
+  }, []);
 
   async function onStatusChange(lead: Lead, next: string) {
     setBusyId(lead.id);
@@ -373,7 +403,7 @@ export function LeadManager({
     // silently rewrite it just because they were loaded back in.
     setTotalTouched(true);
     setChannel(l.channel ?? UNTAGGED);
-    setOrderedAt(l.orderedAtInput);
+    setOrderedAt(l.dateInput);
     setFormOpen(true);
   }
 
@@ -535,7 +565,7 @@ export function LeadManager({
             )}
           </span>
           <span className="block text-xs font-normal text-muted-foreground">
-            {l.date} · {l.time}
+            <Stamp date={l.date} time={l.time} entered={l.entered} />
           </span>
         </span>
       ),
@@ -793,6 +823,28 @@ export function LeadManager({
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-start gap-2">
+        <div className="relative w-full max-w-xs">
+          <Input
+            placeholder="Search name, phone, order…"
+            value={search}
+            onChange={(e) => onSearchChange(e.target.value)}
+            className={search ? "pr-8" : undefined}
+          />
+          {search && (
+            <button
+              type="button"
+              aria-label="Clear search"
+              onClick={() => {
+                if (searchDebounce.current) clearTimeout(searchDebounce.current);
+                setSearch("");
+                pushSearch("");
+              }}
+              className="absolute top-1/2 right-2 -translate-y-1/2 rounded-sm text-muted-foreground hover:text-foreground"
+            >
+              <X className="size-4" />
+            </button>
+          )}
+        </div>
         <div className="min-w-0 flex-1">{bar}</div>
         {perms.canAdd && (
           <Button size="sm" onClick={openNew}>
@@ -816,14 +868,10 @@ export function LeadManager({
         rowKey={(l) => l.id}
         colorGroupBy={(l) => l.date}
         colorToggleLabel="Color by date"
-        searchText={(l) =>
-          `${l.customerName} ${l.phone} ${l.orderNo ?? ""} ${l.itemsText} ${l.address ?? ""}`
-        }
-        searchPlaceholder="Search name, phone, order…"
         empty={{
           icon: PhoneCall,
           title:
-            active > 0 ? "No orders match these filters" : "No online orders yet",
+            query || active > 0 ? "No orders match these filters" : "No online orders yet",
         }}
         columns={columns}
       />

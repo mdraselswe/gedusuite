@@ -263,6 +263,14 @@ model Purchase {
   // showed up as spent partner capital and nowhere as a debt.
   onCredit         Boolean   @default(false)
   date             DateTime  @default(now())
+  /// Whether `date` carries a real time of day, or only a day.
+  /// The forms ask for both now, so a new row's `date` is the moment the sale
+  /// was made or the money moved. Rows entered before that — and this column is
+  /// false for every one of them — hold midnight UTC, and the time worth showing
+  /// for those is when they were entered (see lib/dhaka-time). Testing the
+  /// timestamp instead of storing this cannot tell the two apart: 6 AM in Dhaka
+  /// IS midnight UTC.
+  dateHasTime      Boolean   @default(false)
   unitCost         Decimal   @db.Decimal(12, 2)
   salePrice        Decimal?  @db.Decimal(12, 2) // intended per-unit selling price, noted at purchase time
   quantity         Int
@@ -375,15 +383,15 @@ model Courier {
    * null for a courier that is only ever booked by hand. A string rather than
    * an enum so the second integration is a client file, not a migration.
    */
-  apiProvider  String?
+  apiProvider   String?
   /**
    * The courier's API credentials, AES-256-GCM encrypted by lib/crypto (the
    * same helper that holds Google OAuth tokens). Per workspace and not in the
    * environment, because every workspace books through its own account — an
    * env var would ship one shop's key to all of them.
    */
-  apiKeyEnc    String?
-  apiSecretEnc String?
+  apiKeyEnc     String?
+  apiSecretEnc  String?
   /**
    * Random path segment on this workspace's webhook URL. The courier posts
    * delivery updates to /api/cron/steadfast/<webhookToken>; that prefix is
@@ -391,10 +399,9 @@ model Courier {
    * open internet and a status write. Rotating it is a new random value here
    * and a paste into the courier's portal.
    */
-  webhookToken String? @unique
+  webhookToken  String? @unique
   /**
    * The bearer token the courier is told to send back on every webhook call.
-   *
    * Steadfast's webhook form takes a callback URL *and* an auth token, which
    * makes the URL's own token an identifier rather than the whole of the
    * security: the path says which workspace this is about, and this says the
@@ -466,41 +473,47 @@ model Customer {
 }
 
 model Order {
-  id                 String        @id @default(cuid())
-  workspaceId        String
+  id                  String        @id @default(cuid())
+  workspaceId         String
   /**
    * A short per-workspace number — 1, 2, 3… — for humans and for couriers.
-   *
    * The id is a cuid, which is the right thing for a primary key and the wrong
    * thing to read down a phone line or match against a courier's statement.
    * Steadfast wants a unique `invoice` string per parcel and shows it in its
    * app; "GS-1042" is findable there, "clx8f2k9p0001..." is not.
-   *
    * Nullable only so the backfill migration could run; every row has one, and
    * createOrder always assigns one.
    */
-  orderNo            Int?
-  customerId         String?
-  date               DateTime      @default(now())
-  status             OrderStatus   @default(PENDING)
-  deliveryType       DeliveryType  @default(SELF)
-  deliveryCharge     Decimal       @default(0) @db.Decimal(12, 2) // charged to the customer
-  deliveryCost       Decimal?      @db.Decimal(12, 2) // actual amount paid to the courier; null = assume it equals deliveryCharge (pure pass-through)
+  orderNo             Int?
+  customerId          String?
+  date                DateTime      @default(now())
+  /// Whether `date` carries a real time of day, or only a day.
+  /// The forms ask for both now, so a new row's `date` is the moment the sale
+  /// was made or the money moved. Rows entered before that — and this column is
+  /// false for every one of them — hold midnight UTC, and the time worth showing
+  /// for those is when they were entered (see lib/dhaka-time). Testing the
+  /// timestamp instead of storing this cannot tell the two apart: 6 AM in Dhaka
+  /// IS midnight UTC.
+  dateHasTime         Boolean       @default(false)
+  status              OrderStatus   @default(PENDING)
+  deliveryType        DeliveryType  @default(SELF)
+  deliveryCharge      Decimal       @default(0) @db.Decimal(12, 2) // charged to the customer
+  deliveryCost        Decimal?      @db.Decimal(12, 2) // actual amount paid to the courier; null = assume it equals deliveryCharge (pure pass-through)
   // Which courier carried it, and on which zone rate — kept so the cost can
   // be re-checked later and reconciled against the courier's own statement.
-  courierId          String?
-  courierZoneId      String?
-  weightKg           Decimal?      @db.Decimal(6, 3)
+  courierId           String?
+  courierZoneId       String?
+  weightKg            Decimal?      @db.Decimal(6, 3)
   // The courier's percentage fee on this parcel, in taka. A separate column
   // from deliveryCost because it scales with the order's value rather than
   // its destination, and because a report that can't separate the two can't
   // tell a bad delivery rate from a bad COD rate.
-  codFeeCost         Decimal       @default(0) @db.Decimal(12, 2)
+  codFeeCost          Decimal       @default(0) @db.Decimal(12, 2)
   // Money the customer still handed over on a cancelled order — a partial
   // delivery where they paid the shipping and refused the goods. Without it a
   // cancellation looks like a pure loss when it was nearly break-even.
-  cancelledCollected Decimal       @default(0) @db.Decimal(12, 2)
-  courierTrackingId  String? // the courier's own order/consignment number (deliveryType=COURIER); shown on the invoice instead of the internal id
+  cancelledCollected  Decimal       @default(0) @db.Decimal(12, 2)
+  courierTrackingId   String? // the courier's own order/consignment number (deliveryType=COURIER); shown on the invoice instead of the internal id
   /**
    * The courier's own tracking code, as distinct from the consignment id:
    * Steadfast returns both and its app searches by either.
@@ -509,7 +522,6 @@ model Order {
   /**
    * What the courier last said about this parcel — "in_review", "delivered",
    * "cancelled" — and when it said it.
-   *
    * Deliberately NOT the order's status. updateOrderStatus consumes stock,
    * re-quotes the COD fee and, on a cancellation, needs figures a webhook
    * cannot know: what the return trip cost and what the customer handed over
@@ -517,23 +529,21 @@ model Order {
    * as zero and quietly wreck the profit reports. So the courier's word is
    * recorded here, shown as a badge, and applied by a person in one click.
    */
-  courierStatus      String?
-  courierStatusAt    DateTime?
+  courierStatus       String?
+  courierStatusAt     DateTime?
   /**
    * Set the moment a booking request starts, cleared if it fails.
-   *
    * Reading courierTrackingId and then calling the courier leaves a window as
    * long as the courier takes to answer — up to twenty seconds — in which a
    * second click passes the same check and books the same parcel again. This
    * column closes it: the booking claims the order in one conditional write
    * before any HTTP happens, so the second request finds it taken.
-   *
    * A timestamp rather than a boolean so a request that dies mid-flight (a
    * crash, a cold serverless container) does not lock the order forever — the
    * claim is treated as stale after two minutes, which is well past the
    * client's own timeout.
    */
-  courierBookingAt   DateTime?
+  courierBookingAt    DateTime?
   // Where THIS parcel was actually sent, captured when the order was entered.
   //
   // The customer record is the buyer's identity — one row per phone number, so
@@ -547,22 +557,21 @@ model Order {
   // Null on every order that predates this, and on any order whose details
   // simply match the customer's — the documents fall back to the customer
   // record, which is exactly what they did before.
-  shipName           String?
-  shipPhone          String?
-  shipAddress        String?
+  shipName            String?
+  shipPhone           String?
+  shipAddress         String?
   /**
    * Which district this parcel's address appears to name, tagged when it was
    * booked. For reports — "how many orders went to Sylhet" — and nothing else.
-   *
    * Best-effort and labelled as such: it comes from matching district names in
    * the address text, which is not something to trust for a delivery decision.
    * It is not sent to the courier (there is no field for it — the address line
    * carries everything), it does not decide whether a parcel goes, and nobody
    * types it. Null on an address written in Bangla, or in shorthand, or badly.
    */
-  shipDistrict       String?
-  paymentMethod      PaymentMethod @default(CASH)
-  paymentStatus      PaymentStatus @default(UNPAID)
+  shipDistrict        String?
+  paymentMethod       PaymentMethod @default(CASH)
+  paymentStatus       PaymentStatus @default(UNPAID)
   // How much of the order the customer has actually handed over. PARTIAL was
   // a status with no number behind it: an advance of 3,000 on a 5,000 order
   // left the app reporting the whole 5,000 as due and the 3,000 sitting
@@ -571,26 +580,26 @@ model Order {
   // Only read when paymentStatus is PARTIAL. PAID means the whole customer
   // total whatever this says, which is what keeps every order that predates
   // the column behaving exactly as it did.
-  amountPaid         Decimal       @default(0) @db.Decimal(12, 2)
-  packagingCost      Decimal       @default(0) @db.Decimal(12, 2)
-  giftCost           Decimal       @default(0) @db.Decimal(12, 2)
-  discount           Decimal       @default(0) @db.Decimal(12, 2) // order-level discount
+  amountPaid          Decimal       @default(0) @db.Decimal(12, 2)
+  packagingCost       Decimal       @default(0) @db.Decimal(12, 2)
+  giftCost            Decimal       @default(0) @db.Decimal(12, 2)
+  discount            Decimal       @default(0) @db.Decimal(12, 2) // order-level discount
   // Where the order came from: website, Facebook, a referral, a stall… Kept as
   // a plain string rather than an enum so adding a channel later is a one-line
   // change instead of a Postgres type migration on a live table. Nullable
   // because every order predating this is genuinely unknown — see
   // ORDER_SOURCES in lib/order-source.
-  source             String?
+  source              String?
   // Which boosting campaign brought this order in, when somebody knows. Set
   // from the orders list, never guessed: an untagged order still counts
   // towards a campaign's ESTIMATED result (its window and channel), but only
   // a tag makes it exact. SetNull on delete — losing a campaign must not
   // delete sales history.
-  boostCampaignId    String?
-  heldByMembershipId String? // which partner/member currently holds this order's cash
-  cashInTreasury     Boolean       @default(false) // true once this PAID order's cash is confirmed deposited into the shared treasury
-  notes              String?
-  createdAt          DateTime      @default(now())
+  boostCampaignId     String?
+  heldByMembershipId  String? // which partner/member currently holds this order's cash
+  cashInTreasury      Boolean       @default(false) // true once this PAID order's cash is confirmed deposited into the shared treasury
+  notes               String?
+  createdAt           DateTime      @default(now())
 
   workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   customer      Customer?      @relation(fields: [customerId], references: [id], onDelete: SetNull)
@@ -706,6 +715,14 @@ model PartnerTxn {
   amount             Decimal        @db.Decimal(12, 2)
   purpose            String?
   date               DateTime       @default(now())
+  /// Whether `date` carries a real time of day, or only a day.
+  /// The forms ask for both now, so a new row's `date` is the moment the sale
+  /// was made or the money moved. Rows entered before that — and this column is
+  /// false for every one of them — hold midnight UTC, and the time worth showing
+  /// for those is when they were entered (see lib/dhaka-time). Testing the
+  /// timestamp instead of storing this cannot tell the two apart: 6 AM in Dhaka
+  /// IS midnight UTC.
+  dateHasTime        Boolean        @default(false)
   distributionId     String? // set when auto-created by a treasury profit distribution (batch, not unique — one distribution fans out to many partner txns)
   // The three "out-of-pocket" links below all mean the same thing: a partner
   // paid for something with their own money, so the business owes them an
@@ -738,6 +755,14 @@ model TreasuryEntry {
   source             String // e.g. "Partner deposit", "Sales", "Rent"
   note               String?
   date               DateTime          @default(now())
+  /// Whether `date` carries a real time of day, or only a day.
+  /// The forms ask for both now, so a new row's `date` is the moment the sale
+  /// was made or the money moved. Rows entered before that — and this column is
+  /// false for every one of them — hold midnight UTC, and the time worth showing
+  /// for those is when they were entered (see lib/dhaka-time). Testing the
+  /// timestamp instead of storing this cannot tell the two apart: 6 AM in Dhaka
+  /// IS midnight UTC.
+  dateHasTime        Boolean           @default(false)
   partnerId          String? // which partner this entry is attributed to (optional)
   partnerTxnId       String?           @unique // set when auto-created from a partner txn
   orderId            String?           @unique // set when auto-created by "mark cash deposited" on an order
@@ -771,6 +796,14 @@ model ProfitDistribution {
   totalAmount Decimal  @db.Decimal(12, 2)
   note        String?
   date        DateTime @default(now())
+  /// Whether `date` carries a real time of day, or only a day.
+  /// The forms ask for both now, so a new row's `date` is the moment the sale
+  /// was made or the money moved. Rows entered before that — and this column is
+  /// false for every one of them — hold midnight UTC, and the time worth showing
+  /// for those is when they were entered (see lib/dhaka-time). Testing the
+  /// timestamp instead of storing this cannot tell the two apart: 6 AM in Dhaka
+  /// IS midnight UTC.
+  dateHasTime Boolean  @default(false)
   createdAt   DateTime @default(now())
 
   workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -816,6 +849,14 @@ model InternalPurchase {
   // treasury already says so.
   spreadMonths     Int?
   date             DateTime        @default(now())
+  /// Whether `date` carries a real time of day, or only a day.
+  /// The forms ask for both now, so a new row's `date` is the moment the sale
+  /// was made or the money moved. Rows entered before that — and this column is
+  /// false for every one of them — hold midnight UTC, and the time worth showing
+  /// for those is when they were entered (see lib/dhaka-time). Testing the
+  /// timestamp instead of storing this cannot tell the two apart: 6 AM in Dhaka
+  /// IS midnight UTC.
+  dateHasTime      Boolean         @default(false)
   createdAt        DateTime        @default(now())
 
   workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -889,6 +930,14 @@ model StockAdjustment {
   delta            Int // signed change to stock (negative removes, positive adds)
   reason           String?
   date             DateTime            @default(now())
+  /// Whether `date` carries a real time of day, or only a day.
+  /// The forms ask for both now, so a new row's `date` is the moment the sale
+  /// was made or the money moved. Rows entered before that — and this column is
+  /// false for every one of them — hold midnight UTC, and the time worth showing
+  /// for those is when they were entered (see lib/dhaka-time). Testing the
+  /// timestamp instead of storing this cannot tell the two apart: 6 AM in Dhaka
+  /// IS midnight UTC.
+  dateHasTime      Boolean             @default(false)
   createdAt        DateTime            @default(now())
 
   workspace      Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -977,6 +1026,14 @@ model BoostDailySpend {
   workspaceId      String
   adSetId          String
   date             DateTime // date-only (midnight UTC); Facebook can charge a card several times in one day, so multiple entries per day are expected
+  /// Whether `date` carries a real time of day, or only a day.
+  /// The forms ask for both now, so a new row's `date` is the moment the sale
+  /// was made or the money moved. Rows entered before that — and this column is
+  /// false for every one of them — hold midnight UTC, and the time worth showing
+  /// for those is when they were entered (see lib/dhaka-time). Testing the
+  /// timestamp instead of storing this cannot tell the two apart: 6 AM in Dhaka
+  /// IS midnight UTC.
+  dateHasTime      Boolean  @default(false)
   amount           Decimal  @db.Decimal(12, 2)
   note             String?
   paidByPartnerId  String? // which partner's money funded this spend (optional)
@@ -1049,11 +1106,11 @@ model OrderLead {
   wooStatus  String?
   rawPayload Json? // full webhook body, for anything not mapped above
 
-  customerName String
-  phone        String
-  altPhone     String?
-  address      String?
-  itemsText    String   @default("") // "Robotic Aeroplane (Blue) x2" — for reading, not for stock
+  customerName   String
+  phone          String
+  altPhone       String?
+  address        String?
+  itemsText      String   @default("") // "Robotic Aeroplane (Blue) x2" — for reading, not for stock
   // What was agreed for delivery, kept apart from the goods. `total` is the
   // grand total the customer was quoted — the figure the caller repeats back —
   // and without this the two were impossible to separate afterwards: the items
@@ -1062,9 +1119,9 @@ model OrderLead {
   //
   // Zero on anything from WooCommerce: its order total already includes
   // shipping and the breakdown isn't carried through the webhook.
-  deliveryCharge Decimal @default(0) @db.Decimal(12, 2)
-  total        Decimal  @default(0) @db.Decimal(12, 2)
-  orderedAt    DateTime @default(now())
+  deliveryCharge Decimal  @default(0) @db.Decimal(12, 2)
+  total          Decimal  @default(0) @db.Decimal(12, 2)
+  orderedAt      DateTime @default(now())
 
   callStatus     CallStatus @default(NOT_CALLED)
   callAttempts   Int        @default(0)

@@ -5,6 +5,7 @@ import { amountOutstanding, depositAmount, deliveryCostCharged } from "@/lib/ord
 import { inventoryValue } from "@/lib/inventory";
 import { amortizeAll } from "@/lib/amortize";
 import { splitByShare } from "@/lib/profit-share";
+import { dhakaRecordStamp, type DhakaStamp } from "@/lib/dhaka-time";
 
 export const OVERDUE_DAYS = 7;
 
@@ -760,9 +761,8 @@ export async function totalBusinessProfit(workspaceId: string): Promise<Business
   };
 }
 
-export type OverdueOrder = {
+export type OverdueOrder = DhakaStamp & {
   orderId: string;
-  date: string;
   daysOverdue: number;
   amount: number;
   customerName: string;
@@ -797,7 +797,7 @@ export async function overdueOrders(
     orders
       .map((o) => ({
         orderId: o.id,
-        date: o.date.toISOString().slice(0, 10),
+        ...dhakaRecordStamp(o.date, o.createdAt, o.dateHasTime),
         daysOverdue: Math.floor((now - o.date.getTime()) / 86_400_000),
         // What is still owed, not what was invoiced. A 5,000 order with a
         // 3,000 advance was chased for the whole 5,000, and the customer who
@@ -911,9 +911,8 @@ export async function totalDue(workspaceId: string): Promise<CustomerDue> {
   };
 }
 
-export type PaidNotDeposited = {
+export type PaidNotDeposited = DhakaStamp & {
   orderId: string;
-  date: string;
   customerName: string;
   /** What will actually reach the treasury — a courier's cut already removed. */
   amount: number;
@@ -974,7 +973,7 @@ export async function paidNotDeposited(workspaceId: string): Promise<PaidNotDepo
       const deposit = depositAmount(o, computeOrderTotals(o));
       return {
         orderId: o.id,
-        date: o.date.toISOString().slice(0, 10),
+        ...dhakaRecordStamp(o.date, o.createdAt, o.dateHasTime),
         customerName: o.customer?.name ?? "Walk-in",
         amount: deposit.net,
         gross: deposit.gross,

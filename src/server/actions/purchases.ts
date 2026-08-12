@@ -11,6 +11,7 @@ import { removePartnerCredit, syncPartnerCredit } from "@/lib/partner-credit";
 import { variantFullName } from "@/lib/variants";
 import { failed, type ActionFailure } from "@/lib/form";
 import { diffFields, recordActivity } from "@/lib/activity";
+import { dhakaDateField } from "@/lib/date-field";
 
 export type ActionResult = { ok: true } | ActionFailure;
 
@@ -36,7 +37,7 @@ const PurchaseSchema = z.object({
   // single field instead of trying to infer exclusivity from three raw ones.
   fundingSource: z.enum(["NONE", "PARTNER", "TREASURY", "CREDIT"]).default("NONE"),
   paidByPartnerId: z.string().optional().or(z.literal("")),
-  date: z.coerce.date(),
+  date: dhakaDateField,
   unitCost: z.coerce.number().nonnegative("Unit cost must be ≥ 0"),
   // Intended per-unit selling price — optional note, no effect on money math.
   salePrice: z.preprocess(
@@ -118,7 +119,8 @@ export async function createPurchase(
         paidByPartnerId,
         paidFromTreasury,
         onCredit,
-        date: d.date,
+        date: d.date.at,
+        dateHasTime: d.date.hasTime,
         unitCost: d.unitCost,
         salePrice: d.salePrice ?? null,
         quantity: d.quantity,
@@ -133,7 +135,8 @@ export async function createPurchase(
           amount: cost,
           source: `Product purchase: ${label}`,
           purchaseId: purchase.id,
-          date: d.date,
+          date: d.date.at,
+          dateHasTime: d.date.hasTime,
         },
       });
     }
@@ -144,7 +147,8 @@ export async function createPurchase(
         partnerId: paidByPartnerId,
         amount: cost,
         purpose: `Product purchase: ${label}`,
-        date: d.date,
+        date: d.date.at,
+        dateHasTime: d.date.hasTime,
       });
     }
     return purchase.id;
@@ -258,7 +262,8 @@ export async function updatePurchase(
         paidByPartnerId,
         paidFromTreasury,
         onCredit,
-        date: d.date,
+        date: d.date.at,
+        dateHasTime: d.date.hasTime,
         unitCost: d.unitCost,
         salePrice: d.salePrice ?? null,
         quantity: d.quantity,
@@ -278,14 +283,20 @@ export async function updatePurchase(
           amount: newCost,
           source: `Product purchase: ${label}`,
           purchaseId: id,
-          date: d.date,
+          date: d.date.at,
+          dateHasTime: d.date.hasTime,
         },
       });
     } else if (wasTreasuryFunded && paidFromTreasury && existing.treasuryEntry) {
       // Still treasury-funded — keep the linked entry in sync with the new cost.
       await tx.treasuryEntry.update({
         where: { id: existing.treasuryEntry.id },
-        data: { amount: newCost, source: `Product purchase: ${label}`, date: d.date },
+        data: {
+          amount: newCost,
+          source: `Product purchase: ${label}`,
+          date: d.date.at,
+          dateHasTime: d.date.hasTime,
+        },
       });
     }
 
@@ -297,7 +308,8 @@ export async function updatePurchase(
       partnerId: paidByPartnerId,
       amount: newCost,
       purpose: `Product purchase: ${label}`,
-      date: d.date,
+      date: d.date.at,
+      dateHasTime: d.date.hasTime,
     });
     });
   } catch (e) {

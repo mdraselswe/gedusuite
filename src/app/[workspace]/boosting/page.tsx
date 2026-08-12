@@ -13,6 +13,7 @@ import {
   toAttributable,
 } from "@/lib/boost-results";
 import { Money } from "@/components/ui/money";
+import { dhakaDayKey, dhakaDayStart, dhakaMonthStart } from "@/lib/dhaka-time";
 
 export default async function BoostingPage({
   params,
@@ -47,7 +48,10 @@ export default async function BoostingPage({
 
   const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
   const now = new Date();
-  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  // The Dhaka month, like the dashboard's: a spend entered just after midnight
+  // on the 1st is six hours short of a UTC month start and would be counted
+  // against the month before.
+  const monthStart = dhakaDayStart(dhakaMonthStart());
 
   // Orders are read once from the earliest campaign start onwards and then
   // attributed to each campaign in memory — one query for the page rather than
@@ -61,7 +65,13 @@ export default async function BoostingPage({
     ? await prisma.order.findMany({
         where: {
           workspaceId,
-          OR: [{ date: { gte: earliestStart } }, { boostCampaignId: { not: null } }],
+          // The Dhaka day the earliest campaign started, not the UTC instant:
+          // an order taken between midnight and 6 AM on that day is six hours
+          // "before" it in UTC, and would never reach the attribution above.
+          OR: [
+            { date: { gte: dhakaDayStart(dhakaDayKey(earliestStart)) } },
+            { boostCampaignId: { not: null } },
+          ],
         },
         select: {
           id: true,
@@ -69,6 +79,10 @@ export default async function BoostingPage({
           status: true,
           source: true,
           boostCampaignId: true,
+          // The time half of the date shown against an attributed order, and
+          // whether the order's own date carries one.
+          createdAt: true,
+          dateHasTime: true,
           customer: { select: { name: true } },
           discount: true,
           deliveryCharge: true,

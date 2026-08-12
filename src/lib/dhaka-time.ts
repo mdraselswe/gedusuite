@@ -35,6 +35,90 @@ export function formatDhakaTime(d: Date): string {
   return timeFmt.format(d);
 }
 
+/**
+ * How a record's date reads in a list: the day it belongs to, plus the time of
+ * day.
+ *
+ * There are two kinds of date here. Most are a real moment — the forms ask for a
+ * date AND a time, so what is stored is when the sale was made or the money
+ * moved. The rest are date-only, either a row entered before the forms asked for
+ * a time or a value that never had one; those are exactly midnight UTC, and the
+ * time worth showing for them is when the row was entered, which is `createdAt`.
+ * dhakaRecordStamp picks between the two.
+ *
+ * An entry time belonging to a different day than the record is dated is still
+ * shown — a purchase dated the 11th and typed up at 4:20 AM on the 12th was
+ * entered four hours later, and most older rows here are like that — but it is
+ * labelled as an entry time rather than presented as a moment on the record's
+ * own date. `entered` carries the full stamp for the tooltip, and doubles as the
+ * flag that this is what happened.
+ */
+export type DhakaStamp = {
+  /** "2026-08-12" — the day the record belongs to, and the sort/group key. */
+  date: string;
+  /** "3:42 PM" — null only where there is no timestamp at all to read. */
+  time: string | null;
+  /**
+   * Full stamp for the tooltip, set only when the record was entered on some
+   * other day than it is dated. Non-null means `time` is an entry time on a
+   * different day, and has to be shown as one.
+   */
+  entered: string | null;
+  /**
+   * "2026-08-12T15:42" — the record's own stored instant, in the shape an edit
+   * form's datetime-local input wants. Never the entry time: a form must open on
+   * what is stored, so saving it back unchanged changes nothing.
+   */
+  dateInput: string;
+};
+
+export function dhakaStamp(date: Date, createdAt: Date): DhakaStamp {
+  const day = dateFmt.format(date);
+  const enteredDay = dateFmt.format(createdAt);
+  const time = timeFmt.format(createdAt);
+  return {
+    date: day,
+    time,
+    entered: enteredDay === day ? null : `Entered ${enteredDay} at ${time}`,
+    dateInput: toDhakaInputValue(date),
+  };
+}
+
+/**
+ * The same shape for a value that is itself a moment rather than a picked day —
+ * a website order's placed-at, a backup run, a courier status change. The time
+ * comes from the value, because it has one.
+ */
+export function dhakaInstant(d: Date): DhakaStamp {
+  return {
+    date: dateFmt.format(d),
+    time: timeFmt.format(d),
+    entered: null,
+    dateInput: toDhakaInputValue(d),
+  };
+}
+
+/**
+ * A record's stamp, reading its own time when it has one and falling back to
+ * when it was entered when it doesn't.
+ *
+ * `hasTime` is the record's own `dateHasTime` column, not a guess from the
+ * timestamp: 6:00 AM in Dhaka is midnight UTC, so a sale deliberately timed at
+ * 6 AM and a row that never had a time are the same instant. Only the column can
+ * tell them apart, which is why it exists.
+ */
+export function dhakaRecordStamp(date: Date, createdAt: Date, hasTime: boolean): DhakaStamp {
+  return hasTime ? dhakaInstant(date) : dhakaStamp(date, createdAt);
+}
+
+/**
+ * "2026-08-12 · 3:42 PM" as one string, for a label in a sentence rather than a
+ * cell in a table — "Last backup: …", where there is nothing to line up with.
+ */
+export function dhakaStampLine(d: Date): string {
+  return `${dateFmt.format(d)} · ${timeFmt.format(d)}`;
+}
+
 /** "2026-08-04T21:30", the shape an <input type="datetime-local"> wants. */
 export function toDhakaInputValue(d: Date): string {
   const parts = new Intl.DateTimeFormat("en-CA", {

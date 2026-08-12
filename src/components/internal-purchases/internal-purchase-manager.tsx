@@ -41,10 +41,11 @@ import { Receipt } from "lucide-react";
 import { Money } from "@/components/ui/money";
 import { formatMoney as money } from "@/lib/money";
 import { Field, FormError, type FieldError } from "@/components/ui/field";
+import { Stamp } from "@/components/ui/stamp";
+import { toDhakaInputValue, type DhakaStamp } from "@/lib/dhaka-time";
 
-type Item = {
+type Item = DhakaStamp & {
   id: string;
-  date: string;
   itemName: string;
   description: string | null;
   supplierId: string | null;
@@ -109,6 +110,10 @@ export function InternalPurchaseManager({
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Item | null>(null);
+  // Now, in Dhaka — the form records a moment, not just a day. Controlled so the
+  // value can move with the clock without a defaultValue changing under an
+  // uncontrolled input, and so a form.reset() doesn't put back a stale time.
+  const [dateInput, setDateInput] = useState(() => toDhakaInputValue(new Date()));
   const [category, setCategory] = useState("OTHER");
   const [supplier, setSupplier] = useState<ComboOption | null>(null);
   // Seeded from the last choice on this device — see last-funding-source.
@@ -201,10 +206,12 @@ export function InternalPurchaseManager({
     setSupplier(null);
     setFundingSource(readLastFundingSource(slug, "internal-purchase"));
     setPaidByPartnerId(NO_PARTNER);
+    setDateInput(toDhakaInputValue(new Date()));
     setOpen(true);
   }
   function openEdit(i: Item) {
     setEditing(i);
+    setDateInput(i.dateInput);
     setCostInput(String(i.cost));
     setQtyInput(String(i.quantity));
     setSpread(i.spreadMonths != null ? String(i.spreadMonths) : "");
@@ -284,7 +291,12 @@ export function InternalPurchaseManager({
         }}
         columns={
           [
-            { key: "date", header: "Date", cell: (i) => i.date, sortValue: (i) => i.date },
+            {
+              key: "date",
+              header: "Date",
+              cell: (i) => <Stamp date={i.date} time={i.time} entered={i.entered} />,
+              sortValue: (i) => i.date,
+            },
             {
               key: "item",
               header: "Item",
@@ -467,7 +479,14 @@ export function InternalPurchaseManager({
                 />
               </Field>
               <Field name="date" error={formError} label="Date" required>
-                <Input id="ip-date" name="date" type="date" required defaultValue={editing?.date} />
+                <Input
+                  id="ip-date"
+                  name="date"
+                  type="datetime-local"
+                  required
+                  value={dateInput}
+                  onChange={(e) => setDateInput(e.target.value)}
+                />
               </Field>
               <div className="space-y-2 sm:col-span-2">
                 <Label htmlFor="ip-spread">Spread over (months)</Label>

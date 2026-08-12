@@ -120,6 +120,12 @@ export function useFilterBar<T>(
   options?: {
     /** Totals for the filtered set — the reason to filter a money list. */
     summary?: (rows: T[]) => React.ReactNode;
+    /**
+     * How many rows exist in total, when that is more than were handed in —
+     * a page that searches or paginates on the server holds one page of a
+     * larger list, and "of 50" would describe the fetch rather than the list.
+     */
+    total?: number;
   },
 ): { rows: T[]; bar: React.ReactNode; active: number } {
   const [state, setState] = useState<FilterState>({});
@@ -137,7 +143,7 @@ export function useFilterBar<T>(
       onSet={(k, v) => setState((s) => ({ ...s, [k]: v }))}
       onClear={() => setState({})}
       active={active}
-      count={{ shown: filtered.length, total: rows.length }}
+      count={{ shown: filtered.length, total: options?.total ?? rows.length }}
       summary={options?.summary?.(filtered)}
     />
   );

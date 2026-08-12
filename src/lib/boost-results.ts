@@ -21,6 +21,13 @@
  */
 
 import { computeOrderTotals, orderNetProfit, type OrderWithTotals } from "@/lib/orders";
+import {
+  dhakaDayEnd,
+  dhakaDayKey,
+  dhakaDayStart,
+  dhakaRecordStamp,
+  type DhakaStamp,
+} from "@/lib/dhaka-time";
 
 const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
 
@@ -28,6 +35,10 @@ const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
 export type AttributableOrder = {
   id: string;
   date: Date;
+  /** When the order was entered — the time half of what a list shows. */
+  createdAt: Date;
+  /** Whether `date` is a moment or only a day. See the dateHasTime column. */
+  dateHasTime: boolean;
   customerName: string | null;
   source: string | null;
   boostCampaignId: string | null;
@@ -58,10 +69,8 @@ export type AttributableCampaign = {
 };
 
 /** One order behind a campaign's numbers, as the detail page lists it. */
-export type AttributedOrderRow = {
+export type AttributedOrderRow = DhakaStamp & {
   id: string;
-  /** ISO date-only, ready to render. */
-  date: string;
   customerName: string;
   source: string | null;
   cancelled: boolean;
@@ -139,12 +148,16 @@ export function toAttributable(
     status: string;
     source: string | null;
     boostCampaignId: string | null;
+    createdAt: Date;
+    dateHasTime: boolean;
     customer: { name: string } | null;
   },
 ): AttributableOrder {
   const common = {
     id: order.id,
     date: order.date,
+    createdAt: order.createdAt,
+    dateHasTime: order.dateHasTime,
     customerName: order.customer?.name ?? null,
     source: order.source,
     boostCampaignId: order.boostCampaignId,
@@ -182,16 +195,18 @@ export function campaignWindow(adSets: AdSetDates[]): CampaignWindow | null {
 }
 
 /**
- * Whether an order's date falls inside the window. Ad set dates are date-only
- * (midnight UTC), so the end day is included in full rather than cut off at
- * its first second.
+ * Whether an order's date falls inside the window.
+ *
+ * Both ends are read as Dhaka days. Ad set dates are date-only — midnight UTC,
+ * which is 6 AM in Dhaka — while an order now carries the time of day it was
+ * taken at. Comparing the two raw would put an order taken at 2 AM on the
+ * campaign's first day before the campaign started, and hand the six hours after
+ * midnight on the day after the last one to a campaign that had ended.
  */
 function inWindow(date: Date, window: CampaignWindow, now: Date): boolean {
-  if (date < window.from) return false;
+  if (date < dhakaDayStart(dhakaDayKey(window.from))) return false;
   if (window.to === null) return date <= now;
-  const endOfDay = new Date(window.to);
-  endOfDay.setUTCHours(23, 59, 59, 999);
-  return date <= endOfDay;
+  return date <= dhakaDayEnd(dhakaDayKey(window.to));
 }
 
 function summarise(orders: AttributableOrder[]) {
@@ -304,7 +319,7 @@ export function buildCampaignResult(
       .sort((a, b) => b.date.getTime() - a.date.getTime())
       .map((o) => ({
         id: o.id,
-        date: o.date.toISOString().slice(0, 10),
+        ...dhakaRecordStamp(o.date, o.createdAt, o.dateHasTime),
         customerName: o.customerName ?? "Walk-in",
         source: o.source,
         cancelled: o.cancelled,

@@ -43,10 +43,11 @@ import {
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { useFilterBar, type FilterDef } from "@/components/ui/filter-bar";
 import { Wallet } from "lucide-react";
+import { Stamp } from "@/components/ui/stamp";
+import { toDhakaInputValue, type DhakaStamp } from "@/lib/dhaka-time";
 
-type Entry = {
+type Entry = DhakaStamp & {
   id: string;
-  date: string;
   type: string;
   amount: number;
   source: string;
@@ -59,15 +60,13 @@ type Entry = {
   fromBoost: boolean;
 };
 type SharePartner = { id: string; label: string; percent: number };
-type Distribution = {
+type Distribution = DhakaStamp & {
   id: string;
-  date: string;
   totalAmount: number;
   note: string | null;
 };
-type Overdue = {
+type Overdue = DhakaStamp & {
   orderId: string;
-  date: string;
   daysOverdue: number;
   amount: number;
   customerName: string;
@@ -79,9 +78,8 @@ type HeldCash = {
   amount: number;
   orderCount: number;
 };
-type NotDeposited = {
+type NotDeposited = DhakaStamp & {
   orderId: string;
-  date: string;
   customerName: string;
   /** What the treasury will receive — the courier's cut already taken off. */
   amount: number;
@@ -138,6 +136,7 @@ export function TreasuryManager({
   const [bulkDepositing, setBulkDepositing] = useState<string | null>(null);
   const [distOpen, setDistOpen] = useState(false);
   const [distAmount, setDistAmount] = useState("");
+  const [distDate, setDistDate] = useState(() => toDhakaInputValue(new Date()));
   const [distLoading, setDistLoading] = useState(false);
 
   const totalPercent = sharePartners.reduce((s, p) => s + p.percent, 0);
@@ -279,6 +278,10 @@ export function TreasuryManager({
   }
   const [type, setType] = useState("IN");
   const [amount, setAmount] = useState("");
+  // Now, in Dhaka — the form records a moment, not just a day. Controlled so the
+  // value can move with the clock without a defaultValue changing under an
+  // uncontrolled input, and so a form.reset() doesn't put back a stale time.
+  const [entryDate, setEntryDate] = useState(() => toDhakaInputValue(new Date()));
   // The whole failure, kept so the field it names can turn red. A toast alone
   // left "Amount must be > 0" hovering over a form with six inputs.
   const [formError, setFormError] = useState<FieldError>(null);
@@ -371,6 +374,7 @@ export function TreasuryManager({
     if (!res.ok) return toast.error(res.error);
     toast.success("Entry added");
     (e.target as HTMLFormElement).reset();
+    setEntryDate(toDhakaInputValue(new Date()));
     setPartnerId(NONE);
     router.refresh();
   }
@@ -546,7 +550,11 @@ export function TreasuryManager({
               empty={{ title: "Nothing pending from courier" }}
               columns={
                 [
-                  { key: "date", header: "Date", cell: (o) => o.date },
+                  {
+                    key: "date",
+                    header: "Date",
+                    cell: (o) => <Stamp date={o.date} time={o.time} entered={o.entered} />,
+                  },
                   {
                     key: "customer",
                     header: "Customer",
@@ -646,7 +654,11 @@ export function TreasuryManager({
               empty={{ title: "Nothing pending deposit" }}
               columns={
                 [
-                  { key: "date", header: "Date", cell: (o) => o.date },
+                  {
+                    key: "date",
+                    header: "Date",
+                    cell: (o) => <Stamp date={o.date} time={o.time} entered={o.entered} />,
+                  },
                   {
                     key: "customer",
                     header: "Customer",
@@ -703,7 +715,12 @@ export function TreasuryManager({
               empty={{ title: "No due payments" }}
               columns={
                 [
-                  { key: "date", header: "Date", sortValue: (o) => o.date, cell: (o) => o.date },
+                  {
+                    key: "date",
+                    header: "Date",
+                    sortValue: (o) => o.date,
+                    cell: (o) => <Stamp date={o.date} time={o.time} entered={o.entered} />,
+                  },
                   {
                     key: "customer",
                     header: "Customer",
@@ -771,7 +788,12 @@ export function TreasuryManager({
                 />
               </Field>
               <Field name="date" label="Date" error={formError} required>
-                <Input type="date" required />
+                <Input
+                  type="datetime-local"
+                  required
+                  value={entryDate}
+                  onChange={(e) => setEntryDate(e.target.value)}
+                />
               </Field>
               <Field name="source" label="Source" error={formError} hint="What this money was for" required>
                 <Input required placeholder="Sales, Rent, …" />
@@ -832,7 +854,12 @@ export function TreasuryManager({
                 empty={{ title: "No distributions yet" }}
                 columns={
                   [
-                    { key: "date", header: "Date", sortValue: (d) => d.date, cell: (d) => d.date },
+                    {
+                      key: "date",
+                      header: "Date",
+                      sortValue: (d) => d.date,
+                      cell: (d) => <Stamp date={d.date} time={d.time} entered={d.entered} />,
+                    },
                     { key: "note", header: "Note", cardTitle: true, cell: (d) => d.note ?? "—" },
                     {
                       key: "amount",
@@ -907,7 +934,12 @@ export function TreasuryManager({
               />
             </Field>
             <Field name="date" label="Date" required>
-              <Input type="date" required defaultValue={new Date().toISOString().slice(0, 10)} />
+              <Input
+                type="datetime-local"
+                required
+                value={distDate}
+                onChange={(e) => setDistDate(e.target.value)}
+              />
             </Field>
             <Field name="note" label="Note (optional)">
               <Input id="dist-note" name="note" />
@@ -992,7 +1024,12 @@ export function TreasuryManager({
           }}
           columns={
             [
-              { key: "date", header: "Date", sortValue: (e) => e.date, cell: (e) => e.date },
+              {
+                key: "date",
+                header: "Date",
+                sortValue: (e) => e.date,
+                cell: (e) => <Stamp date={e.date} time={e.time} entered={e.entered} />,
+              },
               {
                 key: "dir",
                 header: "Dir",

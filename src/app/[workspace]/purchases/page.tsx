@@ -10,6 +10,7 @@ import { Pagination, parsePage } from "@/components/ui/pagination";
 import { PageHeader } from "@/components/ui/page-header";
 import { ShoppingCart } from "lucide-react";
 import { Money } from "@/components/ui/money";
+import { dhakaDayEnd, dhakaDayStart, dhakaRecordStamp } from "@/lib/dhaka-time";
 
 const PAGE_SIZE = 50;
 
@@ -58,15 +59,14 @@ export default async function PurchasesPage({
     partner: (sp.partner ?? "").trim(),
   };
   const num = (v: string) => (v === "" || Number.isNaN(Number(v)) ? undefined : Number(v));
-  // A date-only string is midnight UTC; the "to" end has to cover the whole
-  // of that day or a same-day range would match nothing.
-  const endOfDay = (v: string) => (v ? new Date(`${v}T23:59:59.999Z`) : undefined);
+  // Dhaka days at both ends: a purchase now carries the time it was entered at,
+  // and a UTC window would file anything before 6 AM Dhaka under the day before.
   const dateWhere =
     listFilters.from || listFilters.to
       ? {
           date: {
-            ...(listFilters.from ? { gte: new Date(listFilters.from) } : {}),
-            ...(listFilters.to ? { lte: endOfDay(listFilters.to)! } : {}),
+            ...(listFilters.from ? { gte: dhakaDayStart(listFilters.from) } : {}),
+            ...(listFilters.to ? { lte: dhakaDayEnd(listFilters.to) } : {}),
           },
         }
       : {};
@@ -172,7 +172,7 @@ export default async function PurchasesPage({
 
   const purchaseRows = purchases.map((pu) => ({
     id: pu.id,
-    date: pu.date.toISOString().slice(0, 10),
+    ...dhakaRecordStamp(pu.date, pu.createdAt, pu.dateHasTime),
     productVariantId: pu.productVariantId,
     product: variantFullName(pu.productVariant.product.name, pu.productVariant.attributes),
     expiryTracked: pu.productVariant.product.expiryTracked,

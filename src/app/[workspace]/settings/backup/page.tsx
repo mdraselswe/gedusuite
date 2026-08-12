@@ -8,6 +8,7 @@ import { getPersonalStatus } from "@/server/actions/personal-backup";
 import { serverT } from "@/lib/session";
 import { PageHeader } from "@/components/ui/page-header";
 import { DatabaseBackup } from "lucide-react";
+import { dhakaInstant, dhakaStampLine } from "@/lib/dhaka-time";
 
 export default async function BackupSettingsPage({
   params,
@@ -39,7 +40,9 @@ export default async function BackupSettingsPage({
     status: l.status,
     fileUrl: l.fileUrl,
     note: l.error,
-    createdAt: l.createdAt.toISOString().slice(0, 16).replace("T", " "),
+    // Was a sliced UTC ISO string, so a backup that ran in the Dhaka evening
+    // was logged under the day before at a time nobody recognised.
+    ...dhakaInstant(l.createdAt),
   }));
 
   return (
@@ -49,7 +52,7 @@ export default async function BackupSettingsPage({
         slug={slug}
         canManage={canManage}
         setting={{
-          lastJsonAt: setting?.lastJsonAt?.toISOString().slice(0, 16).replace("T", " ") ?? null,
+          lastJsonAt: setting?.lastJsonAt ? dhakaStampLine(setting.lastJsonAt) : null,
         }}
         logs={logRows}
       />

@@ -9,6 +9,7 @@ import { Pagination, parsePage } from "@/components/ui/pagination";
 import { PageHeader } from "@/components/ui/page-header";
 import { ClipboardList } from "lucide-react";
 import { Money } from "@/components/ui/money";
+import { dhakaRecordStamp } from "@/lib/dhaka-time";
 
 const PAGE_SIZE = 50;
 
@@ -59,7 +60,7 @@ export default async function InternalPurchasesPage({
 
   const rows = items.map((i) => ({
     id: i.id,
-    date: i.date.toISOString().slice(0, 10),
+    ...dhakaRecordStamp(i.date, i.createdAt, i.dateHasTime),
     itemName: i.itemName,
     description: i.description,
     supplierId: i.supplierId,

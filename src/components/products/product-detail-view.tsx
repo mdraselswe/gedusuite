@@ -26,6 +26,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatMoney as money } from "@/lib/money";
+import { Stamp } from "@/components/ui/stamp";
 
 const signed = (n: number) => money(n, { signed: true });
 
@@ -392,7 +393,7 @@ function OrdersTable({
             header: "Date",
             cardTitle: true,
             sortValue: (o) => o.date,
-            cell: (o) => o.date,
+            cell: (o) => <Stamp date={o.date} time={o.time} entered={o.entered} />,
           },
           {
             key: "customer",
@@ -609,7 +610,13 @@ function PurchasesTable({
       empty={{ icon: Truck, title: "No purchases in this period" }}
       columns={
         [
-          { key: "date", header: "Date", cardTitle: true, sortValue: (p) => p.date, cell: (p) => p.date },
+          {
+            key: "date",
+            header: "Date",
+            cardTitle: true,
+            sortValue: (p) => p.date,
+            cell: (p) => <Stamp date={p.date} time={p.time} entered={p.entered} />,
+          },
           { key: "supplier", header: "Supplier", wrap: true, cell: (p) => p.supplier ?? "—" },
           { key: "variant", header: "Variant", cell: (p) => p.variant },
           {
@@ -656,7 +663,13 @@ function ReturnsTable({ slug, rows }: { slug: string; rows: ReturnRow[] }) {
       empty={{ icon: RotateCcw, title: "No returns" }}
       columns={
         [
-          { key: "date", header: "Date", cardTitle: true, sortValue: (r) => r.date, cell: (r) => r.date },
+          {
+            key: "date",
+            header: "Date",
+            cardTitle: true,
+            sortValue: (r) => r.date,
+            cell: (r) => <Stamp date={r.date} time={r.time} entered={r.entered} />,
+          },
           { key: "variant", header: "Variant", cell: (r) => r.variant },
           {
             key: "qty",
@@ -699,7 +712,13 @@ function AdjustmentsTable({ rows }: { rows: AdjustmentRow[] }) {
       empty={{ icon: PackageX, title: "No stock adjustments" }}
       columns={
         [
-          { key: "date", header: "Date", cardTitle: true, sortValue: (a) => a.date, cell: (a) => a.date },
+          {
+            key: "date",
+            header: "Date",
+            cardTitle: true,
+            sortValue: (a) => a.date,
+            cell: (a) => <Stamp date={a.date} time={a.time} entered={a.entered} />,
+          },
           { key: "variant", header: "Variant", cell: (a) => a.variant },
           {
             key: "type",

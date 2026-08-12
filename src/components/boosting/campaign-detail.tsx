@@ -40,10 +40,11 @@ import { roasVerdict, type CampaignResult } from "@/lib/boost-results";
 import { formatMoney as money } from "@/lib/money";
 import { Money } from "@/components/ui/money";
 import { Field } from "@/components/ui/field";
+import { Stamp } from "@/components/ui/stamp";
+import { toDhakaInputValue, type DhakaStamp } from "@/lib/dhaka-time";
 
-type Spend = {
+type Spend = DhakaStamp & {
   id: string;
-  date: string;
   amount: number;
   note: string | null;
   paidFrom: string | null; // "Treasury" | partner display name | null (untracked)
@@ -389,7 +390,11 @@ function ResultsCard({
               empty={{ title: "No orders attributed yet" }}
               columns={
                 [
-                  { key: "date", header: "Date", cell: (o) => o.date },
+                  {
+                    key: "date",
+                    header: "Date",
+                    cell: (o) => <Stamp date={o.date} time={o.time} entered={o.entered} />,
+                  },
                   {
                     key: "customer",
                     header: "Customer",
@@ -524,6 +529,9 @@ function AdSetCard({
 }) {
   const router = useRouter();
   const [adding, setAdding] = useState(false);
+  // Now, in Dhaka. Controlled so the value keeps up with the clock and a
+  // form.reset() after each spend doesn't put back the time the page loaded.
+  const [spendDate, setSpendDate] = useState(() => toDhakaInputValue(new Date()));
   // Sticky across entries — daily spends for an ad set almost always come off
   // the same card, so keep the last choice selected after submit.
   const [paidFrom, setPaidFrom] = useState<string>(NONE);
@@ -559,6 +567,7 @@ function AdSetCard({
       "queued" in res && res.queued ? "Saved offline — will sync when online" : "Spend added",
     );
     (e.target as HTMLFormElement).reset();
+    setSpendDate(toDhakaInputValue(new Date()));
     router.refresh();
   }
 
@@ -638,9 +647,10 @@ function AdSetCard({
               <Input
                 id={`sp-date-${adSet.id}`}
                 name="date"
-                type="date"
+                type="datetime-local"
                 required
-                defaultValue={todayLocal()}
+                value={spendDate}
+                onChange={(e) => setSpendDate(e.target.value)}
               />
             </div>
             <div className="space-y-2">
@@ -703,7 +713,13 @@ function AdSetCard({
           empty={{ title: "No spend entries yet" }}
           columns={
             [
-              { key: "date", header: "Date", cardTitle: true, sortValue: (s) => s.date, cell: (s) => s.date },
+              {
+                key: "date",
+                header: "Date",
+                cardTitle: true,
+                sortValue: (s) => s.date,
+                cell: (s) => <Stamp date={s.date} time={s.time} entered={s.entered} />,
+              },
               { key: "paidFrom", header: "Paid from", hideable: true, cell: (s) => s.paidFrom ?? "—" },
               { key: "note", header: "Note", hideable: true, wrap: true, cell: (s) => s.note ?? "—" },
               {
