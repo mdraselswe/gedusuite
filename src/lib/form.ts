@@ -1,4 +1,4 @@
-import type { ZodError } from "zod";
+import { z, type ZodError } from "zod";
 
 /**
  * Turning a validation failure into something a form can point at.
@@ -45,3 +45,15 @@ export function failed(error: ZodError): ActionFailure {
   const { message, field } = firstIssue(error);
   return { ok: false, error: message, field };
 }
+
+/**
+ * A checkbox, as a form sends one.
+ *
+ * `z.coerce.boolean()` cannot be used for this: it is `Boolean(value)` and
+ * nothing more, so the strings "0" and "false" both arrive as true. A missing
+ * field — which is how an unticked native checkbox submits — is false.
+ */
+export const checkboxField = z.preprocess(
+  (v) => v === true || v === "1" || v === "on" || v === "true",
+  z.boolean(),
+);

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { failed, firstIssue } from "@/lib/form";
+import { checkboxField, failed, firstIssue } from "@/lib/form";
 
 const Schema = z.object({
   amount: z.coerce.number().positive("Amount must be > 0"),
@@ -43,5 +43,26 @@ describe("failed", () => {
     expect(res.ok).toBe(false);
     expect(res.error).toBe("Amount must be > 0");
     expect(res.field).toBe("amount");
+  });
+});
+
+describe("checkboxField", () => {
+  const parse = (v: unknown) => checkboxField.parse(v);
+
+  it("reads a ticked box, however the form spells it", () => {
+    // A native checkbox submits "on"; this app's forms set "1"; a queued
+    // payload may hold the boolean itself.
+    for (const v of ["on", "1", "true", true]) expect(parse(v)).toBe(true);
+  });
+
+  it("reads an unticked box, including the field not being there at all", () => {
+    for (const v of ["", undefined, null, false]) expect(parse(v)).toBe(false);
+  });
+
+  it("does not treat \"0\" or \"false\" as ticked", () => {
+    // Which is what z.coerce.boolean() does, being Boolean(value) — the reason
+    // this exists rather than using it.
+    expect(parse("0")).toBe(false);
+    expect(parse("false")).toBe(false);
   });
 });

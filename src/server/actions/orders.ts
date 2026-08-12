@@ -22,7 +22,7 @@ import { computeOrderTotals, goodsDiscount } from "@/lib/orders";
 import { isOrderSource } from "@/lib/order-source";
 import { quoteCourier } from "@/lib/courier";
 import type { OrderStatus, PaymentStatus } from "@prisma/client";
-import { failed, type ActionFailure } from "@/lib/form";
+import { checkboxField, failed, type ActionFailure } from "@/lib/form";
 import { diffFields, newActivityGroup, recordActivity } from "@/lib/activity";
 import { shipSnapshot } from "@/lib/order-recipient";
 import { dhakaDateField } from "@/lib/date-field";
@@ -100,15 +100,6 @@ const GiftSchema = z
     message: "Each gift needs a product or a name",
   });
 
-/**
- * A checkbox, from a form. `z.coerce.boolean()` is no good here: it reads "0" and
- * "false" as true, being nothing but `Boolean(value)`.
- */
-const giveawayField = z.preprocess(
-  (v) => v === true || v === "1" || v === "on" || v === "true",
-  z.boolean(),
-);
-
 const OrderSchema = z.object({
   customerId: z.string().optional().or(z.literal("")),
   date: dhakaDateField,
@@ -146,7 +137,7 @@ const OrderSchema = z.object({
    * The goods are a gift. What the customer pays for them is worked out here
    * rather than typed — see `goodsDiscount`.
    */
-  isGiveaway: giveawayField,
+  isGiveaway: checkboxField,
   heldByMembershipId: z.string().optional().or(z.literal("")),
   notes: z.string().trim().max(500).optional().or(z.literal("")),
   // Which courier and zone carried it. Given these, the real cost — including
@@ -595,7 +586,7 @@ const HeaderSchema = z.object({
   giftCost: z.coerce.number().nonnegative().default(0),
   discount: z.coerce.number().nonnegative().default(0),
   /** The goods are a gift — see `goodsDiscount`. */
-  isGiveaway: giveawayField,
+  isGiveaway: checkboxField,
   notes: z.string().trim().max(500).optional().or(z.literal("")),
   // Who holds this order's cash. Was set-once at creation with no way back —
   // and the one field most likely to be wrong, since cash changes hands.
@@ -656,6 +647,7 @@ export async function updateOrderHeader(
     packagingCost: formData.get("packagingCost"),
     giftCost: formData.get("giftCost"),
     discount: formData.get("discount"),
+    isGiveaway: formData.get("isGiveaway"),
     notes: formData.get("notes") ?? undefined,
     heldByMembershipId: formData.get("heldByMembershipId") ?? undefined,
     courierId: formData.get("courierId") ?? undefined,
