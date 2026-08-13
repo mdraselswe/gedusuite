@@ -443,6 +443,22 @@ function CourierIdCell({
             <Button size="sm" variant="outline" onClick={() => setBooking(true)}>
               <Send className="size-3.5" /> Send to courier
             </Button>
+            {/* Booking through the API is the common path, but not the only
+                one: a parcel entered by hand in the courier's own app already
+                has its consignment number, and offering only "Send to courier"
+                left the one thing to do with that number — type it in — with
+                nowhere to go, and invited a second booking of a parcel the
+                courier already has. */}
+            <button
+              type="button"
+              onClick={() => {
+                setDraft("");
+                setEditing(true);
+              }}
+              className="block text-xs text-muted-foreground underline-offset-4 hover:underline"
+            >
+              Already sent — add ID
+            </button>
             <ParcelBookingDialog
               slug={slug}
               orderId={orderId}
