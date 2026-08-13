@@ -268,3 +268,26 @@ export async function getPayment(
   if (!res.data.payment) return { ok: false, error: `Steadfast returned no payment ${paymentId}` };
   return { ok: true, data: { ...res.data.payment, consignments: res.data.payment.consignments ?? [] } };
 }
+
+/**
+ * Where one parcel has got to, asked rather than waited for.
+ *
+ * The webhook is the documented way to hear this and, for this account, has
+ * only ever sent `in_review` — so the scheduled check reads it from here
+ * instead. Returns the bare status string; the endpoint carries nothing else.
+ */
+export async function statusByConsignment(
+  creds: SteadfastCredentials,
+  consignmentId: string,
+): Promise<SteadfastResult<string>> {
+  const res = await request<{ delivery_status?: string }>(
+    creds,
+    `/status_by_cid/${encodeURIComponent(consignmentId)}`,
+    { method: "GET" },
+  );
+  if (!res.ok) return res;
+  if (!res.data.delivery_status) {
+    return { ok: false, error: `Steadfast returned no status for ${consignmentId}` };
+  }
+  return { ok: true, data: res.data.delivery_status };
+}
