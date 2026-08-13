@@ -26,6 +26,7 @@ import { getUserPrefs } from "@/lib/user-prefs";
 import { translate, isLocale, type Locale } from "@/lib/i18n";
 import { AppShell, type NavItem } from "@/components/layout/app-shell";
 import { AppShellSkeleton } from "@/components/layout/app-shell-skeleton";
+import { RefreshOnFocus } from "@/components/refresh-on-focus";
 
 // Identity helper so each object literal below is individually contextually
 // typed against NavItem (narrowing `color` to the SectionColor union) instead
@@ -205,16 +206,21 @@ async function WorkspaceChrome({
   ].filter((n) => n.show);
 
   return (
-    <AppShell
-      slug={slug}
-      workspaceName={workspace.name}
-      logoUrl={workspace.logoUrl}
-      nav={nav}
-      unread={unread}
-      role={membership.role}
-      notifLabel={t("notifications")}
-    >
-      {children}
-    </AppShell>
+    <>
+      {/* Outside the shell, so navigating between pages doesn't remount it and
+          lose track of how long the tab has been away. */}
+      <RefreshOnFocus />
+      <AppShell
+        slug={slug}
+        workspaceName={workspace.name}
+        logoUrl={workspace.logoUrl}
+        nav={nav}
+        unread={unread}
+        role={membership.role}
+        notifLabel={t("notifications")}
+      >
+        {children}
+      </AppShell>
+    </>
   );
 }
