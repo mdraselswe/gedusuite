@@ -4,7 +4,13 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireAccess, type WorkspaceAccess } from "@/lib/authz";
 import { computeOrderTotals } from "@/lib/orders";
-import { cashEntryNote, cashEntrySource, depositAmount } from "@/lib/order-cash";
+import {
+  cashEntryNote,
+  cashEntrySource,
+  collectionRecorded,
+  courierChargeNote,
+  depositAmount,
+} from "@/lib/order-cash";
 import { newActivityGroup, recordActivity } from "@/lib/activity";
 import type { ActionFailure } from "@/lib/form";
 
@@ -35,23 +41,6 @@ async function bankOrderCash(
   access: WorkspaceAccess,
   order: DepositableOrder,
 ): Promise<{ ok: true; amount: number } | { ok: false; error: string }> {
-  // A cancelled order's payment status describes a sale that never settled, so
-  // it says nothing about whether money changed hands. What was collected on
-  // the doorstep does, and that is the field the cancellation dialog asks for.
-  if (order.status === "CANCELLED") {
-    if (Number(order.cancelledCollected) <= 0) {
-      return {
-        ok: false,
-        error:
-          "Nothing was collected on this cancellation. Record what the customer paid anyway in the cancellation costs first.",
-      };
-    }
-  } else if (order.paymentStatus === "UNPAID") {
-    // PARTIAL counts: an advance is real money somebody is holding, and
-    // refusing to let it into the treasury until the order settled meant it sat
-    // outside the accounts entirely, sometimes for weeks.
-    return { ok: false, error: "Nothing has been collected on this order yet" };
-  }
   if (order.cashInTreasury) {
     return { ok: false, error: "Already marked as deposited" };
   }
@@ -59,28 +48,54 @@ async function bankOrderCash(
   const totals = computeOrderTotals(order);
   // What the business receives, not what the customer paid: on a COD order the
   // courier keeps its delivery charge and percentage fee before remitting, and
-  // crediting the treasury with the difference was money it never held.
+  // crediting the treasury with the difference was money it never held. The
+  // figure is signed — a parcel that collected nothing still owes the courier
+  // for the trip, and that is an outflow, not a deposit of zero.
   const deposit = depositAmount(order, totals);
   const amount = deposit.net;
-  if (amount <= 0) {
+  // PARTIAL counts as collected: an advance is real money somebody is holding,
+  // and refusing to let it into the treasury until the order settled meant it
+  // sat outside the accounts entirely, sometimes for weeks. A PARTIAL with no
+  // figure on it is the opposite case — it only READS as zero collected, so a
+  // courier charge must not be turned into an outflow on the strength of it.
+  if (!collectionRecorded(order)) {
+    return { ok: false, error: "Nothing has been collected on this order yet" };
+  }
+  if (amount === 0) {
     return {
       ok: false,
       error:
-        deposit.gross <= 0
-          ? "No amount has been recorded as collected on this order yet."
-          : "The courier's charges cover everything it collected on this order, so nothing reaches the treasury.",
+        // A cancelled order's payment status describes a sale that never
+        // settled, so it says nothing about whether money changed hands. What
+        // was collected on the doorstep does — and so does what the courier
+        // charged to bring the parcel back; either one is a movement worth
+        // recording, and this order has neither.
+        order.status === "CANCELLED"
+          ? "This cancellation has no money on it — nothing collected from the customer, and no courier charge recorded. Fill those in on the cancellation costs first."
+          : deposit.gross <= 0
+            ? "No amount has been recorded as collected on this order yet."
+            : "The courier's charges cover exactly what it collected on this order, so nothing moves either way.",
     };
   }
-  const source = cashEntrySource(order.paymentMethod);
-  const note = cashEntryNote(order, totals.returnedUnits, deposit.courierCharges);
+
+  // Below zero the movement is the courier's bill, not a deposit: it collected
+  // nothing (a giveaway, an order already paid another way) or less than the
+  // trip cost, and takes the difference out of the shop's balance.
+  const outward = amount < 0;
+  const source = cashEntrySource(order.paymentMethod, outward ? "OUT" : "IN");
+  const note = outward
+    ? courierChargeNote(order, deposit.gross)
+    : cashEntryNote(order, totals.returnedUnits, deposit.courierCharges);
 
   const [, entry] = await prisma.$transaction([
     prisma.order.update({ where: { id: order.id }, data: { cashInTreasury: true } }),
     prisma.treasuryEntry.create({
       data: {
         workspaceId: access.workspaceId,
-        type: "IN",
-        amount,
+        type: outward ? "OUT" : "IN",
+        // The direction is the sign; the column holds a magnitude, the same as
+        // every other entry in the ledger.
+        amount: Math.abs(amount),
         source,
         note,
         orderId: order.id,
@@ -100,7 +115,9 @@ async function bankOrderCash(
       entity: "Order",
       entityId: order.id,
       entityLabel: label,
-      summary: `Cash marked as reaching the treasury — ৳${amount}`,
+      summary: outward
+        ? `Courier charges settled — ৳${Math.abs(amount)} out of the treasury`
+        : `Cash marked as reaching the treasury — ৳${amount}`,
       changes: { cashInTreasury: { from: false, to: true } },
       groupId: group,
     },
@@ -109,11 +126,12 @@ async function bankOrderCash(
       entity: "TreasuryEntry",
       entityId: entry.id,
       entityLabel: source,
-      summary:
-        `৳${amount} in — ${note}` +
-        (deposit.courierCharges > 0
-          ? ` (customer paid ৳${deposit.gross}, courier kept ৳${deposit.courierCharges})`
-          : ""),
+      summary: outward
+        ? `৳${Math.abs(amount)} out — ${note}`
+        : `৳${amount} in — ${note}` +
+          (deposit.courierCharges > 0
+            ? ` (customer paid ৳${deposit.gross}, courier kept ৳${deposit.courierCharges})`
+            : ""),
       groupId: group,
     },
   ]);
@@ -229,13 +247,17 @@ export async function unmarkCashDeposited(
       id: true,
       cashInTreasury: true,
       customer: { select: { name: true } },
-      treasuryEntry: { select: { id: true, amount: true } },
+      treasuryEntry: { select: { id: true, amount: true, type: true } },
     },
   });
   if (!order) return { ok: false, error: "Order not found" };
   if (!order.cashInTreasury) return { ok: true };
 
   const removed = order.treasuryEntry ? Number(order.treasuryEntry.amount) : 0;
+  // Undoing a courier charge puts money back rather than taking it away, and a
+  // history line that says the opposite of what the balance did is worse than
+  // no line at all.
+  const wasOutflow = order.treasuryEntry?.type === "OUT";
   await prisma.$transaction([
     prisma.treasuryEntry.deleteMany({ where: { workspaceId, orderId } }),
     prisma.order.update({ where: { id: orderId }, data: { cashInTreasury: false } }),
@@ -251,7 +273,9 @@ export async function unmarkCashDeposited(
       entity: "Order",
       entityId: orderId,
       entityLabel: label,
-      summary: `Deposit undone — ৳${removed} taken back out of the treasury`,
+      summary: wasOutflow
+        ? `Courier charge undone — ৳${removed} put back into the treasury`
+        : `Deposit undone — ৳${removed} taken back out of the treasury`,
       changes: { cashInTreasury: { from: true, to: false } },
       groupId: group,
     },
@@ -262,7 +286,9 @@ export async function unmarkCashDeposited(
             entity: "TreasuryEntry",
             entityId: order.treasuryEntry.id,
             entityLabel: label,
-            summary: `৳${removed} entry removed — the order's deposit was undone`,
+            summary: `৳${removed} entry removed — the order's ${
+              wasOutflow ? "courier charge" : "deposit"
+            } was undone`,
             groupId: group,
           },
         ]

@@ -60,7 +60,7 @@ async function main() {
     include: {
       customer: { select: { name: true } },
       items: { include: { returns: true } },
-      treasuryEntry: { select: { id: true, amount: true } },
+      treasuryEntry: { select: { id: true, amount: true, type: true } },
       workspace: { select: { slug: true } },
     },
   });
@@ -71,6 +71,12 @@ async function main() {
   const plans = [];
   for (const o of orders) {
     if (!o.treasuryEntry) continue;
+    // Only deposits. An order's entry can also be an OUT now — a courier
+    // charge on a parcel that collected nothing to pay it with — and the
+    // arithmetic below, written when a deposit could only be positive, would
+    // rewrite one of those to zero and quietly return the charge to the
+    // balance. This script's job was the COD orders and it is already done.
+    if (o.treasuryEntry.type !== "IN") continue;
 
     const total = customerTotal(o);
     const cancelled = o.status === "CANCELLED";

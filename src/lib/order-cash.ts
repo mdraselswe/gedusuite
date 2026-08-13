@@ -54,15 +54,22 @@ export function cashEntryNote(
 export type DepositAmount = {
   /** What the customer handed over. */
   gross: number;
-  /** Delivery cost + COD fee the courier kept out of it before remitting. */
+  /** Delivery cost + COD fee the courier kept out of it, or billed anyway. */
   courierCharges: number;
-  /** gross − courierCharges, floored at zero: what the business receives. */
+  /**
+   * gross − courierCharges. Signed: negative means the courier charged more
+   * for the trip than it collected on it, and the shop owes it the difference.
+   */
   net: number;
 };
 
 /** Enough of an order to work out what reaches the treasury. */
 type DepositableOrder = {
   status: string;
+  /** Required, not optional: a missing `select` here would silently stop
+   * netting a courier's charges, and nothing would look wrong until the
+   * balance did. */
+  deliveryType: string;
   paymentMethod: string;
   paymentStatus: string;
   amountPaid?: Prisma.Decimal | number | null;
@@ -125,6 +132,22 @@ export function amountCollected(
 }
 
 /**
+ * Whether "nothing was collected" is a recorded fact or just a blank.
+ *
+ * A PARTIAL row nobody has typed a figure onto reads as zero collected and
+ * isn't — the money came in, the number didn't. That distinction never
+ * mattered while a deposit could only be positive; it matters now that a
+ * courier charge with no collection behind it becomes real money leaving the
+ * treasury. Guessing wrong there books an outflow against an order that may
+ * have collected its full invoice.
+ */
+export function collectionRecorded(order: SettleableOrder): boolean {
+  if (order.status === "CANCELLED") return true;
+  if (order.paymentStatus === "PAID") return true;
+  return order.paymentStatus === "PARTIAL" && Number(order.amountPaid ?? 0) > 0;
+}
+
+/**
  * What the customer still owes. Zero on a cancelled order — there is nothing
  * left to collect on a sale that didn't happen, whatever was paid towards it.
  */
@@ -148,14 +171,19 @@ export function amountOutstanding(
  * to expect from Steadfast); this is the same arithmetic, applied to the money
  * once it lands.
  *
- * Only COURIER_COLLECTION is netted. When the customer paid by bKash or handed
- * cash to somebody, the business really did receive the whole amount — paying
- * a rider afterwards is a separate movement, and inventing an outflow here
- * would take it out of the treasury twice.
+ * The charges are netted whenever the courier itself is what settles them —
+ * either out of the COD it collected, or, when it collected nothing, off the
+ * merchant's balance. A giveaway parcel is the plain case: the customer owes
+ * nothing, the courier still charges 65 for carrying it, and Steadfast takes
+ * that 65 out of the next payout. What is deliberately NOT netted is a courier
+ * charge on an order whose cash a team member is holding: they hand over the
+ * whole amount they collected, the courier bills its trip separately, and
+ * taking it off here would understate what that person owes the shop.
  *
- * Floored at zero: a refused parcel can cost more to return than it collected,
- * and a negative "deposit" is not a thing. The loss is already carried by
- * cancelledOrderCost, which is where it belongs.
+ * Signed, not floored. A parcel that collected less than it cost to carry
+ * leaves the shop owing the courier, and a floor of zero is what made that
+ * money invisible: it never reached the treasury as an outflow and never
+ * showed up anywhere a balance could be checked against the courier's app.
  */
 /**
  * What the courier actually charged for the trip.
@@ -190,16 +218,42 @@ export function depositAmount(
 
   const deliveryCost = deliveryCostCharged(order, totals);
   const courierCharges =
-    order.paymentMethod === "COURIER_COLLECTION"
+    order.deliveryType === "COURIER" &&
+    (order.paymentMethod === "COURIER_COLLECTION" || gross === 0)
       ? round2(deliveryCost + totals.codFeeCost)
       : 0;
 
-  return { gross, courierCharges, net: round2(Math.max(0, gross - courierCharges)) };
+  return { gross, courierCharges, net: round2(gross - courierCharges) };
 }
 
 /** "Courier remittance" when the courier collected it, otherwise a plain sale. */
-export function cashEntrySource(paymentMethod: string): string {
+export function cashEntrySource(paymentMethod: string, direction: "IN" | "OUT" = "IN"): string {
+  // An outflow is never a sale of any kind — it is the courier's bill for a
+  // trip that collected nothing to pay it with, and the treasury list has to
+  // say so at a glance rather than showing a negative "Sales collection".
+  if (direction === "OUT") return "Courier charges";
   return paymentMethod === "COURIER_COLLECTION" ? "Courier remittance" : "Sales collection";
+}
+
+/**
+ * How a courier charge with no collection behind it reads in the treasury.
+ *
+ * cashEntryNote's wording ("after 65.00 courier charges") describes money
+ * arriving less a deduction, which is the opposite of this: nothing arrived,
+ * and the charge is the whole movement.
+ */
+export function courierChargeNote(order: NotedOrder, gross: number): string {
+  return [
+    order.customer?.name
+      ? `Courier charges on ${order.customer.name}'s order`
+      : "Courier charges on a walk-in order",
+    order.status === "CANCELLED" ? "parcel came back" : null,
+    gross > 0
+      ? `only ${gross.toFixed(2)} was collected to cover them`
+      : "nothing was collected to cover them",
+  ]
+    .filter(Boolean)
+    .join(", ");
 }
 
 /**
@@ -234,13 +288,9 @@ export async function syncOrderCashEntry(
   // nothing" and delete a deposit for cash that genuinely arrived, from a
   // routine edit somewhere else entirely. Left alone for a person to resolve,
   // the same way blockedByDepositedCash leaves the other unresolvable cases.
-  const unrecorded =
-    deposit.gross <= 0 &&
-    order.status !== "CANCELLED" &&
-    order.paymentStatus !== "PAID";
-  if (unrecorded) return;
+  if (deposit.gross <= 0 && !collectionRecorded(order)) return;
 
-  if (amount <= 0) {
+  if (amount === 0) {
     // The flag clears with the entry, so the order stops claiming a deposit it
     // no longer has. Un-cancelling later doesn't put it back — nothing here
     // knows whether the cash was ever returned to the customer — so the order
@@ -250,12 +300,20 @@ export async function syncOrderCashEntry(
     return;
   }
 
+  // An edit can turn a remittance into a bill and back — a return that wipes
+  // out the goods leaves the courier's charge standing on its own — so the
+  // direction is rewritten alongside the figure. Leaving `type` alone would
+  // add a courier's 65 to the balance instead of taking it off.
+  const outward = amount < 0;
   await tx.treasuryEntry.updateMany({
     where: { workspaceId, orderId },
     data: {
-      amount,
-      source: cashEntrySource(order.paymentMethod),
-      note: cashEntryNote(order, totals.returnedUnits, deposit.courierCharges),
+      type: outward ? "OUT" : "IN",
+      amount: Math.abs(amount),
+      source: cashEntrySource(order.paymentMethod, outward ? "OUT" : "IN"),
+      note: outward
+        ? courierChargeNote(order, deposit.gross)
+        : cashEntryNote(order, totals.returnedUnits, deposit.courierCharges),
     },
   });
 }

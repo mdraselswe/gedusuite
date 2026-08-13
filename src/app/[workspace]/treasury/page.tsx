@@ -107,7 +107,9 @@ export default async function TreasuryPage({
 
   // Paid for, not banked yet: sitting in the courier's app until it remits, or
   // in a team member's pocket. Net of the courier's cut, so this is what will
-  // actually land rather than what the customer handed over.
+  // actually land rather than what the customer handed over — and a parcel the
+  // courier charged for but collected nothing on subtracts here, because that
+  // one is going the other way.
   //
   // Kept firmly out of `balance`. Every check that guards real money — can this
   // distribution be covered, can this purchase be paid for — reads that one, and

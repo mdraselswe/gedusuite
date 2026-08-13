@@ -189,8 +189,14 @@ export function TreasuryManager({
     toast.success("Distribution deleted");
     router.refresh();
   }
-  const withCourier = notDeposited.filter((o) => o.isCourierCollection);
-  const withMembers = notDeposited.filter((o) => !o.isCourierCollection);
+  // A negative row is not cash waiting to come in — it is the courier's bill
+  // for a parcel that collected nothing (or less than the trip cost) to pay it
+  // with. Filed apart from the two "who is holding your money" cards, which it
+  // would otherwise sit in as a minus sign nobody can act on.
+  const owedToCourier = notDeposited.filter((o) => o.amount < 0);
+  const withCourier = notDeposited.filter((o) => o.amount > 0 && o.isCourierCollection);
+  const withMembers = notDeposited.filter((o) => o.amount > 0 && !o.isCourierCollection);
+  const owedToCourierTotal = owedToCourier.reduce((s, o) => s + Math.abs(o.amount), 0);
   const courierTotal = withCourier.reduce((s, o) => s + o.amount, 0);
   const courierGross = withCourier.reduce((s, o) => s + o.gross, 0);
   const courierCharges = withCourier.reduce((s, o) => s + o.courierCharges, 0);
@@ -238,8 +244,9 @@ export function TreasuryManager({
     const ok = await confirmDialog({
       title: wording.title,
       description:
-        `${formatMoney(total)} will go into the treasury as ${rows.length} separate entries, ` +
-        `one per order. ${wording.body} Each one can be undone individually.`,
+        `${formatMoney(Math.abs(total))} will ${total < 0 ? "come out of" : "go into"} the ` +
+        `treasury as ${rows.length} separate entries, one per order. ${wording.body} ` +
+        `Each one can be undone individually.`,
       confirmText: wording.confirm,
     });
     if (!ok) return;
@@ -252,7 +259,8 @@ export function TreasuryManager({
     if (!res.ok) return toast.error(res.error);
     if (res.banked > 0) {
       toast.success(
-        `${res.banked} order(s) ${wording.done} — ${formatMoney(res.total)} into the treasury`,
+        `${res.banked} order(s) ${wording.done} — ${formatMoney(Math.abs(res.total))} ` +
+          `${res.total < 0 ? "out of" : "into"} the treasury`,
       );
     }
     // Named, not swallowed. A silent skip is how a row sits unbanked for weeks
@@ -484,6 +492,117 @@ export function TreasuryManager({
                 </div>
               ))}
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* The other direction: parcels the courier carried but collected nothing
+          on — a giveaway, an order already paid another way, a refused parcel.
+          The delivery charge is still owed, and the courier takes it out of the
+          next payout, so it leaves the treasury whether or not anybody records
+          it. Profit has always counted it; the balance never did. */}
+      {owedToCourier.length > 0 && (
+        <Card className="border-amber-300 dark:border-amber-800">
+          <CardHeader>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <CardTitle className="text-base text-amber-800 dark:text-amber-300">
+                Owed to courier (charges with nothing collected against them) —{" "}
+                <Money value={owedToCourierTotal} /> across {owedToCourier.length} parcel(s)
+              </CardTitle>
+              {canManage && owedToCourier.length > 1 && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() =>
+                    onBankAll("owed", owedToCourier, {
+                      title: `Record ${owedToCourier.length} courier charges?`,
+                      body: "Confirm this once the courier has actually taken them off your balance.",
+                      confirm: "Record all",
+                      done: "charged",
+                    })
+                  }
+                  disabled={bulkDepositing !== null || depositing !== null}
+                >
+                  {bulkDepositing === "owed" ? "Recording…" : `Record all ${owedToCourier.length}`}
+                </Button>
+              )}
+            </div>
+            <InfoNote title="Why a parcel can cost money instead of bringing it in">
+              <p>
+                A courier charges for the trip, not for the sale. When it collects nothing
+                at the door — a free gift, an order already paid by bKash, a parcel sent
+                back — there is nothing for it to take its delivery charge out of, so it
+                comes off your courier balance instead. Recording it here takes the same
+                amount out of the treasury, which is where it has already gone in real
+                life.
+              </p>
+            </InfoNote>
+          </CardHeader>
+          <CardContent>
+            <DataTable
+              rows={owedToCourier}
+              rowKey={(o) => o.orderId}
+              colorGroupBy={(o) => o.date}
+              colorToggleLabel="Color by date"
+              empty={{ title: "Nothing owed to a courier" }}
+              columns={
+                [
+                  {
+                    key: "date",
+                    header: "Date",
+                    cell: (o) => <Stamp date={o.date} time={o.time} entered={o.entered} />,
+                  },
+                  {
+                    key: "customer",
+                    header: "Customer",
+                    cardTitle: true,
+                    cell: (o) => (
+                      <span className="inline-flex items-center gap-2">
+                        {o.customerName}
+                        {o.cancelled && (
+                          <span
+                            className="rounded bg-orange-500/10 px-1.5 py-0.5 text-xs text-orange-700 dark:text-orange-300"
+                            title="Cancelled order — the courier still charged for the trip"
+                          >
+                            returned
+                          </span>
+                        )}
+                      </span>
+                    ),
+                  },
+                  {
+                    key: "amount",
+                    header: "Charge",
+                    align: "right",
+                    // The magnitude, with the card's title saying which way it
+                    // goes: a column of minus signs under a heading that already
+                    // says "owed" reads as a double negative.
+                    cell: (o) => (
+                      <span className="font-medium"><Money value={Math.abs(o.amount)} /></span>
+                    ),
+                  },
+                  ...(canManage
+                    ? [
+                        {
+                          key: "actions",
+                          header: "",
+                          cardFullWidth: true,
+                          cell: (o: NotDeposited) => (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => onMarkDeposited(o.orderId)}
+                              disabled={depositing === o.orderId || bulkDepositing !== null}
+                            >
+                              {depositing === o.orderId ? "Saving…" : "Record charge"}
+                            </Button>
+                          ),
+                        },
+                      ]
+                    : []),
+                ] as Column<NotDeposited>[]
+              }
+            />
           </CardContent>
         </Card>
       )}

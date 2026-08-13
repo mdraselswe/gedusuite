@@ -1,7 +1,12 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { computeOrderTotals, orderNetProfit } from "@/lib/orders";
-import { amountOutstanding, depositAmount, deliveryCostCharged } from "@/lib/order-cash";
+import {
+  amountOutstanding,
+  collectionRecorded,
+  depositAmount,
+  deliveryCostCharged,
+} from "@/lib/order-cash";
 import { inventoryValue } from "@/lib/inventory";
 import { amortizeAll } from "@/lib/amortize";
 import { splitByShare } from "@/lib/profit-share";
@@ -914,7 +919,11 @@ export async function totalDue(workspaceId: string): Promise<CustomerDue> {
 export type PaidNotDeposited = DhakaStamp & {
   orderId: string;
   customerName: string;
-  /** What will actually reach the treasury — a courier's cut already removed. */
+  /**
+   * What will actually reach the treasury — a courier's cut already removed.
+   * Negative when the courier's charges outran what it collected: that is
+   * money leaving, not arriving.
+   */
   amount: number;
   /** What the customer paid. Equal to `amount` unless a courier collected it. */
   gross: number;
@@ -955,8 +964,11 @@ export async function paidNotDeposited(workspaceId: string): Promise<PaidNotDepo
         // leaving cancellations out made this card disagree with the courier
         // balance page — and with the courier's own app — by whatever a partial
         // delivery had collected. Its paymentStatus says nothing useful (the
-        // sale never settled), so the test is what was collected.
+        // sale never settled), so the test is what was collected — or, for a
+        // parcel that collected nothing, what the courier charged to bring it
+        // back, which is just as real and moves the balance the other way.
         { status: "CANCELLED", cancelledCollected: { gt: 0 } },
+        { status: "CANCELLED", deliveryCost: { gt: 0 } },
       ],
     },
     include: {
@@ -966,12 +978,18 @@ export async function paidNotDeposited(workspaceId: string): Promise<PaidNotDepo
     },
     orderBy: { date: "asc" },
   });
-  return orders
-    .map((o) => {
-      // What the courier will hand over, not what it collected — otherwise this
-      // card promises the treasury money the courier is keeping.
-      const deposit = depositAmount(o, computeOrderTotals(o));
-      return {
+  return orders.flatMap((o) => {
+    // What the courier will hand over, not what it collected — otherwise this
+    // card promises the treasury money the courier is keeping.
+    const deposit = depositAmount(o, computeOrderTotals(o));
+    // Rows with nothing to settle drop out. A PARTIAL order nobody has typed
+    // an amount onto has collected nothing yet, so there is no cash of its to
+    // be waiting for — and a courier charge may not be booked as an outflow
+    // against a blank figure either.
+    if (deposit.net === 0) return [];
+    if (deposit.net < 0 && !collectionRecorded(o)) return [];
+    return [
+      {
         orderId: o.id,
         ...dhakaRecordStamp(o.date, o.createdAt, o.dateHasTime),
         customerName: o.customer?.name ?? "Walk-in",
@@ -982,11 +1000,9 @@ export async function paidNotDeposited(workspaceId: string): Promise<PaidNotDepo
         heldByName: o.heldBy ? (o.heldBy.user.name ?? o.heldBy.user.email) : null,
         isCourierCollection: o.paymentMethod === "COURIER_COLLECTION",
         cancelled: o.status === "CANCELLED",
-      };
-    })
-    // A PARTIAL order nobody has typed an amount onto has collected nothing
-    // yet, so there is no cash of its to be waiting for.
-    .filter((o) => o.amount > 0);
+      },
+    ];
+  });
 }
 
 /** Reconcile OVERDUE_PAYMENT notifications with the current overdue set. */

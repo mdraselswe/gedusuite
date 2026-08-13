@@ -59,15 +59,22 @@ describe("a free order", () => {
     expect(codCollectable("COURIER_COLLECTION", totals.customerTotal)).toBe(0);
   });
 
-  it("has no remittance to wait for", () => {
-    // Which is why the treasury never grows an entry for it — see
-    // syncOrderCashEntry, which deletes rather than writes a zero deposit.
+  it("has no remittance to wait for — it owes the courier instead", () => {
+    // There is nothing to remit, but the trip is still billed, and the courier
+    // takes it off the next payout. Floored at zero this read as "no movement"
+    // and the 65 left the business without ever leaving the treasury.
     const deposit = depositAmount(
-      { status: "DELIVERED", paymentStatus: "PAID", paymentMethod: "COURIER_COLLECTION" },
+      {
+        status: "DELIVERED",
+        deliveryType: "COURIER",
+        paymentStatus: "PAID",
+        paymentMethod: "CASH",
+      },
       totals,
     );
     expect(deposit.gross).toBe(0);
-    expect(deposit.net).toBe(0);
+    expect(deposit.courierCharges).toBe(65);
+    expect(deposit.net).toBe(-65);
   });
 
   it("still shows the shop owes the courier for the trip", () => {

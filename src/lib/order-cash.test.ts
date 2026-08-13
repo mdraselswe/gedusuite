@@ -5,6 +5,8 @@ import {
   cashEntrySource,
   amountCollected,
   amountOutstanding,
+  collectionRecorded,
+  courierChargeNote,
   deliveryCostCharged,
   depositAmount,
 } from "@/lib/order-cash";
@@ -95,7 +97,7 @@ describe("depositAmount", () => {
     // 960 collected, 65 delivery + 8.45 fee kept — 886.55 arrives, and that is
     // the number the treasury has to hold.
     const d = depositAmount(
-      { status: "DELIVERED", paymentStatus: "PAID", paymentMethod: "COURIER_COLLECTION", deliveryCost: 65 },
+      { status: "DELIVERED", deliveryType: "COURIER", paymentStatus: "PAID", paymentMethod: "COURIER_COLLECTION", deliveryCost: 65 },
       totals(),
     );
     expect(d.gross).toBe(960);
@@ -104,19 +106,47 @@ describe("depositAmount", () => {
   });
 
   it("banks the whole amount when the business collected it itself", () => {
-    // Paying a rider afterwards is a separate movement; netting it here would
-    // take the same money out of the treasury twice.
+    // The team member is holding all 960 and hands over all 960. The courier
+    // bills its trip against its own account, and netting it here would
+    // understate what that person owes the shop.
     for (const method of ["CASH", "BKASH", "NAGAD", "OTHER"]) {
-      const d = depositAmount({ status: "DELIVERED", paymentStatus: "PAID", paymentMethod: method, deliveryCost: 65 }, totals());
+      const d = depositAmount({ status: "DELIVERED", deliveryType: "COURIER", paymentStatus: "PAID", paymentMethod: method, deliveryCost: 65 }, totals());
       expect(d.courierCharges).toBe(0);
       expect(d.net).toBe(960);
     }
+  });
+
+  it("charges a parcel that collected nothing to the courier's account", () => {
+    // A giveaway: the customer owes nothing, so there is no collection for the
+    // courier to keep its 65 out of — it takes it off the shop's balance
+    // instead. Reported as a deposit of zero, that money left the business
+    // without ever leaving the treasury.
+    const d = depositAmount(
+      { status: "DELIVERED", deliveryType: "COURIER", paymentStatus: "PAID", paymentMethod: "CASH", deliveryCost: 65 },
+      totals({ customerTotal: 0, codFeeCost: 0 }),
+    );
+    expect(d.gross).toBe(0);
+    expect(d.courierCharges).toBe(65);
+    expect(d.net).toBe(-65);
+  });
+
+  it("leaves a self-delivered order alone however it was paid", () => {
+    // No courier, no courier charge — whatever computeOrderTotals reports for
+    // the delivery cost belongs to whoever drove it, not to an account that
+    // settles itself.
+    const d = depositAmount(
+      { status: "DELIVERED", deliveryType: "SELF", paymentStatus: "PAID", paymentMethod: "CASH", deliveryCost: 65 },
+      totals({ customerTotal: 0, codFeeCost: 0 }),
+    );
+    expect(d.courierCharges).toBe(0);
+    expect(d.net).toBe(0);
   });
 
   it("banks only what a refused parcel still collected", () => {
     const d = depositAmount(
       {
         status: "CANCELLED",
+        deliveryType: "COURIER",
         paymentStatus: "PAID",
         paymentMethod: "COURIER_COLLECTION",
         cancelledCollected: 120,
@@ -134,6 +164,7 @@ describe("depositAmount", () => {
     const d = depositAmount(
       {
         status: "CANCELLED",
+        deliveryType: "COURIER",
         paymentStatus: "PAID",
         paymentMethod: "COURIER_COLLECTION",
         cancelledCollected: 120,
@@ -145,10 +176,14 @@ describe("depositAmount", () => {
     expect(d.net).toBe(120);
   });
 
-  it("floors at zero when the return charge outruns what was collected", () => {
+  it("goes negative when the return charge outruns what was collected", () => {
+    // The shop owes the courier the difference, and it comes out of the next
+    // payout. Floored at zero — as this was — the 55 was never anywhere: not in
+    // the treasury, not on any list, only in the profit figure.
     const d = depositAmount(
       {
         status: "CANCELLED",
+        deliveryType: "COURIER",
         paymentStatus: "PAID",
         paymentMethod: "COURIER_COLLECTION",
         cancelledCollected: 60,
@@ -156,7 +191,54 @@ describe("depositAmount", () => {
       },
       totals({ deliveryCost: 115, codFeeCost: 0 }),
     );
-    expect(d.net).toBe(0);
+    expect(d.net).toBe(-55);
+  });
+});
+
+describe("collectionRecorded", () => {
+  it("takes a PAID order's figure as final", () => {
+    expect(collectionRecorded({ status: "DELIVERED", paymentStatus: "PAID" })).toBe(true);
+  });
+
+  it("takes any cancellation's figure as final", () => {
+    // The cancel dialog asks for what was collected and what the courier
+    // charged, so a blank there is an answer, not a gap.
+    expect(collectionRecorded({ status: "CANCELLED", paymentStatus: "UNPAID" })).toBe(true);
+  });
+
+  it("counts a PARTIAL row that has a figure on it", () => {
+    expect(
+      collectionRecorded({ status: "DELIVERED", paymentStatus: "PARTIAL", amountPaid: 300 }),
+    ).toBe(true);
+  });
+
+  it("refuses to read a blank PARTIAL row as 'collected nothing'", () => {
+    // The one that matters: it only LOOKS like zero collected, and booking a
+    // courier charge against it takes money out of the treasury on the strength
+    // of a number nobody typed.
+    expect(
+      collectionRecorded({ status: "DELIVERED", paymentStatus: "PARTIAL", amountPaid: 0 }),
+    ).toBe(false);
+  });
+
+  it("refuses an UNPAID order — its parcel is still out", () => {
+    expect(collectionRecorded({ status: "SHIPPED", paymentStatus: "UNPAID" })).toBe(false);
+  });
+});
+
+describe("courierChargeNote", () => {
+  const customer = { name: "Asha" };
+
+  it("says whose parcel and that nothing paid for it", () => {
+    expect(courierChargeNote({ customer, heldBy: null }, 0)).toBe(
+      "Courier charges on Asha's order, nothing was collected to cover them",
+    );
+  });
+
+  it("says a returned parcel came back", () => {
+    expect(courierChargeNote({ status: "CANCELLED", customer, heldBy: null }, 60)).toBe(
+      "Courier charges on Asha's order, parcel came back, only 60.00 was collected to cover them",
+    );
   });
 });
 
@@ -218,7 +300,7 @@ describe("deposits that are already banked", () => {
     // treasury entry for money that genuinely arrived — triggered by any
     // routine edit elsewhere on the order.
     const d = depositAmount(
-      { status: "DELIVERED", paymentStatus: "PARTIAL", amountPaid: 0, paymentMethod: "CASH" },
+      { status: "DELIVERED", deliveryType: "SELF", paymentStatus: "PARTIAL", amountPaid: 0, paymentMethod: "CASH" },
       totals,
     );
     expect(d.gross).toBe(0);
@@ -228,7 +310,7 @@ describe("deposits that are already banked", () => {
   it("still reaches zero honestly on a fully returned PAID order", () => {
     // Nothing is owed and nothing is held: this one really should clear.
     const d = depositAmount(
-      { status: "DELIVERED", paymentStatus: "PAID", paymentMethod: "CASH" },
+      { status: "DELIVERED", deliveryType: "SELF", paymentStatus: "PAID", paymentMethod: "CASH" },
       { customerTotal: 0, deliveryCost: 0, codFeeCost: 0 },
     );
     expect(d.gross).toBe(0);
@@ -240,11 +322,11 @@ describe("deposits that are already banked", () => {
     // banked — a payment dropdown may not quietly take 2,000 out of the
     // treasury.
     const banked = depositAmount(
-      { status: "DELIVERED", paymentStatus: "PAID", paymentMethod: "CASH" },
+      { status: "DELIVERED", deliveryType: "SELF", paymentStatus: "PAID", paymentMethod: "CASH" },
       totals,
     ).net;
     const next = depositAmount(
-      { status: "DELIVERED", paymentStatus: "PARTIAL", amountPaid: 3000, paymentMethod: "CASH" },
+      { status: "DELIVERED", deliveryType: "SELF", paymentStatus: "PARTIAL", amountPaid: 3000, paymentMethod: "CASH" },
       totals,
     ).net;
     expect(banked).toBe(5000);
@@ -254,11 +336,11 @@ describe("deposits that are already banked", () => {
 
   it("grows without complaint when more money comes in", () => {
     const before = depositAmount(
-      { status: "DELIVERED", paymentStatus: "PARTIAL", amountPaid: 3000, paymentMethod: "CASH" },
+      { status: "DELIVERED", deliveryType: "SELF", paymentStatus: "PARTIAL", amountPaid: 3000, paymentMethod: "CASH" },
       totals,
     ).net;
     const after = depositAmount(
-      { status: "DELIVERED", paymentStatus: "PAID", paymentMethod: "CASH" },
+      { status: "DELIVERED", deliveryType: "SELF", paymentStatus: "PAID", paymentMethod: "CASH" },
       totals,
     ).net;
     expect(after > before).toBe(true);
