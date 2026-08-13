@@ -55,6 +55,7 @@ type Entry = DhakaStamp & {
   partnerName: string | null;
   fromDeposit: boolean;
   fromOrder: boolean;
+  orderId: string | null;
   fromPurchase: boolean;
   fromDistribution: boolean;
   fromBoost: boolean;
@@ -1181,7 +1182,23 @@ export function TreasuryManager({
                         e.fromDeposit ? (
                           <span className="text-xs text-muted-foreground">from deposit</span>
                         ) : e.fromOrder ? (
-                          <span className="text-xs text-muted-foreground">from order</span>
+                          // The entry can't be deleted on its own — the order
+                          // owns it — but the deposit that created it can be
+                          // undone, which removes both. Without this the only
+                          // undo was on a row that marking the deposit had
+                          // just removed from the page.
+                          e.orderId ? (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => onUnmarkDeposited(e.orderId!)}
+                              disabled={depositing === e.orderId}
+                            >
+                              {depositing === e.orderId ? "Undoing…" : "Undo"}
+                            </Button>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">from order</span>
+                          )
                         ) : e.fromPurchase ? (
                           <span className="text-xs text-muted-foreground">from purchase</span>
                         ) : e.fromDistribution ? (

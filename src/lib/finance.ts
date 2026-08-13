@@ -988,6 +988,14 @@ export async function paidNotDeposited(workspaceId: string): Promise<PaidNotDepo
     // against a blank figure either.
     if (deposit.net === 0) return [];
     if (deposit.net < 0 && !collectionRecorded(o)) return [];
+    // A courier bills for the trip when it ends — on delivery, or on the way
+    // back. A parcel still in transit has been charged nothing yet, so booking
+    // its charge as money already gone puts the treasury out by it for as long
+    // as the parcel is moving. A giveaway is where this bites: it collects
+    // nothing, so it reads as a pure outflow from the moment it is handed over.
+    // The courier balance page has always kept in-transit parcels out for the
+    // same reason; this is that test, applied to the money side.
+    if (deposit.net < 0 && o.status !== "DELIVERED" && o.status !== "CANCELLED") return [];
     return [
       {
         orderId: o.id,

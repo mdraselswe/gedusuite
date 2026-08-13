@@ -100,6 +100,10 @@ export default async function TreasuryPage({
     partnerName: e.partner ? (e.partner.user.name ?? e.partner.user.email) : null,
     fromDeposit: !!e.partnerTxnId,
     fromOrder: !!e.orderId,
+    // Carried through so the row can offer the way back. Marking an order's
+    // cash deposited takes it out of the "not deposited" list, which is where
+    // the only undo lived — so a mis-click had nowhere to go afterwards.
+    orderId: e.orderId,
     fromPurchase: !!e.purchaseId || !!e.internalPurchaseId,
     fromDistribution: !!e.distributionId,
     fromBoost: !!e.boostSpendId,
