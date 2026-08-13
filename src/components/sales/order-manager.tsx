@@ -136,7 +136,7 @@ export type CourierOption = CourierRules & {
   isDefault: boolean;
   /** True when this courier has API credentials stored, so parcels can be booked. */
   apiConnected: boolean;
-  zones: { id: string; name: string; rate: number }[];
+  zones: { id: string; name: string; rate: number; bands: { uptoKg: number; rate: number }[] }[];
 };
 /** A call-list row the sales page was sent here to turn into an order. */
 export type FromLead = {
@@ -951,6 +951,7 @@ export function OrderManager({
         : 0;
     return quoteCourier(selectedCourier, {
       zoneRate: zone.rate,
+      bands: zone.bands,
       weightKg: parseFloat(weightKg) || suggestedWeightKg,
       codAmount,
     });
@@ -981,6 +982,7 @@ export function OrderManager({
     }, 0);
     return breakEvenDeliveryCharge(selectedCourier, {
       zoneRate: zone.rate,
+      bands: zone.bands,
       weightKg: parseFloat(weightKg) || suggestedWeightKg,
       goodsAmount: goods - (parseFloat(orderDiscount) || 0),
     });
@@ -994,6 +996,7 @@ export function OrderManager({
     const goods = editOrder.totals.customerTotal - editOrder.deliveryCharge;
     return quoteCourier(editCourier, {
       zoneRate: zone.rate,
+      bands: zone.bands,
       weightKg: parseFloat(editWeightKg) || null,
       // A cancelled parcel collected nothing to be charged a percentage on.
       codAmount:

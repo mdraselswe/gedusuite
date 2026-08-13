@@ -187,7 +187,7 @@ async function quoteForOrder(
 
   const zone = await prisma.courierZone.findFirst({
     where: { id: input.courierZoneId, courierId: input.courierId, workspaceId },
-    include: { courier: true },
+    include: { courier: true, bands: { select: { uptoKg: true, rate: true } } },
   });
   if (!zone) return fallback;
 
@@ -200,7 +200,12 @@ async function quoteForOrder(
       returnChargeType: zone.courier.returnChargeType,
       returnChargeValue: Number(zone.courier.returnChargeValue),
     },
-    { zoneRate: Number(zone.rate), weightKg: input.weightKg ?? null, codAmount: input.codAmount },
+    {
+      zoneRate: Number(zone.rate),
+      bands: zone.bands.map((b) => ({ uptoKg: Number(b.uptoKg), rate: Number(b.rate) })),
+      weightKg: input.weightKg ?? null,
+      codAmount: input.codAmount,
+    },
   );
 
   return {

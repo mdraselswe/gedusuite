@@ -24,6 +24,19 @@ const ZoneSchema = z.object({
   id: z.string().optional(),
   name: z.string().trim().min(1, "Every zone needs a name").max(60),
   rate: z.coerce.number().nonnegative().max(99_999),
+  // Optional: a zone with no bands is priced by `rate` alone, exactly as
+  // before. 0.001kg minimum so a band can't be written that nothing can fall
+  // into, and can't collide with "no weight known".
+  bands: z
+    .array(
+      z.object({
+        uptoKg: z.coerce.number().positive().max(1000),
+        rate: z.coerce.number().nonnegative().max(99_999),
+      }),
+    )
+    .max(10)
+    .optional()
+    .default([]),
 });
 
 const CourierSchema = z.object({
@@ -77,7 +90,13 @@ export async function createCourier(slug: string, input: CourierInput): Promise<
       returnChargeValue: d.returnChargeValue,
       notes: d.notes?.trim() || null,
       zones: {
-        create: d.zones.map((z, i) => ({ workspaceId, name: z.name, rate: z.rate, sortOrder: i })),
+        create: d.zones.map((z, i) => ({
+          workspaceId,
+          name: z.name,
+          rate: z.rate,
+          sortOrder: i,
+          bands: { create: z.bands.map((b) => ({ workspaceId, uptoKg: b.uptoKg, rate: b.rate })) },
+        })),
       },
     },
   });
@@ -108,7 +127,9 @@ export async function updateCourier(
     where: { id, workspaceId },
     select: {
       id: true,
-      zones: { select: { id: true, name: true, rate: true } },
+      zones: {
+        select: { id: true, name: true, rate: true, bands: { select: { uptoKg: true, rate: true } } },
+      },
       name: true,
       isDefault: true,
       isActive: true,
@@ -151,14 +172,31 @@ export async function updateCourier(
       },
     });
     for (const [i, z] of d.zones.entries()) {
+      // Bands, unlike zones, are replaced rather than matched: nothing points
+      // at a band — an order stores the cost it was quoted, not the row that
+      // produced it — so there is no history to strip, and matching rows that
+      // carry no identity of their own would be ceremony.
       if (z.id) {
         await tx.courierZone.updateMany({
           where: { id: z.id, courierId: id },
           data: { name: z.name, rate: z.rate, sortOrder: i },
         });
+        await tx.courierRateBand.deleteMany({ where: { zoneId: z.id } });
+        if (z.bands.length) {
+          await tx.courierRateBand.createMany({
+            data: z.bands.map((b) => ({ workspaceId, zoneId: z.id!, uptoKg: b.uptoKg, rate: b.rate })),
+          });
+        }
       } else {
         await tx.courierZone.create({
-          data: { workspaceId, courierId: id, name: z.name, rate: z.rate, sortOrder: i },
+          data: {
+            workspaceId,
+            courierId: id,
+            name: z.name,
+            rate: z.rate,
+            sortOrder: i,
+            bands: { create: z.bands.map((b) => ({ workspaceId, uptoKg: b.uptoKg, rate: b.rate })) },
+          },
         });
       }
     }
@@ -350,7 +388,11 @@ function revalidateCouriers(slug: string) {
 export async function createSteadfastPreset(slug: string): Promise<ActionResult> {
   return createCourier(slug, {
     name: "Steadfast",
-    baseWeightKg: 1,
+    // Half a kilo, not a whole one: a 0.8kg parcel outside Dhaka is billed 135,
+    // which is 115 for the first slab and 20 for the next. Set to 1kg, that
+    // parcel quoted 115 and the difference turned up on the balance page with
+    // nothing to explain it.
+    baseWeightKg: 0.5,
     extraKgRate: 20,
     codFeePercent: 1,
     // Verified against a real balance: 1% is taken on what's handed over,
@@ -360,7 +402,8 @@ export async function createSteadfastPreset(slug: string): Promise<ActionResult>
     returnChargeValue: 0,
     isDefault: true,
     isActive: true,
-    notes: "Rates as negotiated — the public calculator quotes less.",
+    notes:
+      "Rates as negotiated — the public calculator quotes less. Add weight steps per zone if light parcels are billed less.",
     zones: [
       { name: "Dhaka City", rate: 65 },
       { name: "Outside Dhaka", rate: 115 },

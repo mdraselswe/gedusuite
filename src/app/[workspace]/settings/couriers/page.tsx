@@ -29,7 +29,10 @@ export default async function CouriersPage({
     where: { workspaceId: access.workspaceId },
     orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }],
     include: {
-      zones: { orderBy: { sortOrder: "asc" } },
+      zones: {
+        orderBy: { sortOrder: "asc" },
+        include: { bands: { orderBy: { uptoKg: "asc" } } },
+      },
       _count: { select: { orders: true } },
     },
   });
@@ -54,7 +57,12 @@ export default async function CouriersPage({
           notes: c.notes,
           // Whether a key is stored and which one, never the key itself.
           api: apiStateOf(c),
-          zones: c.zones.map((z) => ({ id: z.id, name: z.name, rate: Number(z.rate) })),
+          zones: c.zones.map((z) => ({
+            id: z.id,
+            name: z.name,
+            rate: Number(z.rate),
+            bands: z.bands.map((b) => ({ uptoKg: Number(b.uptoKg), rate: Number(b.rate) })),
+          })),
           orderCount: c._count.orders,
         }))}
       />

@@ -60,6 +60,7 @@ model Workspace {
   orderLeads            OrderLead[]
   couriers              Courier[]
   courierZones          CourierZone[]
+  courierRateBands      CourierRateBand[]
   activity              ActivityLog[]
 }
 
@@ -426,14 +427,48 @@ model CourierZone {
   workspaceId String
   courierId   String
   name        String // "Dhaka City", "Outside Dhaka"…
+  /**
+   * What this zone costs when no weight band says otherwise — and what it has
+   * always meant for a courier priced by one flat rate up to `baseWeightKg`.
+   */
   rate        Decimal @db.Decimal(12, 2)
   sortOrder   Int     @default(0)
 
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  courier   Courier   @relation(fields: [courierId], references: [id], onDelete: Cascade)
+  workspace Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  courier   Courier            @relation(fields: [courierId], references: [id], onDelete: Cascade)
   orders    Order[]
+  bands     CourierRateBand[]
 
   @@index([courierId])
+  @@index([workspaceId])
+}
+
+/**
+ * A weight step in one zone's price list: "up to 0.25kg it costs 55".
+ *
+ * Couriers here price by slab, not by a flat rate with a surcharge on top, and
+ * the difference is not academic: Steadfast charges this shop 55 for a 0.15kg
+ * Dhaka parcel and 65 for a 0.5kg one, which `baseWeightKg` + `extraKgRate`
+ * cannot express — that pair can only ever add money above an included weight,
+ * never take it off below one. Every parcel under the limit was over-quoted,
+ * and the courier balance carried the difference as an unexplained gap.
+ *
+ * A zone with no bands behaves exactly as it did: `rate` up to `baseWeightKg`,
+ * `extraKgRate` per started kilo above it. With bands, the heaviest band is
+ * what the extra-kilo charge is measured from.
+ */
+model CourierRateBand {
+  id          String  @id @default(cuid())
+  workspaceId String
+  zoneId      String
+  /** Parcels weighing this or less take `rate`. */
+  uptoKg      Decimal @db.Decimal(6, 3)
+  rate        Decimal @db.Decimal(12, 2)
+
+  workspace Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  zone      CourierZone @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+
+  @@index([zoneId])
   @@index([workspaceId])
 }
 

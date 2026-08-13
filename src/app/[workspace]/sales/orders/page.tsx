@@ -156,7 +156,12 @@ export default async function OrdersPage({
     prisma.courier.findMany({
       where: { workspaceId, isActive: true },
       orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }],
-      include: { zones: { orderBy: { sortOrder: "asc" } } },
+      include: {
+        zones: {
+          orderBy: { sortOrder: "asc" },
+          include: { bands: { orderBy: { uptoKg: "asc" } } },
+        },
+      },
     }),
     prisma.order.count({ where }),
     // Unfiltered, for the bar's "showing N of M".
@@ -315,7 +320,12 @@ export default async function OrdersPage({
           // Whether this courier can be booked from here at all. The encrypted
           // key never leaves the server — only the fact that there is one.
           apiConnected: !!c.apiKeyEnc,
-          zones: c.zones.map((z) => ({ id: z.id, name: z.name, rate: Number(z.rate) })),
+          zones: c.zones.map((z) => ({
+            id: z.id,
+            name: z.name,
+            rate: Number(z.rate),
+            bands: z.bands.map((b) => ({ uptoKg: Number(b.uptoKg), rate: Number(b.rate) })),
+          })),
         }))}
         fromLead={fromLead}
         orders={orderRows}

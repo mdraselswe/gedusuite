@@ -108,3 +108,64 @@ describe("expectedCourierBalance", () => {
     expect(expectedCourierBalance([])).toBe(0);
   });
 });
+
+describe("weight bands", () => {
+  // Steadfast, as this shop's own parcels price it: 55 for a light Dhaka
+  // parcel and 65 for a full one, 115 outside up to half a kilo and 20 per
+  // started kilo after that.
+  const banded: CourierRules = {
+    baseWeightKg: 0.5,
+    extraKgRate: 20,
+    codFeePercent: 1,
+    codFeeBase: "NET",
+    returnChargeType: "NONE",
+    returnChargeValue: 0,
+  };
+  const dhaka = [
+    { uptoKg: 0.25, rate: 55 },
+    { uptoKg: 0.5, rate: 65 },
+  ];
+  const outside = [{ uptoKg: 0.5, rate: 115 }];
+
+  it("charges a light Dhaka parcel the light rate", () => {
+    // CN#282716647, 0.15kg, 230 COD: Steadfast charged 55, and the flat-rate
+    // model said 65 — ten taka of unexplained gap on the balance page.
+    const q = quoteCourier(banded, { zoneRate: 65, bands: dhaka, weightKg: 0.15, codAmount: 230 });
+    expect(q.deliveryCharge).toBe(55);
+    expect(q.codFee).toBe(1.75);
+  });
+
+  it("charges a full Dhaka parcel the standard rate", () => {
+    const q = quoteCourier(banded, { zoneRate: 65, bands: dhaka, weightKg: 0.41, codAmount: 920 });
+    expect(q.deliveryCharge).toBe(65);
+  });
+
+  it("adds a started kilo above the heaviest band", () => {
+    // CN#255141071, 0.8kg outside Dhaka: 115 for the first half kilo, 20 for
+    // the rest. The old model included a whole kilo and quoted 115.
+    const q = quoteCourier(banded, { zoneRate: 115, bands: outside, weightKg: 0.8, codAmount: 2500 });
+    expect(q.deliveryCharge).toBe(135);
+  });
+
+  it("takes the heaviest band when nobody weighed the parcel", () => {
+    // Never the cheapest: a delivery cost that is too low makes an order look
+    // more profitable than it was, and nobody goes looking for that.
+    const q = quoteCourier(banded, { zoneRate: 65, bands: dhaka, weightKg: null, codAmount: 920 });
+    expect(q.deliveryCharge).toBe(65);
+  });
+
+  it("leaves a zone with no bands exactly as it was", () => {
+    const q = quoteCourier(steadfast, { zoneRate: 115, weightKg: 0.4, codAmount: 960 });
+    expect(q.deliveryCharge).toBe(115);
+  });
+
+  it("reads bands given in any order", () => {
+    const q = quoteCourier(banded, {
+      zoneRate: 65,
+      bands: [...dhaka].reverse(),
+      weightKg: 0.15,
+      codAmount: 230,
+    });
+    expect(q.deliveryCharge).toBe(55);
+  });
+});

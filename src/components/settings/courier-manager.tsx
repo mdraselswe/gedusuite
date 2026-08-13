@@ -35,7 +35,12 @@ import { cn } from "@/lib/utils";
 import { Money } from "@/components/ui/money";
 import { Field } from "@/components/ui/field";
 
-export type CourierZoneRow = { id: string; name: string; rate: number };
+export type CourierZoneRow = {
+  id: string;
+  name: string;
+  rate: number;
+  bands: { uptoKg: number; rate: number }[];
+};
 export type CourierRow = {
   id: string;
   name: string;
@@ -59,7 +64,8 @@ export type CourierRow = {
   orderCount: number;
 };
 
-type ZoneDraft = { id?: string; name: string; rate: string };
+type BandDraft = { uptoKg: string; rate: string };
+type ZoneDraft = { id?: string; name: string; rate: string; bands: BandDraft[] };
 
 const COD_BASE_LABEL: Record<string, string> = {
   NET: "On what's handed over (COD − delivery charge)",
@@ -95,7 +101,7 @@ function emptyDraft(): {
     isDefault: false,
     isActive: true,
     notes: "",
-    zones: [{ name: "", rate: "" }],
+    zones: [{ name: "", rate: "", bands: [] }],
   };
 }
 
@@ -133,7 +139,12 @@ export function CourierManager({
       isDefault: c.isDefault,
       isActive: c.isActive,
       notes: c.notes ?? "",
-      zones: c.zones.map((z) => ({ id: z.id, name: z.name, rate: String(z.rate) })),
+      zones: c.zones.map((z) => ({
+        id: z.id,
+        name: z.name,
+        rate: String(z.rate),
+        bands: z.bands.map((b) => ({ uptoKg: String(b.uptoKg), rate: String(b.rate) })),
+      })),
     });
     setOpen(true);
   }
@@ -145,7 +156,16 @@ export function CourierManager({
       ...draft,
       zones: draft.zones
         .filter((z) => z.name.trim())
-        .map((z) => ({ id: z.id, name: z.name, rate: z.rate || 0 })),
+        .map((z) => ({
+          id: z.id,
+          name: z.name,
+          rate: z.rate || 0,
+          // A half-typed band is dropped rather than saved as a zero-weight
+          // step that would swallow every parcel.
+          bands: z.bands
+            .filter((b) => Number(b.uptoKg) > 0 && b.rate !== "")
+            .map((b) => ({ uptoKg: Number(b.uptoKg), rate: Number(b.rate) })),
+        })),
     };
     const res = editingId
       ? await updateCourier(slug, editingId, input)
@@ -194,7 +214,14 @@ export function CourierManager({
           returnChargeType: draft.returnChargeType,
           returnChargeValue: Number(draft.returnChargeValue) || 0,
         },
-        { zoneRate: Number(previewZone.rate), weightKg: 0.5, codAmount: 960 },
+        {
+          zoneRate: Number(previewZone.rate),
+          bands: previewZone.bands
+            .filter((b) => Number(b.uptoKg) > 0 && b.rate !== "")
+            .map((b) => ({ uptoKg: Number(b.uptoKg), rate: Number(b.rate) })),
+          weightKg: 0.5,
+          codAmount: 960,
+        },
       )
     : null;
 
@@ -249,7 +276,18 @@ export function CourierManager({
               <div className="flex flex-wrap gap-x-6 gap-y-1">
                 {c.zones.map((z) => (
                   <span key={z.id}>
-                    {z.name} <span className="font-medium tabular-nums"><Money value={z.rate} /></span>
+                    {z.name}{" "}
+                    {z.bands.length > 0 ? (
+                      <span className="font-medium tabular-nums">
+                        {z.bands
+                          .slice()
+                          .sort((a, b) => a.uptoKg - b.uptoKg)
+                          .map((b) => `${b.uptoKg}kg ৳${b.rate}`)
+                          .join(" · ")}
+                      </span>
+                    ) : (
+                      <span className="font-medium tabular-nums"><Money value={z.rate} /></span>
+                    )}
                   </span>
                 ))}
               </div>
@@ -304,8 +342,15 @@ export function CourierManager({
                 What they charge to deliver, per area, up to the included weight. Use your
                 own negotiated rates — the public price list is usually lower.
               </p>
-              {draft.zones.map((z, i) => (
-                <div key={i} className="flex items-center gap-2">
+              {draft.zones.map((z, i) => {
+                const setZone = (patch: Partial<ZoneDraft>) => {
+                  const zones = [...draft.zones];
+                  zones[i] = { ...zones[i], ...patch };
+                  setDraft({ ...draft, zones });
+                };
+                return (
+                <div key={i} className="space-y-2 rounded-md border p-2">
+                <div className="flex items-center gap-2">
                   <Input
                     value={z.name}
                     placeholder="Dhaka City"
@@ -340,12 +385,81 @@ export function CourierManager({
                     <Trash2 className="size-4" />
                   </Button>
                 </div>
-              ))}
+
+                {/* Weight steps. Couriers here price by slab — 55 for a light
+                    Dhaka parcel, 65 for a full one — which the rate above and
+                    the per-kilo surcharge below cannot express between them:
+                    that pair only ever adds money above an included weight,
+                    never takes it off under one. A zone with no steps keeps
+                    using the flat rate, so this stays invisible until it is
+                    needed. */}
+                {z.bands.length > 0 && (
+                  <div className="space-y-1.5 pl-1">
+                    {z.bands.map((b, bi) => (
+                      <div key={bi} className="flex items-center gap-2">
+                        <span className="shrink-0 text-xs text-muted-foreground">up to</span>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0.01"
+                          className="w-24"
+                          placeholder="0.25"
+                          value={b.uptoKg}
+                          onChange={(e) => {
+                            const bands = [...z.bands];
+                            bands[bi] = { ...bands[bi], uptoKg: e.target.value };
+                            setZone({ bands });
+                          }}
+                        />
+                        <span className="shrink-0 text-xs text-muted-foreground">kg costs</span>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          className="w-24"
+                          placeholder="55"
+                          value={b.rate}
+                          onChange={(e) => {
+                            const bands = [...z.bands];
+                            bands[bi] = { ...bands[bi], rate: e.target.value };
+                            setZone({ bands });
+                          }}
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setZone({ bands: z.bands.filter((_, j) => j !== bi) })}
+                        >
+                          <Trash2 className="size-4" />
+                        </Button>
+                      </div>
+                    ))}
+                    <p className="text-xs text-muted-foreground">
+                      A parcel takes the first step it fits in. Heavier than every step, or
+                      never weighed, and it pays the last one — plus the per-kilo charge
+                      below, measured from that step&apos;s limit.
+                    </p>
+                  </div>
+                )}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setZone({ bands: [...z.bands, { uptoKg: "", rate: "" }] })}
+                >
+                  <Plus data-icon="inline-start" /> Add a weight step
+                </Button>
+                </div>
+                );
+              })}
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={() => setDraft({ ...draft, zones: [...draft.zones, { name: "", rate: "" }] })}
+                onClick={() =>
+                  setDraft({ ...draft, zones: [...draft.zones, { name: "", rate: "", bands: [] }] })
+                }
               >
                 <Plus data-icon="inline-start" /> Add zone
               </Button>
