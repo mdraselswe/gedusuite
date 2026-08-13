@@ -21,6 +21,7 @@ import {
 import { computeOrderTotals, goodsDiscount } from "@/lib/orders";
 import { isOrderSource } from "@/lib/order-source";
 import { quoteCourier } from "@/lib/courier";
+import { syncCourierStatuses } from "@/lib/courier-status-sync";
 import type { OrderStatus, PaymentStatus } from "@prisma/client";
 import { checkboxField, failed, type ActionFailure } from "@/lib/form";
 import { diffFields, newActivityGroup, recordActivity } from "@/lib/activity";
@@ -1494,4 +1495,39 @@ export async function setOrderCampaign(
   revalidatePath(`/${slug}/boosting`);
   if (boostCampaignId) revalidatePath(`/${slug}/boosting/${boostCampaignId}`);
   return { ok: true };
+}
+
+/**
+ * Bring parcel statuses up to date while somebody is looking at the list.
+ *
+ * The courier's webhook was meant to push these and doesn't, and the cron that
+ * fetches them instead runs once a day — which is what a Hobby plan allows and
+ * far too slow for a list somebody is making decisions on. So the page asks as
+ * it opens, throttled to once every ten minutes per courier, exactly as the
+ * call list pulls abandoned checkouts.
+ *
+ * Failure is swallowed on purpose: the list renders perfectly well from what is
+ * already stored, and a courier being unreachable must not break the page it
+ * was opened from.
+ */
+export async function refreshCourierStatuses(
+  slug: string,
+): Promise<{ ok: true; delivered: number } | { ok: false }> {
+  const gate = await requireAccess(slug, "sales", "view");
+  if (!gate.ok) return { ok: false };
+  try {
+    const res = await syncCourierStatuses({
+      workspaceId: gate.access.workspaceId,
+      max: 60,
+      throttleMs: 10 * 60 * 1000,
+    });
+    if (res.changed > 0) {
+      revalidatePath(`/${slug}/sales/orders`);
+      revalidatePath(`/${slug}/couriers`);
+      revalidatePath(`/${slug}/treasury`);
+    }
+    return { ok: true, delivered: res.delivered };
+  } catch {
+    return { ok: false };
+  }
 }

@@ -10,6 +10,7 @@ import {
   updateOrderStatus,
   updateOrderHeader,
   updatePaymentStatus,
+  refreshCourierStatuses,
   updateCourierTrackingId,
   createReturn,
   deleteOrder,
@@ -837,6 +838,26 @@ export function OrderManager({
   // clicked — the person collating the printout reads it against the screen.
   const selectedInListOrder = shownOrders.filter((o) => selectedIds.has(o.id)).map((o) => o.id);
   const sheetCount = Math.ceil(selectedInListOrder.length / 2);
+
+  // Ask the courier where the parcels in flight have got to, once the list is
+  // on screen rather than while rendering it. Steadfast's webhook was meant to
+  // push this and only ever pushes "in_review", and the cron that fetches it
+  // instead runs once a day — so the page that somebody is about to make
+  // decisions on brings itself up to date. Throttled server-side, so opening
+  // the list repeatedly asks the courier once.
+  const statusChecked = useRef(false);
+  useEffect(() => {
+    if (statusChecked.current) return;
+    statusChecked.current = true;
+    refreshCourierStatuses(slug).then((res) => {
+      if (res.ok && res.delivered > 0) {
+        toast.success(
+          `${res.delivered} parcel(s) marked delivered — the courier says they arrived`,
+        );
+        router.refresh();
+      }
+    });
+  }, [slug, router]);
 
   // Arriving from a call-list row opens the order form already pointed at that
   // customer. Runs once per arrival.

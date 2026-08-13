@@ -385,6 +385,14 @@ model Courier {
    * null for a courier that is only ever booked by hand. A string rather than
    * an enum so the second integration is a client file, not a migration.
    */
+  /**
+   * When this courier's in-flight parcels were last asked about. Throttles the
+   * sync the sales page kicks off, so opening the list ten times in a minute
+   * asks the courier once — the same arrangement wooSyncState gives the call
+   * list, kept on the courier because that is what has the credentials.
+   */
+  statusSyncedAt DateTime?
+
   apiProvider   String?
   /**
    * The courier's API credentials, AES-256-GCM encrypted by lib/crypto (the
