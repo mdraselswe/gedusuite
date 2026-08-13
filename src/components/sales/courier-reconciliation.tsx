@@ -85,17 +85,28 @@ export function CourierReconciliation({
           <span className="inline-flex items-center gap-1.5">
             {p.customerName}
             {/* A cancelled parcel sitting in a list of delivered ones needs
-                saying out loud: the customer paid the shipping and sent the
-                goods back, so the money is real but the sale isn't. */}
-            {p.status === "CANCELLED" && (
-              <Badge
-                variant="outline"
-                className="border-orange-500/40 bg-orange-500/15 font-normal text-orange-800 dark:bg-orange-500/25 dark:text-orange-200"
-                title="Cancelled — only what the customer handed over is with the courier"
-              >
-                Partial
-              </Badge>
-            )}
+                saying out loud, and the two kinds are opposite facts: one
+                collected some money, the other collected none and cost you the
+                trip. Calling both "Partial" put a row worth minus 115 under a
+                word that means "some of it came in". */}
+            {p.status === "CANCELLED" &&
+              (p.cod > 0 ? (
+                <Badge
+                  variant="outline"
+                  className="border-orange-500/40 bg-orange-500/15 font-normal text-orange-800 dark:bg-orange-500/25 dark:text-orange-200"
+                  title="Cancelled — only what the customer handed over is with the courier"
+                >
+                  Partial
+                </Badge>
+              ) : (
+                <Badge
+                  variant="outline"
+                  className="border-red-500/40 bg-red-500/15 font-normal text-red-800 dark:bg-red-500/25 dark:text-red-200"
+                  title="Came back undelivered — nothing collected, and the courier still charged for the trip"
+                >
+                  Returned
+                </Badge>
+              ))}
           </span>
           {p.trackingId && (
             <span className="block text-xs text-muted-foreground">{p.trackingId}</span>
@@ -140,7 +151,14 @@ export function CourierReconciliation({
       header: "You get",
       align: "right",
       sortValue: (p) => p.net,
-      cell: (p) => <span className="font-medium tabular-nums">{money(p.net)}</span>,
+      // A returned parcel is money going the other way. Printed in the
+      // destructive colour so a minus sign isn't the only thing separating it
+      // from a row that earned you eight hundred taka.
+      cell: (p) => (
+        <span className={cn("font-medium tabular-nums", p.net < 0 && "text-destructive")}>
+          {money(p.net)}
+        </span>
+      ),
     },
   ];
 
@@ -150,6 +168,11 @@ export function CourierReconciliation({
         const typed = actual[a.id];
         const actualNum = typed === undefined || typed === "" ? null : Number(typed);
         const diff = actualNum === null ? null : Math.round((actualNum - a.expected) * 100) / 100;
+        // Three different things live in `holding`, and the line under the
+        // total has to add up to what's in the table below it.
+        const delivered = a.holding.filter((p) => p.status !== "CANCELLED").length;
+        const partial = a.holding.filter((p) => p.status === "CANCELLED" && p.cod > 0).length;
+        const returned = a.holding.filter((p) => p.status === "CANCELLED" && p.cod <= 0).length;
 
         return (
           <Card key={a.id}>
@@ -171,18 +194,17 @@ export function CourierReconciliation({
                   </div>
                   <div className="text-2xl font-bold tabular-nums">{money(a.expected)}</div>
                   <div className="text-xs text-muted-foreground">
-                    {a.holding.filter((p) => p.status !== "CANCELLED").length} delivered
-                    parcel(s)
-                    {a.holding.some((p) => p.status === "CANCELLED") &&
-                      ` + ${a.holding.filter((p) => p.status === "CANCELLED").length} partial`}
-                    , COD less their charges
+                    {delivered} delivered parcel(s)
+                    {partial > 0 && ` + ${partial} partial`}
+                    {returned > 0 && ` − ${returned} returned`}, COD less their charges
                   </div>
                   {/* The rule this page runs on, said once where it matters:
                       "paid" happens when the rider takes the cash, which is
                       the moment the courier starts holding it. */}
                   <div className="mt-1 text-xs text-muted-foreground">
                     Counts every delivered parcel until its cash is marked deposited —
-                    do that when the courier actually pays out.
+                    do that when the courier actually pays out. A returned parcel
+                    subtracts what the courier charged to bring it back.
                   </div>
                 </div>
                 <div className="space-y-1">
@@ -220,7 +242,7 @@ export function CourierReconciliation({
                         {Math.abs(diff) < 1
                           ? "Matches — nothing unexplained."
                           : diff < 0
-                            ? "They hold less than expected: a charge you don't have — a return, or a rate that isn't what's set up."
+                            ? "They hold less than expected: a charge you don't have — a rate that isn't what's set up, or a returned parcel whose charge nobody typed in."
                             : "They hold more than expected: a parcel's cost is set too high here."}
                       </div>
                     </>

@@ -45,11 +45,23 @@ export default async function CouriersPage({
       // the moment the customer hands cash to the rider, which is precisely
       // when the courier — not the shop — is holding it.
       cashInTreasury: false,
-      // A cancelled parcel usually holds nothing — but a partial delivery
-      // does: the customer paid the shipping and refused the goods, and that
-      // money sits with the courier like any other collection. Dropping those
-      // rows leaves a gap in the balance that can never be explained.
-      OR: [{ status: { not: "CANCELLED" } }, { cancelledCollected: { gt: 0 } }],
+      OR: [
+        { status: { not: "CANCELLED" } },
+        // A partial delivery: the customer paid the shipping and refused the
+        // goods, and that money sits with the courier like any other
+        // collection. Dropping those rows leaves a gap in the balance that can
+        // never be explained.
+        { status: "CANCELLED", cancelledCollected: { gt: 0 } },
+        // A parcel that came back with nothing collected. It holds no money of
+        // yours, but the courier still charged for the trip and takes that off
+        // the next payout, so it belongs in the balance as a minus — leaving
+        // it out is what made this page read 115 taka higher than Steadfast's
+        // own figure. `gt: 0` skips a null cost, which means "no bill was ever
+        // recorded", the same rule deliveryCostCharged applies. This is the OR
+        // that finance.ts's paidNotDeposited already had; the two pages
+        // disagreed while only one of them knew about returns.
+        { status: "CANCELLED", deliveryCost: { gt: 0 } },
+      ],
     },
     orderBy: { date: "asc" },
     include: {
