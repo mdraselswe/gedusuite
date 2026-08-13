@@ -86,6 +86,9 @@ type NotDeposited = DhakaStamp & {
   amount: number;
   /** What the customer paid. */
   gross: number;
+  courierName: string | null;
+  /** The next payout will already be short of this charge — see finance.ts. */
+  settlesAtPayout: boolean;
   /** Delivery cost + COD fee the courier keeps before remitting. */
   courierCharges: number;
   paymentMethod: string;
@@ -198,6 +201,12 @@ export function TreasuryManager({
   const withCourier = notDeposited.filter((o) => o.amount > 0 && o.isCourierCollection);
   const withMembers = notDeposited.filter((o) => o.amount > 0 && !o.isCourierCollection);
   const owedToCourierTotal = owedToCourier.reduce((s, o) => s + Math.abs(o.amount), 0);
+  // A courier that nets its charges inside the balance it holds takes this out
+  // of the next payout by itself, and recording it here as well would take it
+  // out twice — once by hand, and again when a payout arrives already short of
+  // it. So those rows are shown and not offered a button.
+  const owedSelfSettling = owedToCourier.filter((o) => o.settlesAtPayout);
+  const owedToRecord = owedToCourier.filter((o) => !o.settlesAtPayout);
   const courierTotal = withCourier.reduce((s, o) => s + o.amount, 0);
   const courierGross = withCourier.reduce((s, o) => s + o.gross, 0);
   const courierCharges = withCourier.reduce((s, o) => s + o.courierCharges, 0);
@@ -510,13 +519,13 @@ export function TreasuryManager({
                 Owed to courier (charges with nothing collected against them) —{" "}
                 <Money value={owedToCourierTotal} /> across {owedToCourier.length} parcel(s)
               </CardTitle>
-              {canManage && owedToCourier.length > 1 && (
+              {canManage && owedToRecord.length > 1 && (
                 <Button
                   size="sm"
                   variant="outline"
                   onClick={() =>
-                    onBankAll("owed", owedToCourier, {
-                      title: `Record ${owedToCourier.length} courier charges?`,
+                    onBankAll("owed", owedToRecord, {
+                      title: `Record ${owedToRecord.length} courier charges?`,
                       body: "Confirm this once the courier has actually taken them off your balance.",
                       confirm: "Record all",
                       done: "charged",
@@ -524,7 +533,7 @@ export function TreasuryManager({
                   }
                   disabled={bulkDepositing !== null || depositing !== null}
                 >
-                  {bulkDepositing === "owed" ? "Recording…" : `Record all ${owedToCourier.length}`}
+                  {bulkDepositing === "owed" ? "Recording…" : `Record all ${owedToRecord.length}`}
                 </Button>
               )}
             </div>
@@ -533,9 +542,14 @@ export function TreasuryManager({
                 A courier charges for the trip, not for the sale. When it collects nothing
                 at the door — a free gift, an order already paid by bKash, a parcel sent
                 back — there is nothing for it to take its delivery charge out of, so it
-                comes off your courier balance instead. Recording it here takes the same
-                amount out of the treasury, which is where it has already gone in real
-                life.
+                comes off your courier balance instead.
+              </p>
+              <p>
+                Where the courier takes that out of the balance it is already holding,
+                nothing needs recording: the next payout arrives that much smaller and the
+                treasury follows it. Those rows are listed here so the money is visible
+                while it is still owed, not because anything is waiting to be done to
+                them. Record a charge only where a courier bills you for it separately.
               </p>
             </InfoNote>
           </CardHeader>
@@ -588,16 +602,25 @@ export function TreasuryManager({
                           key: "actions",
                           header: "",
                           cardFullWidth: true,
-                          cell: (o: NotDeposited) => (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => onMarkDeposited(o.orderId)}
-                              disabled={depositing === o.orderId || bulkDepositing !== null}
-                            >
-                              {depositing === o.orderId ? "Saving…" : "Record charge"}
-                            </Button>
-                          ),
+                          // No button where the courier settles it itself. The
+                          // charge is already inside the balance it is holding,
+                          // so it comes off the next payout whether anybody
+                          // presses anything — and pressing takes it out twice.
+                          cell: (o: NotDeposited) =>
+                            o.settlesAtPayout ? (
+                              <span className="text-xs text-muted-foreground">
+                                {o.courierName ?? "The courier"} takes this off your next payout
+                              </span>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => onMarkDeposited(o.orderId)}
+                                disabled={depositing === o.orderId || bulkDepositing !== null}
+                              >
+                                {depositing === o.orderId ? "Saving…" : "Record charge"}
+                              </Button>
+                            ),
                         },
                       ]
                     : []),

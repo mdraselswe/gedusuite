@@ -927,6 +927,17 @@ export type PaidNotDeposited = DhakaStamp & {
   amount: number;
   /** What the customer paid. Equal to `amount` unless a courier collected it. */
   gross: number;
+  courierName: string | null;
+  /**
+   * Whether this charge is going to take itself out of the next payout.
+   *
+   * A courier that nets its charges inside the balance it is holding — which
+   * is every courier this app can read a balance and a payout from — settles
+   * a returned parcel's bill by paying that much less next time. Recording it
+   * as an outflow as well takes it out twice: once by hand, and again when the
+   * payout arrives already short of it.
+   */
+  settlesAtPayout: boolean;
   /** Delivery cost + COD fee the courier keeps out of what it collected. */
   courierCharges: number;
   paymentMethod: string;
@@ -975,6 +986,10 @@ export async function paidNotDeposited(workspaceId: string): Promise<PaidNotDepo
       items: { include: { returns: true } },
       customer: { select: { name: true } },
       heldBy: { include: { user: { select: { name: true, email: true } } } },
+      // Only to answer "can this courier be asked what it paid" — the key
+      // itself is read here and turned into a yes or no on the next line, and
+      // never leaves the server.
+      courier: { select: { name: true, apiKeyEnc: true } },
     },
     orderBy: { date: "asc" },
   });
@@ -1007,6 +1022,8 @@ export async function paidNotDeposited(workspaceId: string): Promise<PaidNotDepo
         paymentMethod: o.paymentMethod,
         heldByName: o.heldBy ? (o.heldBy.user.name ?? o.heldBy.user.email) : null,
         isCourierCollection: o.paymentMethod === "COURIER_COLLECTION",
+        courierName: o.courier?.name ?? null,
+        settlesAtPayout: !!o.courier?.apiKeyEnc,
         cancelled: o.status === "CANCELLED",
       },
     ];
