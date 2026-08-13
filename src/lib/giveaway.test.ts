@@ -67,6 +67,7 @@ describe("a free order", () => {
       {
         status: "DELIVERED",
         deliveryType: "COURIER",
+        collectionShortfall: 0,
         paymentStatus: "PAID",
         paymentMethod: "CASH",
       },

@@ -224,6 +224,18 @@ export default async function OrderBreakdownPage({
               label={`Delivery margin (charge ${money(totals.deliveryCharge)} − cost ${money(totals.deliveryCost)})`}
               value={totals.deliveryMargin}
             />
+            {/* Both of these were already inside net profit; only the total
+                said so, which left the rows above it not adding up to the
+                figure underneath. */}
+            {totals.codFeeCost > 0 && (
+              <Row label="Courier's fee on what it collected" value={-totals.codFeeCost} />
+            )}
+            {totals.collectionShortfall > 0 && (
+              <Row
+                label="Collected short (never reached the business)"
+                value={-totals.collectionShortfall}
+              />
+            )}
             <div className="flex justify-between border-t pt-2 text-base font-bold">
               <span>Net profit</span>
               <span><Money value={totals.netProfit} /></span>

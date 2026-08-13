@@ -7,6 +7,8 @@ export type OrderWithTotals = {
   deliveryCost?: Prisma.Decimal | number | null;
   /** The courier's percentage fee in taka. Absent on orders that predate it. */
   codFeeCost?: Prisma.Decimal | number | null;
+  /** What the customer paid that never arrived. Absent on orders that predate it. */
+  collectionShortfall?: Prisma.Decimal | number | null;
   packagingCost: Prisma.Decimal | number;
   giftCost: Prisma.Decimal | number;
   discount: Prisma.Decimal | number;
@@ -83,7 +85,14 @@ export type OrderTotals = {
   deliveryCost: number; // actual amount paid to the courier
   deliveryMargin: number; // deliveryCharge − deliveryCost; can be + or −
   codFeeCost: number; // the courier's percentage fee on the collected amount
-  netProfit: number; // sale − cost − discount − gift, plus/minus delivery margin, less the courier's COD fee
+  /**
+   * What the customer paid that never reached the business. Its own line
+   * rather than folded into a discount: a discount is a price the shop chose,
+   * this is money that went missing on the way, and a report that can't tell
+   * them apart can't act on either.
+   */
+  collectionShortfall: number;
+  netProfit: number; // sale − cost − discount − gift − shortfall, plus/minus delivery margin, less the courier's COD fee
   customerTotal: number; // owed for kept goods incl. delivery
   returnedUnits: number;
 };
@@ -139,6 +148,10 @@ export function computeOrderTotals(order: OrderWithTotals): OrderTotals {
   // Kept out of deliveryCost so a report can tell a bad delivery rate from a
   // bad COD rate — they're fixed by different decisions.
   const codFeeCost = order.codFeeCost != null ? n(order.codFeeCost) : 0;
+  // Not scaled by keptFraction, unlike a discount: the money went missing at
+  // the door, on the day, and returning goods afterwards doesn't bring any of
+  // it back.
+  const collectionShortfall = order.collectionShortfall != null ? n(order.collectionShortfall) : 0;
 
   const netRevenue = effectiveRevenue - itemDiscounts - orderDiscount;
   // packagingCost is deliberately absent. Packaging material is bought as an
@@ -149,7 +162,10 @@ export function computeOrderTotals(order: OrderWithTotals): OrderTotals {
   // internal purchase is the one that has real money behind it, so that is the
   // one that counts; this figure stays on the order as a note about how much
   // packaging a particular parcel used.
-  const netProfit = netRevenue - cogs - giftCost + deliveryMargin - codFeeCost;
+  const netProfit = netRevenue - cogs - giftCost + deliveryMargin - codFeeCost - collectionShortfall;
+  // Deliberately untouched by the shortfall: this is what the customer owes,
+  // and they paid it. What went missing afterwards is the shop's loss, not a
+  // debt to chase them for.
   const customerTotal = netRevenue + deliveryCharge;
 
   return {
@@ -165,6 +181,7 @@ export function computeOrderTotals(order: OrderWithTotals): OrderTotals {
     deliveryCost: round2(deliveryCost),
     deliveryMargin: round2(deliveryMargin),
     codFeeCost: round2(codFeeCost),
+    collectionShortfall: round2(collectionShortfall),
     netProfit: round2(netProfit),
     customerTotal: round2(customerTotal),
     returnedUnits,

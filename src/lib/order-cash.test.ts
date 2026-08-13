@@ -5,6 +5,7 @@ import {
   cashEntrySource,
   amountCollected,
   amountOutstanding,
+  amountRemitted,
   collectionRecorded,
   courierChargeNote,
   deliveryCostCharged,
@@ -97,7 +98,7 @@ describe("depositAmount", () => {
     // 960 collected, 65 delivery + 8.45 fee kept — 886.55 arrives, and that is
     // the number the treasury has to hold.
     const d = depositAmount(
-      { status: "DELIVERED", deliveryType: "COURIER", paymentStatus: "PAID", paymentMethod: "COURIER_COLLECTION", deliveryCost: 65 },
+      { status: "DELIVERED", deliveryType: "COURIER", collectionShortfall: 0, paymentStatus: "PAID", paymentMethod: "COURIER_COLLECTION", deliveryCost: 65 },
       totals(),
     );
     expect(d.gross).toBe(960);
@@ -110,7 +111,7 @@ describe("depositAmount", () => {
     // bills its trip against its own account, and netting it here would
     // understate what that person owes the shop.
     for (const method of ["CASH", "BKASH", "NAGAD", "OTHER"]) {
-      const d = depositAmount({ status: "DELIVERED", deliveryType: "COURIER", paymentStatus: "PAID", paymentMethod: method, deliveryCost: 65 }, totals());
+      const d = depositAmount({ status: "DELIVERED", deliveryType: "COURIER", collectionShortfall: 0, paymentStatus: "PAID", paymentMethod: method, deliveryCost: 65 }, totals());
       expect(d.courierCharges).toBe(0);
       expect(d.net).toBe(960);
     }
@@ -122,7 +123,7 @@ describe("depositAmount", () => {
     // instead. Reported as a deposit of zero, that money left the business
     // without ever leaving the treasury.
     const d = depositAmount(
-      { status: "DELIVERED", deliveryType: "COURIER", paymentStatus: "PAID", paymentMethod: "CASH", deliveryCost: 65 },
+      { status: "DELIVERED", deliveryType: "COURIER", collectionShortfall: 0, paymentStatus: "PAID", paymentMethod: "CASH", deliveryCost: 65 },
       totals({ customerTotal: 0, codFeeCost: 0 }),
     );
     expect(d.gross).toBe(0);
@@ -135,7 +136,7 @@ describe("depositAmount", () => {
     // the delivery cost belongs to whoever drove it, not to an account that
     // settles itself.
     const d = depositAmount(
-      { status: "DELIVERED", deliveryType: "SELF", paymentStatus: "PAID", paymentMethod: "CASH", deliveryCost: 65 },
+      { status: "DELIVERED", deliveryType: "SELF", collectionShortfall: 0, paymentStatus: "PAID", paymentMethod: "CASH", deliveryCost: 65 },
       totals({ customerTotal: 0, codFeeCost: 0 }),
     );
     expect(d.courierCharges).toBe(0);
@@ -147,6 +148,7 @@ describe("depositAmount", () => {
       {
         status: "CANCELLED",
         deliveryType: "COURIER",
+        collectionShortfall: 0,
         paymentStatus: "PAID",
         paymentMethod: "COURIER_COLLECTION",
         cancelledCollected: 120,
@@ -165,6 +167,7 @@ describe("depositAmount", () => {
       {
         status: "CANCELLED",
         deliveryType: "COURIER",
+        collectionShortfall: 0,
         paymentStatus: "PAID",
         paymentMethod: "COURIER_COLLECTION",
         cancelledCollected: 120,
@@ -184,6 +187,7 @@ describe("depositAmount", () => {
       {
         status: "CANCELLED",
         deliveryType: "COURIER",
+        collectionShortfall: 0,
         paymentStatus: "PAID",
         paymentMethod: "COURIER_COLLECTION",
         cancelledCollected: 60,
@@ -300,7 +304,7 @@ describe("deposits that are already banked", () => {
     // treasury entry for money that genuinely arrived — triggered by any
     // routine edit elsewhere on the order.
     const d = depositAmount(
-      { status: "DELIVERED", deliveryType: "SELF", paymentStatus: "PARTIAL", amountPaid: 0, paymentMethod: "CASH" },
+      { status: "DELIVERED", deliveryType: "SELF", collectionShortfall: 0, paymentStatus: "PARTIAL", amountPaid: 0, paymentMethod: "CASH" },
       totals,
     );
     expect(d.gross).toBe(0);
@@ -310,7 +314,7 @@ describe("deposits that are already banked", () => {
   it("still reaches zero honestly on a fully returned PAID order", () => {
     // Nothing is owed and nothing is held: this one really should clear.
     const d = depositAmount(
-      { status: "DELIVERED", deliveryType: "SELF", paymentStatus: "PAID", paymentMethod: "CASH" },
+      { status: "DELIVERED", deliveryType: "SELF", collectionShortfall: 0, paymentStatus: "PAID", paymentMethod: "CASH" },
       { customerTotal: 0, deliveryCost: 0, codFeeCost: 0 },
     );
     expect(d.gross).toBe(0);
@@ -322,11 +326,11 @@ describe("deposits that are already banked", () => {
     // banked — a payment dropdown may not quietly take 2,000 out of the
     // treasury.
     const banked = depositAmount(
-      { status: "DELIVERED", deliveryType: "SELF", paymentStatus: "PAID", paymentMethod: "CASH" },
+      { status: "DELIVERED", deliveryType: "SELF", collectionShortfall: 0, paymentStatus: "PAID", paymentMethod: "CASH" },
       totals,
     ).net;
     const next = depositAmount(
-      { status: "DELIVERED", deliveryType: "SELF", paymentStatus: "PARTIAL", amountPaid: 3000, paymentMethod: "CASH" },
+      { status: "DELIVERED", deliveryType: "SELF", collectionShortfall: 0, paymentStatus: "PARTIAL", amountPaid: 3000, paymentMethod: "CASH" },
       totals,
     ).net;
     expect(banked).toBe(5000);
@@ -336,11 +340,11 @@ describe("deposits that are already banked", () => {
 
   it("grows without complaint when more money comes in", () => {
     const before = depositAmount(
-      { status: "DELIVERED", deliveryType: "SELF", paymentStatus: "PARTIAL", amountPaid: 3000, paymentMethod: "CASH" },
+      { status: "DELIVERED", deliveryType: "SELF", collectionShortfall: 0, paymentStatus: "PARTIAL", amountPaid: 3000, paymentMethod: "CASH" },
       totals,
     ).net;
     const after = depositAmount(
-      { status: "DELIVERED", deliveryType: "SELF", paymentStatus: "PAID", paymentMethod: "CASH" },
+      { status: "DELIVERED", deliveryType: "SELF", collectionShortfall: 0, paymentStatus: "PAID", paymentMethod: "CASH" },
       totals,
     ).net;
     expect(after > before).toBe(true);
@@ -369,5 +373,60 @@ describe("deliveryCostCharged", () => {
     expect(
       deliveryCostCharged({ status: "CANCELLED", deliveryCost: 115 }, { deliveryCost: 115 }),
     ).toBe(115);
+  });
+});
+
+describe("amountRemitted", () => {
+  const totals = { customerTotal: 960 };
+  const paid = { status: "DELIVERED", paymentStatus: "PAID" };
+
+  it("is the whole collection when nothing went missing", () => {
+    expect(amountRemitted({ ...paid, collectionShortfall: 0 }, totals)).toBe(960);
+  });
+
+  it("drops what never reached the courier's ledger", () => {
+    // The rider entered 900 into the courier's app against a 960 invoice and
+    // kept the 60. Only 900 can ever be remitted.
+    expect(amountRemitted({ ...paid, collectionShortfall: 60 }, totals)).toBe(900);
+  });
+
+  it("never goes negative on a shortfall bigger than the collection", () => {
+    // A typo must not invent money flowing backwards out of the treasury.
+    expect(amountRemitted({ ...paid, collectionShortfall: 5000 }, totals)).toBe(0);
+  });
+
+  it("leaves what the customer owes alone", () => {
+    // The two questions this pair answers are different: the customer has
+    // settled up, and the shop is still 60 short. Reading the shortfall as a
+    // debt would put a customer who paid in full into the overdue list.
+    const order = { ...paid, collectionShortfall: 60 };
+    expect(amountCollected(order, totals)).toBe(960);
+    expect(amountOutstanding(order, totals)).toBe(0);
+  });
+
+  it("takes the shortfall off a partial payment too", () => {
+    const order = { status: "DELIVERED", paymentStatus: "PARTIAL", amountPaid: 500, collectionShortfall: 60 };
+    expect(amountRemitted(order, totals)).toBe(440);
+  });
+});
+
+describe("depositAmount with a collection shortfall", () => {
+  it("banks the money that exists, and charges the courier on it", () => {
+    // 960 invoiced, 900 through the courier's app, 60 in the rider's pocket.
+    // The courier keeps its 65 and its fee out of the 900 it actually has.
+    const d = depositAmount(
+      {
+        status: "DELIVERED",
+        deliveryType: "COURIER",
+        collectionShortfall: 60,
+        paymentStatus: "PAID",
+        paymentMethod: "COURIER_COLLECTION",
+        deliveryCost: 65,
+      },
+      { customerTotal: 960, deliveryCost: 65, codFeeCost: 7.85 },
+    );
+    expect(d.gross).toBe(900);
+    expect(d.courierCharges).toBe(72.85);
+    expect(d.net).toBe(827.15);
   });
 });

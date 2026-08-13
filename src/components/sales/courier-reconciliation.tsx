@@ -3,8 +3,19 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Truck } from "lucide-react";
+import { toast } from "sonner";
+import { useRouter } from "@/lib/live-router";
+import { recordCollectedAmount } from "@/server/actions/orders";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { DataTable, type Column } from "@/components/ui/data-table";
@@ -18,7 +29,13 @@ type Parcel = DhakaStamp & {
   customerName: string;
   trackingId: string | null;
   status: string;
+  /** What the courier last said about the parcel, from its webhook. */
+  courierStatus: string | null;
+  /** What the courier's ledger has — the invoice, less any shortfall. */
   cod: number;
+  invoiced: number;
+  shortfall: number;
+  shortfallNote: string | null;
   deliveryCost: number;
   codFee: number;
   net: number;
@@ -47,11 +64,39 @@ export type CourierAccount = {
 export function CourierReconciliation({
   slug,
   accounts,
+  canEdit,
 }: {
   slug: string;
   accounts: CourierAccount[];
+  canEdit: boolean;
 }) {
+  const router = useRouter();
   const [actual, setActual] = useState<Record<string, string>>({});
+  // The parcel whose collected figure is being corrected, if any.
+  const [adjusting, setAdjusting] = useState<Parcel | null>(null);
+  const [collected, setCollected] = useState("");
+  const [note, setNote] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  function openAdjust(p: Parcel) {
+    setAdjusting(p);
+    // Prefilled with what the courier is currently believed to have collected,
+    // so correcting a wrong correction is a retype of one field.
+    setCollected(String(p.cod));
+    setNote(p.shortfallNote ?? "");
+  }
+
+  async function saveAdjust(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!adjusting) return;
+    setSaving(true);
+    const res = await recordCollectedAmount(slug, adjusting.id, Number(collected), note);
+    setSaving(false);
+    if (!res.ok) return toast.error(res.error);
+    toast.success("Saved — the balance, the treasury and this order's profit all follow it");
+    setAdjusting(null);
+    router.refresh();
+  }
 
   if (accounts.length === 0) {
     return (
@@ -108,6 +153,19 @@ export function CourierReconciliation({
                 </Badge>
               ))}
           </span>
+          {/* The courier saying it settled this parcel for less than the
+              invoice. It never says how much less — that figure is only in its
+              own app — so this points at the row and leaves the number to a
+              person. Hidden once somebody has answered it. */}
+          {p.courierStatus === "partial_delivered" && p.shortfall === 0 && (
+            <Badge
+              variant="outline"
+              className="border-amber-500/40 bg-amber-500/15 font-normal text-amber-800 dark:bg-amber-500/25 dark:text-amber-200"
+              title="The courier settled this parcel for less than the full amount — check what it actually collected"
+            >
+              Check amount
+            </Badge>
+          )}
           {p.trackingId && (
             <span className="block text-xs text-muted-foreground">{p.trackingId}</span>
           )}
@@ -119,14 +177,49 @@ export function CourierReconciliation({
       header: "COD",
       align: "right",
       sortValue: (p) => p.cod,
-      cell: (p) => (
-        <span
-          className={cn(p.status === "CANCELLED" && "text-orange-800 dark:text-orange-200")}
-          title={p.status === "CANCELLED" ? "Collected on a partial delivery" : undefined}
-        >
-          {money(p.cod)}
-        </span>
-      ),
+      // Click-to-correct, the way the courier ID cell on the sales list works.
+      // This is the screen where a wrong collection is noticed — the balance
+      // disagrees with the courier's app — so it is the screen that should be
+      // able to answer it.
+      cell: (p) => {
+        const figure = (
+          <span
+            className={cn(p.status === "CANCELLED" && "text-orange-800 dark:text-orange-200")}
+            title={p.status === "CANCELLED" ? "Collected on a partial delivery" : undefined}
+          >
+            {money(p.cod)}
+          </span>
+        );
+        const short = p.shortfall > 0 && (
+          <span
+            className="block text-xs text-destructive"
+            title={p.shortfallNote ?? "Never reached the courier's ledger"}
+          >
+            {money(p.shortfall)} short of {money(p.invoiced)}
+          </span>
+        );
+        // Cancelled parcels keep their own collected figure, entered with the
+        // cancellation — one fact, one place to change it.
+        if (!canEdit || p.status === "CANCELLED") {
+          return (
+            <span className="block">
+              {figure}
+              {short}
+            </span>
+          );
+        }
+        return (
+          <button
+            type="button"
+            onClick={() => openAdjust(p)}
+            className="block w-full text-right underline-offset-4 hover:underline"
+            title="The courier collected a different amount"
+          >
+            {figure}
+            {short}
+          </button>
+        );
+      },
     },
     {
       key: "charge",
@@ -280,6 +373,65 @@ export function CourierReconciliation({
           </Card>
         );
       })}
+
+      {/* Correcting what the courier actually collected. Asks for the figure
+          from its app rather than for the difference: that is the number on
+          the screen the person is looking at, and a subtraction typed by hand
+          is a subtraction that can be got wrong. */}
+      <Dialog open={!!adjusting} onOpenChange={(o) => !o && setAdjusting(null)}>
+        <DialogContent>
+          <form onSubmit={saveAdjust}>
+            <DialogHeader>
+              <DialogTitle>What did the courier collect?</DialogTitle>
+            </DialogHeader>
+            {adjusting && (
+              <div className="grid gap-3 py-4">
+                <p className="text-sm text-muted-foreground">
+                  {adjusting.customerName} · invoiced{" "}
+                  <span className="font-medium text-foreground">{money(adjusting.invoiced)}</span>
+                </p>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="collected">Collected, as the courier&apos;s app shows it</Label>
+                  <Input
+                    id="collected"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max={adjusting.invoiced}
+                    inputMode="decimal"
+                    autoFocus
+                    value={collected}
+                    onChange={(e) => setCollected(e.target.value)}
+                  />
+                  {Number(collected) < adjusting.invoiced && (
+                    <p className="text-xs text-muted-foreground">
+                      {money(adjusting.invoiced - Number(collected || 0))} of what the customer
+                      paid never reached the business. It comes off this order&apos;s profit and
+                      out of what the courier owes you — and it is not a debt of the
+                      customer&apos;s, because they paid in full.
+                    </p>
+                  )}
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="collectedNote">What happened</Label>
+                  <Input
+                    id="collectedNote"
+                    maxLength={200}
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    placeholder="e.g. rider took 60 as a tip, COD entered wrong"
+                  />
+                </div>
+              </div>
+            )}
+            <DialogFooter>
+              <Button type="submit" disabled={saving}>
+                {saving ? "Saving…" : "Save"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

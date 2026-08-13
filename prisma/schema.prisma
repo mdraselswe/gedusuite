@@ -513,6 +513,24 @@ model Order {
   // delivery where they paid the shipping and refused the goods. Without it a
   // cancellation looks like a pure loss when it was nearly break-even.
   cancelledCollected  Decimal       @default(0) @db.Decimal(12, 2)
+  /**
+   * Money the customer paid that never reached the business — a rider who
+   * entered a lower COD in the courier's app and pocketed the rest, a parcel
+   * settled at a rounded-down figure at the door.
+   *
+   * Stored as the shortfall rather than as "what was actually collected"
+   * because the invoice moves: record a return a week later and a stored 900
+   * would quietly stop being short of anything, while the 60 somebody walked
+   * off with stays a fact about that delivery. The form still asks for the
+   * figure the courier's app shows; the subtraction is this column's job.
+   *
+   * NOT a receivable. The customer paid in full, so nothing here is owed by
+   * them — it is a loss between their hand and the treasury, which is why it
+   * lands on profit and never on `amountOutstanding`.
+   */
+  collectionShortfall Decimal       @default(0) @db.Decimal(12, 2)
+  /** Why the money went missing, in the words of whoever found out. */
+  collectionNote      String?
   courierTrackingId   String? // the courier's own order/consignment number (deliveryType=COURIER); shown on the invoice instead of the internal id
   /**
    * The courier's own tracking code, as distinct from the consignment id:

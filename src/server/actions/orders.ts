@@ -1075,6 +1075,105 @@ export async function updatePaymentStatus(
   return { ok: true };
 }
 
+/**
+ * Record that less money arrived than the customer paid.
+ *
+ * The case this exists for: a rider entered ৳900 into the courier's app
+ * against a ৳960 invoice and kept the difference as a tip. The customer is
+ * square, so nothing may be shown as owed by them; the courier will remit on
+ * 900, so the balance and the treasury have to work from 900; and the 60 is a
+ * loss, so profit has to carry it. One number, typed from the courier's own
+ * screen, moves all four.
+ *
+ * The COD fee is re-quoted, not left alone. The courier charges its percentage
+ * on what it actually collected — 1% of 900, not of 960 — and skipping that
+ * leaves the reconciliation 60 paisa out, which is exactly the size of
+ * unexplained gap that costs an evening to chase.
+ */
+export async function recordCollectedAmount(
+  slug: string,
+  orderId: string,
+  /** What the courier's app says it collected. */
+  collected: number,
+  note: string,
+): Promise<ActionResult> {
+  const gate = await requireAccess(slug, "sales", "edit");
+  if (!gate.ok) return gate;
+  const workspaceId = gate.access.workspaceId;
+
+  const order = await prisma.order.findFirst({
+    where: { id: orderId, workspaceId },
+    include: { items: { include: { returns: true } }, customer: { select: { name: true } } },
+  });
+  if (!order) return { ok: false, error: "Order not found" };
+  if (order.status === "CANCELLED") {
+    // A cancellation already has a field for what came back with the parcel,
+    // and two ways to say the same thing is how they end up disagreeing.
+    return {
+      ok: false,
+      error: "Use the cancellation's own collected figure for a cancelled order",
+    };
+  }
+
+  const totals = computeOrderTotals(order);
+  if (!Number.isFinite(collected) || collected < 0) {
+    return { ok: false, error: "Enter what the courier actually collected" };
+  }
+  if (collected > totals.customerTotal) {
+    // More than the invoice isn't a shortfall, and quietly storing a negative
+    // one would credit the treasury with money nobody has.
+    return {
+      ok: false,
+      error: `That's more than the order's ${totals.customerTotal}. Edit the order instead if the price changed.`,
+    };
+  }
+  const shortfall = Math.round((totals.customerTotal - collected + Number.EPSILON) * 100) / 100;
+
+  const quote = await quoteForOrder(workspaceId, {
+    courierId: order.courierId ?? undefined,
+    courierZoneId: order.courierZoneId ?? undefined,
+    weightKg: order.weightKg == null ? undefined : Number(order.weightKg),
+    // A typed cost stays typed: the person who read the courier's bill knows
+    // better than the rate table, and re-quoting would silently overwrite it.
+    deliveryCost: order.deliveryCost == null ? undefined : Number(order.deliveryCost),
+    codAmount: codCollectable(order.paymentMethod, collected),
+  });
+
+  await prisma.$transaction(async (tx) => {
+    await tx.order.update({
+      where: { id: orderId },
+      data: {
+        collectionShortfall: shortfall,
+        collectionNote: note.trim() || null,
+        codFeeCost: quote.codFeeCost,
+      },
+    });
+    // The treasury may already hold a figure computed from the old amount.
+    await syncOrderCashEntry(tx, workspaceId, orderId);
+  });
+
+  await recordActivity(gate.access, {
+    action: "UPDATE",
+    entity: "Order",
+    entityId: orderId,
+    entityLabel: orderLabel(orderId, order.customer?.name),
+    summary: shortfall
+      ? `Courier collected ${collected} of ${totals.customerTotal} — ${shortfall} short${note.trim() ? ` (${note.trim()})` : ""}`
+      : "Collection shortfall cleared — the full amount was collected",
+    changes: diffFields(
+      { collectionShortfall: order.collectionShortfall, codFeeCost: order.codFeeCost },
+      { collectionShortfall: shortfall, codFeeCost: quote.codFeeCost },
+      ["collectionShortfall", "codFeeCost"],
+    ),
+  });
+
+  revalidatePath(`/${slug}/sales/orders`);
+  revalidatePath(`/${slug}/couriers`);
+  revalidatePath(`/${slug}/treasury`);
+  revalidatePath(`/${slug}/dashboard`);
+  return { ok: true };
+}
+
 /** Set/clear the courier's own order number for a COURIER-delivery order. */
 export async function updateCourierTrackingId(
   slug: string,

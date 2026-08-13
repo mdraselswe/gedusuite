@@ -75,6 +75,10 @@ type DepositableOrder = {
   amountPaid?: Prisma.Decimal | number | null;
   cancelledCollected?: Prisma.Decimal | number | null;
   deliveryCost?: Prisma.Decimal | number | null;
+  /** Required, not optional, for the same reason deliveryType is: a query that
+   *  forgot to select it would go on crediting the treasury with money the
+   *  courier never had, and nothing would look wrong until a balance did. */
+  collectionShortfall: Prisma.Decimal | number;
 };
 
 /** Just enough to answer "how much has the customer paid". */
@@ -129,6 +133,26 @@ export function amountCollected(
   return round2(
     Math.min(totals.customerTotal, Math.max(0, Number(order.amountPaid ?? 0))),
   );
+}
+
+/**
+ * What the courier actually has to hand over — what the customer paid, less
+ * whatever never made it that far.
+ *
+ * The two are the same number on almost every order, and deliberately separate
+ * where they aren't: `amountCollected` answers "has the customer settled up",
+ * which decides whether anybody still owes anything, and this answers "how much
+ * money exists", which decides what can arrive in the treasury and what the
+ * courier's balance should read. A rider who banked 900 against a 960 invoice
+ * left the customer square and the shop 60 short, and one number cannot say
+ * both.
+ */
+export function amountRemitted(
+  order: SettleableOrder & { collectionShortfall: Prisma.Decimal | number },
+  totals: Pick<OrderTotals, "customerTotal">,
+): number {
+  const paid = amountCollected(order, totals);
+  return round2(Math.max(0, paid - Number(order.collectionShortfall ?? 0)));
 }
 
 /**
@@ -213,8 +237,10 @@ export function depositAmount(
   totals: Pick<OrderTotals, "customerTotal" | "deliveryCost" | "codFeeCost">,
 ): DepositAmount {
   // What was collected, not what was invoiced: a part-paid order banks the
-  // part that was paid.
-  const gross = amountCollected(order, totals);
+  // part that was paid — less anything that went missing between the doorstep
+  // and the courier's ledger, which is money the treasury is never going to
+  // see however square the customer is.
+  const gross = amountRemitted(order, totals);
 
   const deliveryCost = deliveryCostCharged(order, totals);
   const courierCharges =

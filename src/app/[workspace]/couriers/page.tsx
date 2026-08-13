@@ -77,6 +77,7 @@ export default async function CouriersPage({
     select: { id: true, name: true },
   });
 
+  const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
   const UNASSIGNED = "__none__";
   const accounts = new Map<string, CourierAccount>();
   const account = (id: string, name: string) => {
@@ -91,9 +92,14 @@ export default async function CouriersPage({
   for (const o of orders) {
     const t = computeOrderTotals(o);
     const cancelled = o.status === "CANCELLED";
-    // A cancelled parcel collected only what the customer actually handed
-    // over; its order total was never charged.
-    const cod = cancelled ? Number(o.cancelledCollected) : t.customerTotal;
+    // What the courier's own ledger has against this parcel. A cancelled one
+    // collected only what the customer actually handed over; a delivered one
+    // collected the invoice, less anything that went missing before it reached
+    // the courier's app — a rider who banked 900 against a 960 invoice leaves
+    // this page expecting 60 the courier is never going to remit.
+    const cod = cancelled
+      ? Number(o.cancelledCollected)
+      : round2(Math.max(0, t.customerTotal - t.collectionShortfall));
     // Shared with depositAmount rather than re-derived: a cancellation with no
     // courier charge recorded owes nothing for the trip, and this page saying
     // otherwise would put the balance out by a bill the courier never sent.
@@ -105,7 +111,13 @@ export default async function CouriersPage({
       customerName: o.customer?.name ?? "Walk-in",
       trackingId: o.courierTrackingId,
       status: o.status as string,
+      courierStatus: o.courierStatus,
       cod,
+      // What the invoice said, so the row can show the pair rather than a
+      // figure that quietly disagrees with the order behind it.
+      invoiced: t.customerTotal,
+      shortfall: t.collectionShortfall,
+      shortfallNote: o.collectionNote,
       deliveryCost,
       codFee: t.codFeeCost,
       // Not floored at zero, unlike a treasury deposit: a parcel that cost more
@@ -124,7 +136,6 @@ export default async function CouriersPage({
     }
   }
 
-  const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
   const rows = [...accounts.values()]
     .map((a) => ({ ...a, expected: round2(a.expected), inTransitValue: round2(a.inTransitValue) }))
     .filter((a) => a.holding.length > 0 || a.inTransit.length > 0 || a.id !== UNASSIGNED);
@@ -144,7 +155,11 @@ export default async function CouriersPage({
           </Link>
         }
       />
-      <CourierReconciliation slug={slug} accounts={rows} />
+      <CourierReconciliation
+        slug={slug}
+        accounts={rows}
+        canEdit={can(access.role, "sales", "edit", access.permissions)}
+      />
     </div>
   );
 }
