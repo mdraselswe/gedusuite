@@ -839,12 +839,16 @@ export function OrderManager({
   const sheetCount = Math.ceil(selectedInListOrder.length / 2);
 
   // Arriving from a call-list row opens the order form already pointed at that
-  // customer. Runs once: reopening the dialog after a save would be a trap,
-  // and the URL still carries ?fromLead until the next navigation.
+  // customer. Runs once per arrival.
   const leadPrefilled = useRef(false);
+  // The lead this form is filling in for, held here rather than read from the
+  // prop at save time: ?fromLead is cleared out of the URL as soon as it has
+  // been used, and the order still has to be linked back to its call-list row.
+  const activeLead = useRef<FromLead | null>(null);
   useEffect(() => {
     if (!fromLead || leadPrefilled.current || !perms.canAdd) return;
     leadPrefilled.current = true;
+    activeLead.current = fromLead;
     if (fromLead.customerId) {
       setCustomer({ value: fromLead.customerId, label: fromLead.customerName });
     }
@@ -864,9 +868,24 @@ export function OrderManager({
     // order and the call end up quoting the customer two different figures.
     if (fromLead.deliveryCharge > 0) setDeliveryCharge(String(fromLead.deliveryCharge));
     setOpen(true);
-  }, [fromLead, perms.canAdd]);
+    // The parameter has done its job the moment the fields are filled, so it
+    // comes out of the URL. Left in, it re-opened this form on every reload of
+    // the sales page — for a lead that had already become an order, hours
+    // earlier — and the way out was to notice the query string and edit it.
+    // Only these two go: the list's own filters live in the URL too.
+    const params = new URLSearchParams(window.location.search);
+    params.delete("fromLead");
+    params.delete("customerId");
+    router.replace(`${window.location.pathname}${params.size ? `?${params}` : ""}`, {
+      scroll: false,
+    });
+  }, [fromLead, perms.canAdd, router]);
 
   function resetForm() {
+    // A blank form belongs to no lead. Cleared here so that "+ New order",
+    // opened after one was created from the call list, can't link the next
+    // order to the previous one's row.
+    activeLead.current = null;
     // Now, in Dhaka — the form asks for a time as well as a day, so a new order
     // opens on the moment it is being taken rather than on midnight.
     setOrderDate(toDhakaInputValue(new Date()));
@@ -1066,12 +1085,13 @@ export function OrderManager({
     // Point the call-list row at the order it just became, so that list can
     // show where the parcel got to without anyone re-typing it. A failure here
     // costs the link, not the order — say so rather than implying both failed.
-    if (fromLead && res.id) {
-      const linked = await linkLeadToOrder(slug, fromLead.leadId, res.id);
+    const lead = activeLead.current;
+    if (lead && res.id) {
+      const linked = await linkLeadToOrder(slug, lead.leadId, res.id);
       // The lead already knows which channel the customer came through, and
       // the order form has no field for it — carry it across rather than
       // leaving one more order tagged "Not set".
-      if (fromLead.channel) await setOrderSource(slug, res.id, fromLead.channel);
+      if (lead.channel) await setOrderSource(slug, res.id, lead.channel);
       if (!linked.ok) {
         toast.error(`Order created, but linking it to the call list failed: ${linked.error}`);
       } else {

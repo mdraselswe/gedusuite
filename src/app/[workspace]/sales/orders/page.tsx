@@ -203,10 +203,16 @@ export default async function OrdersPage({
           channel: true,
           address: true,
           total: true,
+          // A lead that already became an order has nothing left to prefill.
+          // The call list stops offering "+ Order" at that point, but a link
+          // kept open in a tab, a bookmark or the back button all still carry
+          // the parameter — and each one opened a second copy of an order the
+          // shop had already entered.
+          orderId: true,
         },
       })
     : null;
-  const fromLead = leadRow
+  const fromLead = leadRow && !leadRow.orderId
     ? {
         leadId: leadRow.id,
         customerId: leadRow.convertedCustomerId,
