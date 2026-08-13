@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/lib/live-router";
 import { toast } from "sonner";
 import { flushQueue } from "@/lib/offline-queue";
 

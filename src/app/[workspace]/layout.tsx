@@ -26,7 +26,7 @@ import { getUserPrefs } from "@/lib/user-prefs";
 import { translate, isLocale, type Locale } from "@/lib/i18n";
 import { AppShell, type NavItem } from "@/components/layout/app-shell";
 import { AppShellSkeleton } from "@/components/layout/app-shell-skeleton";
-import { RefreshOnFocus } from "@/components/refresh-on-focus";
+import { LiveRefresh } from "@/components/live-refresh";
 
 // Identity helper so each object literal below is individually contextually
 // typed against NavItem (narrowing `color` to the SectionColor union) instead
@@ -208,8 +208,9 @@ async function WorkspaceChrome({
   return (
     <>
       {/* Outside the shell, so navigating between pages doesn't remount it and
-          lose track of how long the tab has been away. */}
-      <RefreshOnFocus />
+          lose track of how long the tab has been away — or of a change another
+          tab announced while this one was hidden. */}
+      <LiveRefresh workspace={slug} />
       <AppShell
         slug={slug}
         workspaceName={workspace.name}

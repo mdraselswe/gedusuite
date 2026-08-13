@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/lib/live-router";
 import { toast } from "sonner";
 import { AlertTriangle, Loader2, PackageCheck } from "lucide-react";
 import {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/lib/live-router";
 import { useTheme } from "next-themes";
 import { useSession } from "next-auth/react";
 import { toast } from "sonner";
