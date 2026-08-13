@@ -31,6 +31,9 @@ const KNOWN = new Set([
   "pending",
   "in_review",
   "delivered",
+  // Undocumented, and sent: the rider has reported delivery and the office has
+  // not signed it off yet. Listed so the history stops calling it unrecognised.
+  "delivered_approval_pending",
   "partial_delivered",
   "cancelled",
   "hold",

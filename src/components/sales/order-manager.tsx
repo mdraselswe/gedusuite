@@ -353,6 +353,11 @@ const COURIER_STATUS_LABEL: Record<string, string> = {
   in_review: "Booked",
   pending: "In transit",
   delivered: "Delivered",
+  // Not in Steadfast's documented list, but it sends it: the rider has
+  // reported the parcel delivered and the office has not signed it off. The
+  // money is not settled and the parcel can still come back, so it reads as
+  // what it is and moves nothing by itself.
+  delivered_approval_pending: "Delivered, awaiting approval",
   partial_delivered: "Partly delivered",
   cancelled: "Returned",
   hold: "On hold",
@@ -362,6 +367,8 @@ const COURIER_STATUS_LABEL: Record<string, string> = {
 /** How each courier status reads, and how loudly. */
 const COURIER_STATUS_TONE: Record<string, string> = {
   delivered: "text-emerald-600 dark:text-emerald-400",
+  // Amber, with the others that aren't final yet.
+  delivered_approval_pending: "text-amber-600 dark:text-amber-400",
   partial_delivered: "text-amber-600 dark:text-amber-400",
   cancelled: "text-destructive",
   hold: "text-amber-600 dark:text-amber-400",
