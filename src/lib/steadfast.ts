@@ -95,7 +95,16 @@ export function buildItemDescription(
 async function request<T>(
   creds: SteadfastCredentials,
   path: string,
-  init: { method: "GET" | "POST"; body?: unknown },
+  init: {
+    method: "GET" | "POST";
+    body?: unknown;
+    /**
+     * What counts as success in the body. The parcel endpoints answer 200; the
+     * money ones answer `{"status": 1, "alertClass": "success"}`, and reading
+     * that as a failure is how a working endpoint looks broken.
+     */
+    okStatus?: number[];
+  },
 ): Promise<SteadfastResult<T>> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
@@ -142,7 +151,8 @@ async function request<T>(
         fieldErrors: body.errors,
       };
     }
-    if (!res.ok || (body.status != null && body.status !== 200)) {
+    const accepted = init.okStatus ?? [200];
+    if (!res.ok || (body.status != null && !accepted.includes(body.status))) {
       return { ok: false, error: body.message ?? `Steadfast returned HTTP ${res.status}` };
     }
 
@@ -191,4 +201,70 @@ export async function getBalance(
   creds: SteadfastCredentials,
 ): Promise<SteadfastResult<{ current_balance: number }>> {
   return request(creds, "/get_balance", { method: "GET" });
+}
+
+
+/** One line of Steadfast's payment history — a payout it has made, or is making. */
+export type SteadfastPayment = {
+  payment_id: string;
+  /** What the parcels in this payout collected, before anything was kept. */
+  amount: number;
+  method: string | null;
+  /** The delivery charges on those parcels. */
+  due_bills: number;
+  paid_bills: number;
+  /**
+   * The percentage fee — charged on the payout as a whole and floored to a
+   * whole taka, not summed from the parcels. 18,199 collected less 2,075 of
+   * delivery bills is 16,124, and this came back as 161.
+   */
+  charges: number;
+  /** amount − due_bills − charges: what actually reaches the bank. */
+  total: number;
+  status_label: string;
+  created_at: string | null;
+  ready_at: string | null;
+  paid_at: string | null;
+};
+
+/** A parcel inside a payout. No charge or weight here — only what it collected. */
+export type SteadfastPaymentConsignment = {
+  consignment_id: number;
+  invoice: string | null;
+  tracking_code: string | null;
+  recipient_name: string | null;
+  cod_amount: number;
+  status: string;
+};
+
+/**
+ * Every payout Steadfast has made to this account.
+ *
+ * The one thing the app could never work out for itself: which parcels a
+ * payment covered, and what it actually paid. Guessing at it from "has this
+ * order been marked deposited" is close but never exact — the two sets are
+ * kept by different people for different reasons.
+ */
+export async function listPayments(
+  creds: SteadfastCredentials,
+): Promise<SteadfastResult<SteadfastPayment[]>> {
+  const res = await request<{ payments?: SteadfastPayment[] }>(creds, "/payments", {
+    method: "GET",
+    okStatus: [1, 200],
+  });
+  if (!res.ok) return res;
+  return { ok: true, data: res.data.payments ?? [] };
+}
+
+/** One payout, with the parcels it settled. */
+export async function getPayment(
+  creds: SteadfastCredentials,
+  paymentId: string,
+): Promise<SteadfastResult<SteadfastPayment & { consignments: SteadfastPaymentConsignment[] }>> {
+  const res = await request<{
+    payment?: SteadfastPayment & { consignments?: SteadfastPaymentConsignment[] };
+  }>(creds, `/payments/${encodeURIComponent(paymentId)}`, { method: "GET", okStatus: [1, 200] });
+  if (!res.ok) return res;
+  if (!res.data.payment) return { ok: false, error: `Steadfast returned no payment ${paymentId}` };
+  return { ok: true, data: { ...res.data.payment, consignments: res.data.payment.consignments ?? [] } };
 }

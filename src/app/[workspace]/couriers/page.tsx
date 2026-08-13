@@ -6,6 +6,9 @@ import { can } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
 import { computeOrderTotals } from "@/lib/orders";
 import { deliveryCostCharged } from "@/lib/order-cash";
+import { expectedCourierBalance } from "@/lib/courier";
+import { loadCourierCredentials } from "@/lib/courier-credentials";
+import { getBalance } from "@/lib/steadfast";
 import { PageHeader } from "@/components/ui/page-header";
 import { buttonVariants } from "@/components/ui/button";
 import { CourierReconciliation, type CourierAccount } from "@/components/sales/courier-reconciliation";
@@ -74,8 +77,34 @@ export default async function CouriersPage({
   const couriers = await prisma.courier.findMany({
     where: { workspaceId },
     orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }],
-    select: { id: true, name: true },
+    select: {
+      id: true,
+      name: true,
+      codFeePercent: true,
+      codFeeBase: true,
+      apiKeyEnc: true,
+    },
   });
+
+  // What each connected courier says it is holding, right now. Asked here so
+  // the comparison is a fact on the page rather than a number somebody has to
+  // fetch from another app and retype — that retyping is the step that gets
+  // skipped, and a reconciliation nobody performs is not one.
+  //
+  // A courier that cannot be reached leaves this null and the box goes back to
+  // being typed in. A balance page that fails to render because a third party
+  // is down would be a worse trade than a missing convenience.
+  const liveBalances = new Map<string, number>();
+  await Promise.all(
+    couriers
+      .filter((c) => c.apiKeyEnc)
+      .map(async (c) => {
+        const creds = await loadCourierCredentials(c.id);
+        if (!creds) return;
+        const res = await getBalance(creds);
+        if (res.ok) liveBalances.set(c.id, Number(res.data.current_balance));
+      }),
+  );
 
   const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
   const UNASSIGNED = "__none__";
@@ -83,7 +112,16 @@ export default async function CouriersPage({
   const account = (id: string, name: string) => {
     const existing = accounts.get(id);
     if (existing) return existing;
-    const fresh: CourierAccount = { id, name, holding: [], inTransit: [], expected: 0, inTransitValue: 0 };
+    const fresh: CourierAccount = {
+      id,
+      name,
+      apiConnected: couriers.some((c) => c.id === id && !!c.apiKeyEnc),
+      liveBalance: liveBalances.get(id) ?? null,
+      holding: [],
+      inTransit: [],
+      expected: 0,
+      inTransitValue: 0,
+    };
     accounts.set(id, fresh);
     return fresh;
   };
@@ -129,15 +167,31 @@ export default async function CouriersPage({
     // which a delivered parcel has, and a partly-delivered one has too.
     if (o.status === "DELIVERED" || cancelled) {
       acc.holding.push(row);
-      acc.expected += row.net;
     } else {
       acc.inTransit.push(row);
       acc.inTransitValue += row.cod;
     }
   }
 
+  // The percentage fee is charged on the payout, not on each parcel, so the
+  // balance is worked out over the whole set — see expectedCourierBalance.
+  // Summing the rows' own "You get" figures instead is what left this page
+  // reading 1.35 under the courier's own app.
+  const feeRules = new Map(
+    couriers.map((c) => [
+      c.id,
+      { codFeePercent: Number(c.codFeePercent), codFeeBase: c.codFeeBase },
+    ]),
+  );
   const rows = [...accounts.values()]
-    .map((a) => ({ ...a, expected: round2(a.expected), inTransitValue: round2(a.inTransitValue) }))
+    .map((a) => ({
+      ...a,
+      expected: expectedCourierBalance(
+        a.holding.map((p) => ({ codAmount: p.cod, deliveryCost: p.deliveryCost })),
+        feeRules.get(a.id),
+      ),
+      inTransitValue: round2(a.inTransitValue),
+    }))
     .filter((a) => a.holding.length > 0 || a.inTransit.length > 0 || a.id !== UNASSIGNED);
 
   return (

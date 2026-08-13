@@ -12,6 +12,8 @@ import {
   depositAmount,
 } from "@/lib/order-cash";
 import { newActivityGroup, recordActivity } from "@/lib/activity";
+import { loadCourierCredentials } from "@/lib/courier-credentials";
+import { getPayment, listPayments } from "@/lib/steadfast";
 import type { ActionFailure } from "@/lib/form";
 
 export type ActionResult = { ok: true } | ActionFailure;
@@ -300,4 +302,174 @@ export async function unmarkCashDeposited(
   revalidatePath(`/${slug}/couriers`);
   revalidatePath(`/${slug}/dashboard`);
   return { ok: true };
+}
+
+
+export type PayoutImportResult =
+  | {
+      ok: true;
+      imported: number;
+      alreadyKnown: number;
+      /** Consignments the courier paid for that no order here matches. */
+      unmatched: string[];
+      payouts: { externalId: string; total: number; parcels: number; difference: number }[];
+    }
+  | ActionFailure;
+
+const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
+
+/**
+ * Bring in what the courier has actually paid out.
+ *
+ * The app can work out what a courier OUGHT to be holding; it can never work
+ * out what a payout actually paid, or which parcels were in it. Both are facts
+ * the courier keeps, and both are what "mark remitted" was guessing at — close
+ * enough that the treasury looked right, and wrong enough that it drifted from
+ * the bank by a fraction of a taka every time.
+ *
+ * So the payout leads. Each parcel it names is banked the ordinary way, so the
+ * per-order attribution is exactly what clicking each row would have produced.
+ * Then one entry carries the difference between what those orders came to and
+ * what the courier actually sent — which is the percentage fee, charged on the
+ * payout as a whole and floored to a whole taka, plus anything else the two
+ * sides see differently. The treasury ends up holding the transfer that
+ * reached the bank, to the paisa, and the difference is a line somebody can
+ * read rather than a slow leak.
+ *
+ * Importing twice is a no-op: the courier's own payment id is unique per
+ * courier, and a payout already recorded is skipped.
+ */
+export async function importCourierPayouts(
+  slug: string,
+  courierId: string,
+): Promise<PayoutImportResult> {
+  const gate = await requireAccess(slug, "treasury", "full");
+  if (!gate.ok) return gate;
+  const workspaceId = gate.access.workspaceId;
+
+  const courier = await prisma.courier.findFirst({
+    where: { id: courierId, workspaceId },
+    select: { id: true, name: true, apiKeyEnc: true },
+  });
+  if (!courier) return { ok: false, error: "Courier not found" };
+  if (!courier.apiKeyEnc) {
+    return { ok: false, error: `${courier.name} has no API key — add one in Settings → Couriers` };
+  }
+  const creds = await loadCourierCredentials(courier.id);
+  if (!creds) {
+    return { ok: false, error: `Could not read ${courier.name}'s API credentials — enter them again` };
+  }
+
+  const list = await listPayments(creds);
+  if (!list.ok) return { ok: false, error: list.error };
+
+  const known = await prisma.courierPayout.findMany({
+    where: { courierId: courier.id },
+    select: { externalId: true },
+  });
+  const seen = new Set(known.map((k) => k.externalId));
+
+  // Oldest first, so the parcels of an early payout are banked before a later
+  // one is looked at — otherwise a parcel in two lists would land in the wrong
+  // one, and the difference would move with it.
+  const pending = list.data
+    .filter((p) => !seen.has(p.payment_id))
+    .sort((a, b) => (a.paid_at ?? a.created_at ?? "").localeCompare(b.paid_at ?? b.created_at ?? ""));
+
+  const unmatched: string[] = [];
+  const imported: { externalId: string; total: number; parcels: number; difference: number }[] = [];
+
+  for (const summary of pending) {
+    const detail = await getPayment(creds, summary.payment_id);
+    if (!detail.ok) return { ok: false, error: detail.error };
+
+    const consignmentIds = detail.data.consignments.map((c) => String(c.consignment_id));
+    const orders = await prisma.order.findMany({
+      where: { workspaceId, courierTrackingId: { in: consignmentIds } },
+      include: DEPOSIT_INCLUDE,
+      orderBy: { date: "asc" },
+    });
+    const found = new Set(orders.map((o) => o.courierTrackingId));
+    for (const id of consignmentIds) if (!found.has(id)) unmatched.push(id);
+
+    // Bank the ones that aren't banked yet, exactly as clicking each row would.
+    for (const order of orders) {
+      if (order.cashInTreasury) continue;
+      await bankOrderCash(gate.access, order);
+    }
+
+    // What the treasury actually holds against this payout — read back, so an
+    // order that could not be banked is left out of the sum rather than
+    // assumed into it. Whatever it doesn't cover ends up in the difference,
+    // which is the line that keeps the ledger equal to the bank either way.
+    const banked = await prisma.order.findMany({
+      where: { id: { in: orders.map((o) => o.id) }, cashInTreasury: true },
+      include: DEPOSIT_INCLUDE,
+    });
+    const ordersTotal = round2(
+      banked.reduce((sum, o) => sum + depositAmount(o, computeOrderTotals(o)).net, 0),
+    );
+    const difference = round2(Number(detail.data.total) - ordersTotal);
+
+    const group = newActivityGroup();
+    const payout = await prisma.courierPayout.create({
+      data: {
+        workspaceId,
+        courierId: courier.id,
+        externalId: detail.data.payment_id,
+        amount: detail.data.amount,
+        deliveryBills: detail.data.due_bills,
+        charges: detail.data.charges,
+        total: detail.data.total,
+        method: detail.data.method,
+        paidAt: detail.data.paid_at ? new Date(detail.data.paid_at.replace(" ", "T") + "Z") : null,
+        consignmentIds,
+        ordersTotal,
+      },
+    });
+
+    if (Math.abs(difference) >= 0.01) {
+      const outward = difference < 0;
+      await prisma.treasuryEntry.create({
+        data: {
+          workspaceId,
+          type: outward ? "OUT" : "IN",
+          amount: Math.abs(difference),
+          source: `${courier.name} payout difference`,
+          note:
+            `${courier.name} paid ৳${detail.data.total} on ${detail.data.payment_id}; ` +
+            `the ${banked.length} order(s) in it come to ৳${ordersTotal}. The fee is charged ` +
+            `on the payout as a whole and rounded, so the two never land on the same paisa.`,
+          date: payout.paidAt ?? new Date(),
+        },
+      });
+    }
+
+    await recordActivity(gate.access, {
+      action: "CREATE",
+      entity: "CourierPayout",
+      entityId: payout.id,
+      entityLabel: `${courier.name} · ${detail.data.payment_id}`,
+      summary:
+        `Payout imported — ৳${detail.data.total} for ${orders.length} parcel(s)` +
+        (Math.abs(difference) >= 0.01 ? `, ৳${Math.abs(difference)} difference recorded` : ""),
+      groupId: group,
+    });
+
+    imported.push({
+      externalId: detail.data.payment_id,
+      total: Number(detail.data.total),
+      parcels: orders.length,
+      difference,
+    });
+  }
+
+  if (imported.length > 0) revalidateCashPaths(slug);
+  return {
+    ok: true,
+    imported: imported.length,
+    alreadyKnown: seen.size,
+    unmatched,
+    payouts: imported,
+  };
 }

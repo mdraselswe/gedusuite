@@ -61,6 +61,7 @@ model Workspace {
   couriers              Courier[]
   courierZones          CourierZone[]
   courierRateBands      CourierRateBand[]
+  courierPayouts        CourierPayout[]
   activity              ActivityLog[]
 }
 
@@ -415,6 +416,7 @@ model Courier {
   workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   zones     CourierZone[]
   orders    Order[]
+  payouts   CourierPayout[]
 
   @@index([workspaceId])
 }
@@ -457,6 +459,55 @@ model CourierZone {
  * `extraKgRate` per started kilo above it. With bands, the heaviest band is
  * what the extra-kilo charge is measured from.
  */
+/**
+ * A payout the courier has made, as the courier itself records it.
+ *
+ * The one fact the app could never work out on its own: which parcels a
+ * payment covered and what it actually paid. Everything else here is derived
+ * from orders, and derived was close but never exact — the percentage fee is
+ * charged on the payout as a whole and floored to a whole taka, so summing the
+ * orders' own figures lands a quarter of a taka out on a good day, and further
+ * whenever a returned parcel's bill drags the fee base down.
+ *
+ * Imported, not entered. `externalId` is the courier's own payment id, and the
+ * unique key on it is what makes importing twice a no-op.
+ */
+model CourierPayout {
+  id          String @id @default(cuid())
+  workspaceId String
+  courierId   String
+
+  /** The courier's own id for this payout — "SFC-31257680". */
+  externalId String
+  /** What the parcels in it collected, before anything was kept. */
+  amount     Decimal @db.Decimal(12, 2)
+  /** The delivery charges on those parcels. */
+  deliveryBills Decimal @db.Decimal(12, 2)
+  /** The percentage fee, as the courier computed it over the whole payout. */
+  charges    Decimal @db.Decimal(12, 2)
+  /** amount − deliveryBills − charges: what reached the bank. */
+  total      Decimal @db.Decimal(12, 2)
+  method     String?
+  paidAt     DateTime?
+
+  /**
+   * The consignment ids it settled, kept verbatim. Enough to answer "which
+   * payout paid for this parcel" without a join table for a list that is only
+   * ever read whole.
+   */
+  consignmentIds Json
+
+  /** What the orders behind it added up to, so the difference stays explainable. */
+  ordersTotal Decimal @db.Decimal(12, 2)
+  importedAt  DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  courier   Courier   @relation(fields: [courierId], references: [id], onDelete: Cascade)
+
+  @@unique([courierId, externalId])
+  @@index([workspaceId])
+}
+
 model CourierRateBand {
   id          String  @id @default(cuid())
   workspaceId String

@@ -6,6 +6,7 @@ import { Truck } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "@/lib/live-router";
 import { recordCollectedAmount } from "@/server/actions/orders";
+import { importCourierPayouts } from "@/server/actions/cash-custody";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -44,6 +45,10 @@ type Parcel = DhakaStamp & {
 export type CourierAccount = {
   id: string;
   name: string;
+  /** The courier can be asked what it has actually paid out. */
+  apiConnected: boolean;
+  /** What its own app says it is holding, last time we asked. */
+  liveBalance: number | null;
   /** Delivered, money collected, not yet handed over. */
   holding: Parcel[];
   /** Sent but not delivered — nothing collected yet. */
@@ -77,6 +82,34 @@ export function CourierReconciliation({
   const [collected, setCollected] = useState("");
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
+  const [importing, setImporting] = useState<string | null>(null);
+
+  async function onImport(a: CourierAccount) {
+    setImporting(a.id);
+    const res = await importCourierPayouts(slug, a.id);
+    setImporting(null);
+    if (!res.ok) return toast.error(res.error);
+    if (res.imported === 0) {
+      toast.success("Nothing new — every payout is already recorded");
+    } else {
+      for (const p of res.payouts) {
+        toast.success(
+          `${p.externalId}: ৳${p.total} for ${p.parcels} parcel(s)` +
+            (Math.abs(p.difference) >= 0.01 ? `, ৳${p.difference} difference recorded` : ""),
+          { duration: 10000 },
+        );
+      }
+    }
+    // Named rather than swallowed: a parcel the courier paid for that this app
+    // has never heard of is the one thing an import cannot reconcile by itself.
+    if (res.unmatched.length > 0) {
+      toast.warning(
+        `${res.unmatched.length} parcel(s) in those payouts aren't in this app: ${res.unmatched.join(", ")}`,
+        { duration: 15000 },
+      );
+    }
+    router.refresh();
+  }
 
   function openAdjust(p: Parcel) {
     setAdjusting(p);
@@ -259,7 +292,11 @@ export function CourierReconciliation({
     <div className="space-y-6">
       {accounts.map((a) => {
         const typed = actual[a.id];
-        const actualNum = typed === undefined || typed === "" ? null : Number(typed);
+        // What the courier's own app says, fetched rather than typed where the
+        // API can be asked. Typing over it still wins — a figure read off the
+        // screen a minute ago is a legitimate thing to check against.
+        const actualNum =
+          typed === undefined || typed === "" ? a.liveBalance : Number(typed);
         const diff = actualNum === null ? null : Math.round((actualNum - a.expected) * 100) / 100;
         // Three different things live in `holding`, and the line under the
         // total has to add up to what's in the table below it.
@@ -272,6 +309,16 @@ export function CourierReconciliation({
             <CardHeader className="space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <CardTitle className="text-base">{a.name}</CardTitle>
+                {canEdit && a.apiConnected && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => onImport(a)}
+                    disabled={importing !== null}
+                  >
+                    {importing === a.id ? "Importing…" : "Import payouts"}
+                  </Button>
+                )}
                 <Link
                   href={`/${slug}/sales/orders`}
                   className="text-xs text-muted-foreground underline-offset-2 hover:underline"
@@ -309,10 +356,17 @@ export function CourierReconciliation({
                     type="number"
                     step="0.01"
                     inputMode="decimal"
-                    placeholder="Type it to compare"
+                    placeholder={
+                      a.liveBalance !== null ? String(a.liveBalance) : "Type it to compare"
+                    }
                     value={typed ?? ""}
                     onChange={(e) => setActual({ ...actual, [a.id]: e.target.value })}
                   />
+                  {a.liveBalance !== null && (
+                    <p className="text-xs text-muted-foreground">
+                      {money(a.liveBalance)} in their app just now
+                    </p>
+                  )}
                 </div>
                 <div>
                   <div className="text-xs text-muted-foreground">Difference</div>

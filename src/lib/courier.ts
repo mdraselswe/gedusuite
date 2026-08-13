@@ -145,17 +145,35 @@ export function quoteReturnCharge(
 }
 
 /**
- * What the courier should be holding for a set of delivered parcels: what it
- * collected, less what it keeps. Compared against the balance the courier's
- * own app shows — a gap means a parcel is priced differently from the rules,
- * or a charge nobody knew about.
+ * What the courier should be holding for a set of settled parcels: what it
+ * collected, less what it keeps.
+ *
+ * The percentage fee is worked out across the whole set and floored to a whole
+ * taka, which is not how the same fee is stored on each order — and both are
+ * right, for different questions. An order's own fee is its share of a cost,
+ * and profit needs it per order. A balance is what one account owes another,
+ * and the courier computes that on the payout as a whole.
+ *
+ * Read off two real Steadfast payouts rather than assumed: 18,199 collected
+ * less 2,075 of delivery bills is 16,124, and it charged 161 — 161.24 floored.
+ * The set still with it is 11,920 less 1,200, and its app shows 10,613, which
+ * is 10,720 less 107. Summing the per-order figures instead gives 161.24 and
+ * 108.35: out by a quarter taka on the first, and by 1.35 on the second, where
+ * a returned parcel's delivery bill drags the fee base down for the whole set
+ * but is floored at zero on its own row.
  */
 export function expectedCourierBalance(
-  parcels: { codAmount: number; deliveryCost: number; codFee: number }[],
+  parcels: { codAmount: number; deliveryCost: number }[],
+  rules?: Pick<CourierRules, "codFeePercent" | "codFeeBase">,
 ): number {
-  return round2(
-    parcels.reduce((s, p) => s + p.codAmount - p.deliveryCost - p.codFee, 0),
-  );
+  const collected = parcels.reduce((s, p) => s + p.codAmount, 0);
+  const delivery = parcels.reduce((s, p) => s + p.deliveryCost, 0);
+  const base = rules?.codFeeBase === "GROSS" ? collected : collected - delivery;
+  const pct = rules?.codFeePercent ?? 0;
+  // Floored, and never below nothing: a set whose delivery bills outrun what
+  // it collected owes a fee on nothing, not a negative one.
+  const codFee = Math.floor(Math.max(0, base) * (pct / 100));
+  return round2(collected - delivery - codFee);
 }
 
 /**

@@ -95,17 +95,49 @@ describe("breakEvenDeliveryCharge", () => {
 });
 
 describe("expectedCourierBalance", () => {
+  const onePercentNet = { codFeePercent: 1, codFeeBase: "NET" as const };
+
   it("is what was collected less what the courier keeps", () => {
+    // 1500 collected, 195 of delivery bills, 1% of the 1305 left = 13.05 -> 13.
     expect(
-      expectedCourierBalance([
-        { codAmount: 1000, deliveryCost: 115, codFee: 10 },
-        { codAmount: 500, deliveryCost: 80, codFee: 5 },
-      ]),
-    ).toBe(1290);
+      expectedCourierBalance(
+        [
+          { codAmount: 1000, deliveryCost: 115 },
+          { codAmount: 500, deliveryCost: 80 },
+        ],
+        onePercentNet,
+      ),
+    ).toBe(1292);
+  });
+
+  it("matches the payout Steadfast actually made", () => {
+    // SFC-31257680: 18,199 collected, 2,075 of delivery bills, and Steadfast
+    // charged 161 — not the 161.24 that summing the orders' own fees gives.
+    const balance = expectedCourierBalance(
+      [{ codAmount: 18199, deliveryCost: 2075 }],
+      onePercentNet,
+    );
+    expect(balance).toBe(15963);
+  });
+
+  it("matches the balance its app is showing right now", () => {
+    // 11,920 collected on the parcels it still holds, 1,200 of delivery bills
+    // — 1% of 10,720 floored is 107, and the app says 10,613.
+    expect(
+      expectedCourierBalance([{ codAmount: 11920, deliveryCost: 1200 }], onePercentNet),
+    ).toBe(10613);
+  });
+
+  it("charges no fee on a set that collected less than its delivery bills", () => {
+    // A month of nothing but returns. The fee base is negative, and a negative
+    // fee would hand the shop money the courier never took.
+    expect(
+      expectedCourierBalance([{ codAmount: 0, deliveryCost: 115 }], onePercentNet),
+    ).toBe(-115);
   });
 
   it("is zero with nothing outstanding", () => {
-    expect(expectedCourierBalance([])).toBe(0);
+    expect(expectedCourierBalance([], onePercentNet)).toBe(0);
   });
 });
 
