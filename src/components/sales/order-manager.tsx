@@ -331,6 +331,34 @@ function formatEnum(value: string) {
 
 /** Inline click-to-edit courier order/consignment number — usually unknown
  * at order creation time and filled in later once the courier is booked. */
+/**
+ * The courier's own vocabulary, in this app's words.
+ *
+ * Steadfast's status list and this app's order statuses share the word
+ * "pending" and mean opposite things by it: to the courier a pending parcel has
+ * been accepted and is moving, to the order list a pending order is one nobody
+ * has done anything with yet. Both would have sat on the same row — Status
+ * "Packed", courier "Pending" — which is a screen that has to be explained
+ * every time somebody new reads it.
+ *
+ * So the courier's answer is translated rather than prettified. Only the
+ * wording changes; the stored status stays the courier's own, and everything
+ * that decides anything — the apply rule, the tones, the payout import — still
+ * reads that.
+ *
+ * "Delivered" is deliberately the same word in both: there the two really do
+ * mean one thing, and inventing a difference would be its own confusion.
+ */
+const COURIER_STATUS_LABEL: Record<string, string> = {
+  in_review: "Booked",
+  pending: "In transit",
+  delivered: "Delivered",
+  partial_delivered: "Partly delivered",
+  cancelled: "Returned",
+  hold: "On hold",
+  unknown: "No update",
+};
+
 /** How each courier status reads, and how loudly. */
 const COURIER_STATUS_TONE: Record<string, string> = {
   delivered: "text-emerald-600 dark:text-emerald-400",
@@ -402,7 +430,9 @@ function CourierIdCell({
           COURIER_STATUS_TONE[courierStatus] ?? "text-muted-foreground",
         )}
       >
-        {formatEnum(courierStatus)}
+        {/* Falls back to the raw value prettified: a status Steadfast adds
+            later should show up as itself rather than disappear. */}
+        {COURIER_STATUS_LABEL[courierStatus] ?? formatEnum(courierStatus)}
       </span>
       {canEdit && applies && applies !== orderStatus && (
         <button
