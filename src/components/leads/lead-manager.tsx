@@ -3,7 +3,16 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Check, Copy, PhoneCall, RefreshCw, Repeat2, UserPlus, X } from "lucide-react";
+import {
+  Check,
+  Copy,
+  MoreVertical,
+  PhoneCall,
+  RefreshCw,
+  Repeat2,
+  UserCheck,
+  X,
+} from "lucide-react";
 import {
   createLead,
   setLeadStatus,
@@ -37,6 +46,12 @@ import {
   SelectItem,
   SelectTrigger,
 } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { useFilterBar, type FilterDef } from "@/components/ui/filter-bar";
 import {
@@ -585,37 +600,43 @@ export function LeadManager({
       ),
     },
     {
+      // Name, number and address are one block rather than three columns: they
+      // are read together — the caller looks at the row, dials, and reads the
+      // address back — and as separate columns they were most of the width
+      // that pushed this table off the side of the screen.
       key: "customer",
       header: "Customer",
       cardTitle: true,
       wrap: true,
       sortValue: (l) => l.customerName.toLowerCase(),
       cell: (l) => (
-        <span>
-          <span className="inline-flex items-center gap-1">
-            {l.customerName}
+        <span className="block max-w-56 space-y-0.5">
+          <span className="flex flex-wrap items-center gap-1">
+            <span className="whitespace-normal">{l.customerName}</span>
             <CopyButton value={l.customerName} label="name" />
             <RepeatBadge history={l.history} />
+            {/* Was a "Customer added" line in the actions column. It's a fact
+                about this person, so it sits with their name — and it costs a
+                badge here instead of a column's worth of width there. */}
+            {l.convertedCustomerId && (
+              <span title="Already in the customer list" className="inline-flex">
+                <UserCheck className="size-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+              </span>
+            )}
+          </span>
+          <span className="flex items-center gap-1 text-xs font-normal">
+            {/* tel: makes this one tap to dial from the installed PWA on a phone. */}
+            <a href={`tel:${l.phone}`} className="font-medium tabular-nums hover:underline">
+              {l.phone}
+            </a>
+            <CopyButton value={l.phone} label="phone" />
           </span>
           {l.address && (
             <span className="flex items-start gap-1 text-xs font-normal text-muted-foreground">
-              <span className="max-w-60 whitespace-normal">{l.address}</span>
+              <span className="whitespace-normal">{l.address}</span>
               <CopyButton value={l.address} label="address" />
             </span>
           )}
-        </span>
-      ),
-    },
-    {
-      key: "phone",
-      header: "Phone",
-      cell: (l) => (
-        <span className="inline-flex items-center gap-1">
-          {/* tel: makes this one tap to dial from the installed PWA on a phone. */}
-          <a href={`tel:${l.phone}`} className="font-medium tabular-nums hover:underline">
-            {l.phone}
-          </a>
-          <CopyButton value={l.phone} label="phone" />
         </span>
       ),
     },
@@ -629,7 +650,7 @@ export function LeadManager({
         const items = splitLeadItems(l.itemsText);
         if (items.length === 0) return <span className="text-sm">—</span>;
         return (
-          <span className="block max-w-72 space-y-0.5 text-sm">
+          <span className="block max-w-56 space-y-0.5 text-sm">
             {items.map((it, i) => (
               <span key={i} className="block whitespace-normal">
                 {it}
@@ -671,7 +692,7 @@ export function LeadManager({
         >
           {/* Base UI's <SelectValue/> prints the raw value until the popup has
               mounted its items, so the label is rendered directly instead. */}
-          <SelectTrigger className={cn("h-8 w-38", STATUS_TONE[l.callStatus])}>
+          <SelectTrigger className={cn("h-8 w-36", STATUS_TONE[l.callStatus])}>
             <span data-slot="select-value">{STATUS_LABEL[l.callStatus]}</span>
           </SelectTrigger>
           <SelectContent>
@@ -702,55 +723,28 @@ export function LeadManager({
           >
             {LEAD_FULFILMENT_LABEL[l.fulfilment]}
           </Badge>
+          {/* Only the one action this column is for. Linking and unlinking are
+              rare — a backlog job and an undo — so they moved to the row menu
+              rather than each costing width on every row. */}
           {l.orderId ? (
-            <span className="inline-flex items-center gap-1">
-              <a
-                href={`/${slug}/sales/orders?q=${encodeURIComponent(l.customerName)}`}
-                className="text-xs text-muted-foreground underline-offset-2 hover:underline"
-              >
-                open
-              </a>
-              {perms.canAdd && (
-                <span aria-hidden className="text-muted-foreground/40">
-                  ·
-                </span>
-              )}
-              {perms.canAdd && (
-                <button
-                  type="button"
-                  onClick={() => onUnlink(l)}
-                  className="text-xs text-muted-foreground underline-offset-2 hover:underline"
-                  title="Stop following this order"
-                >
-                  unlink
-                </button>
-              )}
-            </span>
+            <a
+              href={`/${slug}/sales/orders?q=${encodeURIComponent(l.customerName)}`}
+              className="text-xs text-muted-foreground underline-offset-2 hover:underline"
+            >
+              open
+            </a>
           ) : (
             perms.canAdd && (
-              <span className="inline-flex items-center gap-1">
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-6 px-1.5 text-xs"
-                  disabled={busyId === l.id}
-                  onClick={() => onCreateOrder(l)}
-                  title="Create the real order from this lead — the sales form opens filled in"
-                >
-                  + Order
-                </Button>
-                {/* For the backlog: orders entered before the two lists were
-                    linked at all. New ones link themselves. */}
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-6 px-1.5 text-xs text-muted-foreground"
-                  onClick={() => openLink(l)}
-                  title="This order was already entered — point this row at it"
-                >
-                  link
-                </Button>
-              </span>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-6 px-1.5 text-xs"
+                disabled={busyId === l.id}
+                onClick={() => onCreateOrder(l)}
+                title="Create the real order from this lead — the sales form opens filled in"
+              >
+                + Order
+              </Button>
             )
           )}
         </span>
@@ -778,45 +772,67 @@ export function LeadManager({
           type="button"
           onClick={() => setNotesFor(l)}
           disabled={!perms.canAdd}
-          className="max-w-64 text-left text-sm whitespace-normal hover:underline disabled:hover:no-underline"
+          className="max-w-48 text-left text-sm whitespace-normal hover:underline disabled:hover:no-underline"
         >
           {l.customerAdvice ?? <span className="text-muted-foreground">+ Add note</span>}
         </button>
       ),
     },
     {
+      // One menu, the same as the sales list: three buttons per row spent
+      // ~240px on actions that get used once each per lead, on a table that
+      // was already running off the right of the screen.
       key: "actions",
       header: "",
       cardFullWidth: true,
-      cell: (l) => (
-        <div className="flex items-center justify-end gap-1">
-          {perms.canAddCustomer &&
-            (l.convertedCustomerId ? (
-              <span className="text-xs text-muted-foreground">Customer added</span>
-            ) : (
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={busyId === l.id}
-                onClick={() => onCreateCustomer(l)}
-                title="Create this person as a customer, then pick them on the sales page"
+      cell: (l) => {
+        const canCreateCustomer = perms.canAddCustomer && !l.convertedCustomerId;
+        if (!perms.canAdd && !perms.canDelete && !canCreateCustomer) return null;
+        return (
+          <div className="flex items-center justify-end">
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="More actions"
+                    title="More actions"
+                    disabled={busyId === l.id}
+                  />
+                }
               >
-                <UserPlus data-icon="inline-start" />
-                Customer
-              </Button>
-            ))}
-          {perms.canAdd && (
-            <Button size="sm" variant="ghost" onClick={() => openEdit(l)}>
-              Edit
-            </Button>
-          )}
-          {perms.canDelete && (
-            <Button size="sm" variant="ghost" onClick={() => onDelete(l)}>
-              Delete
-            </Button>
-          )}
-        </div>
-      ),
+                <MoreVertical className="size-4" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {perms.canAdd && (
+                  <DropdownMenuItem onClick={() => openEdit(l)}>Edit</DropdownMenuItem>
+                )}
+                {canCreateCustomer && (
+                  <DropdownMenuItem onClick={() => onCreateCustomer(l)}>
+                    Add as customer
+                  </DropdownMenuItem>
+                )}
+                {perms.canAdd &&
+                  (l.orderId ? (
+                    <DropdownMenuItem onClick={() => onUnlink(l)}>Unlink order</DropdownMenuItem>
+                  ) : (
+                    /* For the backlog: orders entered before the two lists
+                       were linked at all. New ones link themselves. */
+                    <DropdownMenuItem onClick={() => openLink(l)}>
+                      Link an existing order
+                    </DropdownMenuItem>
+                  ))}
+                {perms.canDelete && (
+                  <DropdownMenuItem variant="destructive" onClick={() => onDelete(l)}>
+                    Delete
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        );
+      },
     },
   ];
 
