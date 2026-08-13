@@ -1390,13 +1390,42 @@ export function OrderManager({
               cardTitle: true,
               cell: (o) => (
                 <span>
-                  {o.recipientName}
+                  {/* The name goes to the buyer's history — what they have
+                      ordered before, what they still owe — which is the
+                      question a name in this list most often raises. Only when
+                      it IS the buyer's name: a parcel shipped to someone else
+                      is addressed to a person who has no page of their own,
+                      and the account underneath carries the link instead.
+                      Walk-ins have no record to open. Underlined on hover
+                      rather than always: this is the app's densest table, and
+                      fifty permanent underlines read as noise. */}
+                  {o.customerId && o.recipientName === o.customerName ? (
+                    <Link
+                      href={`/${slug}/customers/${o.customerId}`}
+                      className="underline-offset-4 hover:underline"
+                    >
+                      {o.recipientName}
+                    </Link>
+                  ) : (
+                    o.recipientName
+                  )}
                   {/* Only when the two disagree: the row is findable by the
                       name it shipped under, and the buyer it belongs to is
                       still visible underneath. */}
                   {o.recipientName !== o.customerName && (
                     <span className="ml-1 text-xs text-muted-foreground">
-                      (account: {o.customerName})
+                      (account:{" "}
+                      {o.customerId ? (
+                        <Link
+                          href={`/${slug}/customers/${o.customerId}`}
+                          className="underline-offset-4 hover:underline"
+                        >
+                          {o.customerName}
+                        </Link>
+                      ) : (
+                        o.customerName
+                      )}
+                      )
                     </span>
                   )}
                   {o.gifts.length > 0 && (
