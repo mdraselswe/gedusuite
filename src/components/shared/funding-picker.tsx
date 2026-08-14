@@ -64,7 +64,14 @@ export function FundingPicker({
     <>
       <div className="space-y-2">
         <Label htmlFor={`${idPrefix}-source`}>Funding source</Label>
-        <Select value={value} onValueChange={(v) => onChange((v as FundingSource) ?? "NONE")}>
+        {/* `items` is what lets the closed trigger show the label rather than
+            the raw enum — Base UI's Select.Value has nothing else to map a
+            value to its text with, so without it the field read "TREASURY". */}
+        <Select
+          value={value}
+          onValueChange={(v) => onChange((v as FundingSource) ?? "NONE")}
+          items={options.map((source) => ({ value: source, label: fundingSourceLabel[source] }))}
+        >
           <SelectTrigger id={`${idPrefix}-source`} className="w-full">
             <SelectValue />
           </SelectTrigger>
@@ -91,9 +98,13 @@ export function FundingPicker({
           <Label htmlFor={`${idPrefix}-partner`}>
             {value === "REIMBURSED" ? "Who paid and was reimbursed" : "Partner"}
           </Label>
+          {/* null rather than the sentinel while nothing is chosen: Base UI
+              only shows the placeholder for an empty value, and given a value
+              it has no item for it printed the sentinel itself — the field
+              read "__none__". */}
           <Select
-            value={partnerId}
-            onValueChange={(v) => onPartnerChange(v ?? NO_PARTNER)}
+            value={partnerId === NO_PARTNER ? null : partnerId}
+            onValueChange={(v) => onPartnerChange((v as string | null) ?? NO_PARTNER)}
             items={partnerOptions.map((p) => ({ value: p.id, label: p.label }))}
           >
             <SelectTrigger id={`${idPrefix}-partner`} className="w-full">
