@@ -683,9 +683,12 @@ function AdSetCard({
       </CardHeader>
       <CardContent className="space-y-4">
         {canAdd && (
+          /* The third column is the funding one: it carries sentence-length
+             labels and gains a partner picker beside it on the reimbursed
+             choice, so it is wider than the fields around it. */
           <form
             onSubmit={onAddSpend}
-            className="grid gap-3 rounded-md border bg-muted/40 p-3 sm:grid-cols-[10rem_minmax(0,8rem)_minmax(0,11rem)_minmax(0,1fr)_auto] sm:items-start"
+            className="grid gap-3 rounded-md border bg-muted/40 p-3 sm:grid-cols-[10rem_minmax(0,8rem)_minmax(0,14rem)_minmax(0,1fr)_auto] sm:items-start"
           >
             <div className="space-y-2">
               <Label htmlFor={`sp-date-${adSet.id}`}>Date</Label>

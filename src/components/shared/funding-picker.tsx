@@ -75,7 +75,12 @@ export function FundingPicker({
           <SelectTrigger id={`${idPrefix}-source`} className="w-full">
             <SelectValue />
           </SelectTrigger>
-          <SelectContent>
+          {/* The popup normally takes the trigger's width, and these labels are
+              sentences — in the boost form's narrow column that cropped the
+              longest one to "A partner paid, the treasu". Sized to its content
+              instead, never narrower than the trigger and never wider than the
+              space the positioner says it has. */}
+          <SelectContent className="w-max min-w-(--anchor-width) max-w-(--available-width)">
             {options.map((source) => (
               <SelectItem key={source} value={source}>
                 {fundingSourceLabel[source]}
