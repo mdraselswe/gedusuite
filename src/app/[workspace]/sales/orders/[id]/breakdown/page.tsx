@@ -218,7 +218,13 @@ export default async function OrderBreakdownPage({
             <Row label="= Net revenue" value={totals.netRevenue} bold />
             <div className="h-2" />
             <Row label="COGS (cost of goods sold)" value={-totals.cogs} />
-            <Row label="Packaging cost" value={-totals.packagingCost} />
+            {/* Packaging is deliberately NOT here. It is expensed when the bags
+                are bought, as an internal purchase, so charging a per-order
+                share as well would put the same money through the accounts
+                twice — see the note on OrderTotals.packagingCost. It used to
+                sit in this column as a minus, which left these rows short of
+                the bold figure underneath by exactly the packaging. It is
+                reported below the total instead. */}
             <Row label="Gift cost" value={-totals.giftCost} />
             <Row
               label={`Delivery margin (charge ${money(totals.deliveryCharge)} − cost ${money(totals.deliveryCost)})`}
@@ -240,6 +246,13 @@ export default async function OrderBreakdownPage({
               <span>Net profit</span>
               <span><Money value={totals.netProfit} /></span>
             </div>
+            {totals.packagingCost > 0 && (
+              <p className="pt-2 text-xs text-muted-foreground">
+                Packaging used: {money(totals.packagingCost)} — recorded, but not subtracted
+                above. The material was charged to profit when it was bought, so taking it again
+                per order would count the same polybags twice.
+              </p>
+            )}
             <div className="h-2" />
             <Row label="Delivery charge (billed to customer)" value={totals.deliveryCharge} />
             <div className="flex justify-between border-t pt-2 text-base font-bold">
