@@ -300,7 +300,11 @@ export default async function PartnersPage({
                   sub
                 />
               )}
-              {capital.partnerCashInTreasury > 0 && capital.treasuryFundedSpend > 0 && (
+              {/* Gated on the split existing, not on there still being partner
+                  money in the pot — a deposit the treasury has already spent
+                  leaves that at zero, and the row explaining where the rest of
+                  the spending came from used to vanish with it. */}
+              {capital.treasuryFundedSpend > 0 && capital.salesFundedSpend > 0 && (
                 <FigureRow
                   label="…of that, the shop's own takings"
                   hint="the rest of it spent partner money the treasury was holding"
@@ -339,21 +343,31 @@ export default async function PartnersPage({
               </p>
             </InfoNote>
           )}
-          {capital.partnerCashInTreasury > 0 && (
-            <InfoNote title="Part of the treasury is partner money">
+          {(capital.partnerCashInTreasury > 0 || capital.treasuryCapitalSpend > 0) && (
+            <InfoNote title="Some of the treasury is partner money">
+              {capital.partnerCashInTreasury > 0 && (
+                <p>
+                  <Money value={capital.partnerCashInTreasury} /> of what the treasury
+                  holds was deposited by partners rather than earned by the shop, and is
+                  still there — spending it will spend their capital wherever the cash
+                  happens to be sitting.
+                </p>
+              )}
+              {capital.treasuryCapitalSpend > 0 && (
+                <p>
+                  Of the <Money value={capital.treasuryFundedSpend} /> the treasury has
+                  spent, <Money value={capital.treasuryCapitalSpend} /> came out of partner
+                  deposits and counts against their capital. Otherwise handing money over
+                  and spending it yourself would give two different answers for the same
+                  purchase.
+                </p>
+              )}
               <p>
-                <Money value={capital.partnerCashInTreasury} /> of what the treasury holds
-                was deposited by partners rather than earned by the shop. Spending that
-                spends their capital wherever the cash happened to be sitting, so treasury
-                purchases are charged against capital until that much of it has gone —
-                otherwise handing money over and spending it yourself would give two
-                different answers for the same purchase.
-              </p>
-              <p>
-                In the table below it&apos;s charged to each partner in proportion to what
-                they still have in the pot, not by profit share. Profit is what the shares
-                divide; capital is whatever each partner put in, and a partner who has
-                deposited nothing pays none of it.
+                In the table below it&apos;s charged to each partner by what they had in
+                the pot at the time of each purchase, not by profit share — and only
+                purchases made after their money arrived. Profit is what the shares divide;
+                capital is whatever each partner put in, and a partner who has deposited
+                nothing pays none of it.
               </p>
             </InfoNote>
           )}

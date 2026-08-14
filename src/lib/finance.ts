@@ -10,6 +10,7 @@ import {
 import { inventoryValue } from "@/lib/inventory";
 import { amortizeAll } from "@/lib/amortize";
 import { splitByShare } from "@/lib/profit-share";
+import { sharePotSpending, type PotEvent } from "@/lib/treasury-pot";
 import { dhakaRecordStamp, type DhakaStamp } from "@/lib/dhaka-time";
 
 export const OVERDUE_DAYS = 7;
@@ -43,15 +44,25 @@ export type PartnerBalance = {
   treasuryCapitalWithdrawn: number;
   /**
    * Their share of the treasury spending that used up partner deposits, split
-   * by what each partner has left in the pot rather than by profit share.
+   * by what each partner had in the pot at the moment of each spend rather than
+   * by profit share.
    *
    * Pooled cash carries no name, but a capital account isn't about which note
    * left — it's about whose claim shrinks. Sharing it by profit percent would
    * charge a partner who deposited nothing, and would make the same purchase
    * cost different amounts depending on whether the money went via the treasury
    * or straight to the supplier. By deposit, the two routes agree.
+   *
+   * Worked out by walking the pot in date order (see lib/treasury-pot), so a
+   * deposit can only be spent by purchases made after it arrived.
    */
   treasuryCapitalSpend: number;
+  /**
+   * What of their deposit is still sitting unspent in the pot — deposited, less
+   * what they have taken back out, less what the treasury has since spent of
+   * it. The honest answer to "how much of the treasury is still my money".
+   */
+  treasuryCapitalRemaining: number;
   netCapital: number; // invested + depositedToTreasury − capitalWithdrawn
   /** netCapital − expenses − treasuryCapitalSpend: what's left of their capital to spend. */
   remaining: number;
@@ -81,9 +92,7 @@ export async function partnerBalances(
   workspaceId: string,
 ): Promise<Map<string, PartnerBalance>> {
   const [
-    txnRows,
-    capitalOutRows,
-    treasuryOutRows,
+    txns,
     purchaseRows,
     internalRows,
     boostRows,
@@ -91,29 +100,23 @@ export async function partnerBalances(
     treasuryInternals,
     treasuryBoost,
   ] = await Promise.all([
-    prisma.partnerTxn.groupBy({
-      by: ["partnerId", "type"],
+    // Row by row rather than three groupBys, because the pot is now walked in
+    // date order and a grouped sum has no date on it. The table is small — a
+    // few hundred rows in a shop's whole life — and this is one round trip
+    // where there were three.
+    prisma.partnerTxn.findMany({
       where: { workspaceId },
-      _sum: { amount: true },
-    }),
-    // Withdrawals with no distribution behind them: capital coming back out.
-    prisma.partnerTxn.groupBy({
-      by: ["partnerId"],
-      where: { workspaceId, type: "WITHDRAWAL", distributionId: null },
-      _sum: { amount: true },
-    }),
-    // The subset of those that came out of the treasury — a linked entry is
-    // what says the pot actually moved. Cash a partner was holding elsewhere
-    // leaves the pot alone and so leaves everyone's share of it alone.
-    prisma.partnerTxn.groupBy({
-      by: ["partnerId"],
-      where: {
-        workspaceId,
-        type: "WITHDRAWAL",
-        distributionId: null,
-        treasuryEntry: { isNot: null },
+      select: {
+        partnerId: true,
+        type: true,
+        amount: true,
+        date: true,
+        distributionId: true,
+        // Whether the pot actually moved. A withdrawal of cash a partner was
+        // holding elsewhere leaves the treasury alone, and so leaves
+        // everyone's share of it alone.
+        treasuryEntry: { select: { id: true } },
       },
-      _sum: { amount: true },
     }),
     // `paidFromTreasury: false` is what keeps a reimbursed row out of the
     // partner's expenses. A row carrying both columns means they fronted the
@@ -135,21 +138,22 @@ export async function partnerBalances(
       where: { workspaceId, paidByPartnerId: { not: null }, paidFromTreasury: false },
       _sum: { amount: true },
     }),
-    // Everything the treasury paid for. Read again here rather than handed down
-    // from businessCapitalSummary: the partner pages call this function on its
-    // own, and a balance that only came out right when the rollup happened to
-    // be running alongside it would be worse than the extra three queries.
+    // Everything the treasury paid for, with the dates it paid on. Read again
+    // here rather than handed down from businessCapitalSummary: the partner
+    // pages call this function on its own, and a balance that only came out
+    // right when the rollup happened to be running alongside it would be worse
+    // than the extra three queries.
     prisma.purchase.findMany({
       where: { workspaceId, paidFromTreasury: true },
-      select: { unitCost: true, quantity: true },
+      select: { unitCost: true, quantity: true, date: true },
     }),
     prisma.internalPurchase.findMany({
       where: { workspaceId, paidFromTreasury: true },
-      select: { cost: true, quantity: true },
+      select: { cost: true, quantity: true, date: true },
     }),
-    prisma.boostDailySpend.aggregate({
+    prisma.boostDailySpend.findMany({
       where: { workspaceId, paidFromTreasury: true },
-      _sum: { amount: true },
+      select: { amount: true, date: true },
     }),
   ]);
 
@@ -171,24 +175,35 @@ export async function partnerBalances(
         depositedToTreasury: 0,
         treasuryCapitalWithdrawn: 0,
         treasuryCapitalSpend: 0,
+        treasuryCapitalRemaining: 0,
         netCapital: 0,
         remaining: 0,
       })
       .get(id)!;
 
-  for (const r of txnRows) {
+  // Every movement of the pot, in the order it happened — the ledger
+  // sharePotSpending walks below.
+  const potEvents: PotEvent[] = [];
+
+  for (const r of txns) {
     const b = ensure(r.partnerId);
-    const amt = Number(r._sum.amount ?? 0);
+    const amt = Number(r.amount);
     if (r.type === "INVESTMENT") b.invested += amt;
-    else if (r.type === "WITHDRAWAL") b.withdrawn += amt;
     else if (r.type === "EXPENSE") b.miscExpense += amt;
-    else if (r.type === "DEPOSIT_TO_TREASURY") b.depositedToTreasury += amt;
-  }
-  for (const r of capitalOutRows) {
-    ensure(r.partnerId).capitalWithdrawn += Number(r._sum.amount ?? 0);
-  }
-  for (const r of treasuryOutRows) {
-    ensure(r.partnerId).treasuryCapitalWithdrawn += Number(r._sum.amount ?? 0);
+    else if (r.type === "DEPOSIT_TO_TREASURY") {
+      b.depositedToTreasury += amt;
+      potEvents.push({ at: r.date, kind: "DEPOSIT", partnerId: r.partnerId, amount: amt });
+    } else if (r.type === "WITHDRAWAL") {
+      b.withdrawn += amt;
+      // A distribution hands out earnings, not capital, so it leaves what a
+      // partner has invested exactly where it was.
+      if (r.distributionId) continue;
+      b.capitalWithdrawn += amt;
+      if (r.treasuryEntry) {
+        b.treasuryCapitalWithdrawn += amt;
+        potEvents.push({ at: r.date, kind: "WITHDRAWAL", partnerId: r.partnerId, amount: amt });
+      }
+    }
   }
   for (const p of purchaseRows) {
     const b = ensure(p.paidByPartnerId!);
@@ -201,6 +216,15 @@ export async function partnerBalances(
   for (const bs of boostRows) {
     const b = ensure(bs.paidByPartnerId!);
     b.boostSpend += Number(bs._sum.amount ?? 0);
+  }
+  for (const p of treasuryPurchases) {
+    potEvents.push({ at: p.date, kind: "SPEND", amount: Number(p.unitCost) * p.quantity });
+  }
+  for (const ip of treasuryInternals) {
+    potEvents.push({ at: ip.date, kind: "SPEND", amount: Number(ip.cost) * ip.quantity });
+  }
+  for (const bs of treasuryBoost) {
+    potEvents.push({ at: bs.date, kind: "SPEND", amount: Number(bs.amount) });
   }
 
   for (const b of map.values()) {
@@ -221,31 +245,19 @@ export async function partnerBalances(
   }
 
   // Second pass, because sharing the treasury's spending out needs every
-  // partner's stake in the pot before any one of them can be told their part.
-  const treasuryFundedSpend =
-    treasuryPurchases.reduce((s, p) => s + Number(p.unitCost) * p.quantity, 0) +
-    treasuryInternals.reduce((s, ip) => s + Number(ip.cost) * ip.quantity, 0) +
-    Number(treasuryBoost._sum.amount ?? 0);
-  const stakes = [...map.values()].map((b) => ({
-    partnerId: b.partnerId,
-    // Weight, not money: what each partner still has in the pot. A partner who
-    // has taken more out of the treasury than they put in weighs nothing rather
-    // than negatively — they aren't funding anyone else's purchases.
-    percent: Math.max(0, b.depositedToTreasury - b.treasuryCapitalWithdrawn),
-  }));
-  // The pot's partner-funded part: each stake floored on its own before they
-  // are added up, never netted across people. A partner taking capital out of
-  // the treasury is almost always taking sales cash — their own capital went
-  // into stock months ago — so netting it would have one partner's withdrawal
-  // eat another's deposit, and the depositor's money would then never finish
-  // being spent however much the treasury bought.
-  const pool = stakes.reduce((s, x) => s + x.percent, 0);
-  // splitByShare normalizes the weights and hands the rounding remainder to the
-  // biggest one, so the shares add up to exactly what was consumed.
-  for (const cut of splitByShare(stakes, Math.min(treasuryFundedSpend, pool))) {
-    map.get(cut.partnerId)!.treasuryCapitalSpend = cut.amount;
-  }
+  // partner's stake in the pot as it stood at each moment it was spent from.
+  //
+  // This used to compare two lifetime sums — all treasury spending ever against
+  // all partner deposits ever, charged as min(spend, pool). Once lifetime
+  // spending passed lifetime deposits, which it does in any shop that has been
+  // trading a while, every partner's whole deposit read as spent the instant it
+  // landed: hand over 5,000 on a Tuesday and "remaining" would not move,
+  // because last week's purchases had already been charged against money that
+  // did not exist when they were made.
+  const share = sharePotSpending(potEvents);
   for (const b of map.values()) {
+    b.treasuryCapitalSpend = share.capitalSpent.get(b.partnerId) ?? 0;
+    b.treasuryCapitalRemaining = share.stillInPot.get(b.partnerId) ?? 0;
     b.remaining = round2(b.netCapital - b.expenses - b.treasuryCapitalSpend);
   }
   return map;
@@ -270,8 +282,14 @@ export type BusinessCapitalSummary = {
   treasuryFundedSpend: number;
   /**
    * Partner capital currently sitting in the treasury: what partners have
-   * deposited, less any capital they've taken back out of it. Profit
-   * distributions aren't in here — those hand out earnings, not capital.
+   * deposited, less any capital they've taken back out of it, less what the
+   * treasury has since spent of it. Profit distributions aren't in here —
+   * those hand out earnings, not capital.
+   *
+   * The last of those three used to be missing, so a deposit the treasury had
+   * already turned into stock went on being reported as partner money in the
+   * pot — and the card promised the partners a share of a balance that was by
+   * then entirely sales takings.
    */
   partnerCashInTreasury: number;
   /**
@@ -286,6 +304,13 @@ export type BusinessCapitalSummary = {
    * yet and again as the stock it had already bought.
    */
   salesFundedSpend: number;
+  /**
+   * The other side of that: treasury spending that came out of partner
+   * deposits, and so did cost somebody capital. salesFundedSpend +
+   * treasuryCapitalSpend = treasuryFundedSpend, by construction — the pot walk
+   * splits every spend between the two.
+   */
+  treasuryCapitalSpend: number;
   /**
    * Bought on account and not paid for yet — what the shop owes its suppliers.
    *
@@ -395,16 +420,25 @@ export async function businessCapitalSummary(
 
   let totalInvested = 0;
   let totalCapitalWithdrawn = 0;
-  // The pot's partner-funded part, stake by stake — the same sum partnerBalances
-  // shares out, so the table and this card can't disagree about how much of the
-  // treasury is capital.
+  // The pot's partner-funded part, stake by stake — the same walk
+  // partnerBalances runs, so the table and this card can't disagree about how
+  // much of the treasury is still capital.
+  //
+  // Net of what the treasury has since spent of it, which it did not used to
+  // be: a deposit fully consumed by a purchase went on being reported as
+  // partner money sitting in the pot, and the note under the card promised the
+  // partners a share of a balance that was by then entirely sales cash.
   let partnerCashInTreasury = 0;
+  // Their side of the same sum: treasury spending that came out of partner
+  // deposits rather than takings.
+  let treasuryCapitalSpend = 0;
   for (const b of balances.values()) {
     // Both routes into the business, added together: money a partner spent
     // straight from their pocket, and money they handed to the treasury.
     totalInvested += b.invested + b.depositedToTreasury;
     totalCapitalWithdrawn += b.capitalWithdrawn;
-    partnerCashInTreasury += Math.max(0, b.depositedToTreasury - b.treasuryCapitalWithdrawn);
+    partnerCashInTreasury += b.treasuryCapitalRemaining;
+    treasuryCapitalSpend += b.treasuryCapitalSpend;
   }
   // What's still in. Summing `invested` alone would go on reporting money a
   // partner has already taken back as though it were still funding the shop.
@@ -446,7 +480,12 @@ export async function businessCapitalSummary(
   // and only the excess is treated as the shop's own takings. Charging none of
   // it counted partner capital twice: still "unspent" here, and already stock
   // on the shelf over in inventoryValue.
-  const salesFundedSpend = Math.max(0, treasuryFundedSpend - partnerCashInTreasury);
+  //
+  // Taken from what the pot walk actually charged the partners rather than
+  // recomputed from lifetime totals — every spend it saw was split between the
+  // two, so the remainder is this by construction, and the per-partner table
+  // and this card cannot land on different answers.
+  const salesFundedSpend = Math.max(0, round2(treasuryFundedSpend - treasuryCapitalSpend));
   const capitalSpend = totalExpenses - salesFundedSpend - supplierDue;
   const totalRemaining = netInvested - capitalSpend;
 
@@ -462,6 +501,7 @@ export async function businessCapitalSummary(
     treasuryFundedSpend: round2(treasuryFundedSpend),
     partnerCashInTreasury: round2(partnerCashInTreasury),
     salesFundedSpend: round2(salesFundedSpend),
+    treasuryCapitalSpend: round2(treasuryCapitalSpend),
     supplierDue: round2(supplierDue),
     capitalSpend: round2(capitalSpend),
     totalRemaining: round2(totalRemaining),
