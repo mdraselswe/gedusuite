@@ -900,13 +900,15 @@ export function OrderManager({
   // customer. Runs once per arrival.
   const leadPrefilled = useRef(false);
   // The lead this form is filling in for, held here rather than read from the
-  // prop at save time: ?fromLead is cleared out of the URL as soon as it has
-  // been used, and the order still has to be linked back to its call-list row.
-  const activeLead = useRef<FromLead | null>(null);
+  // prop: ?fromLead is cleared out of the URL as soon as it has been used, so
+  // the prop goes null while the form is still open. State, not a ref, because
+  // the dialog shows what the caller wrote down — held in a ref it flashed up
+  // and vanished on the re-render that followed the URL being cleaned.
+  const [activeLead, setActiveLead] = useState<FromLead | null>(null);
   useEffect(() => {
     if (!fromLead || leadPrefilled.current || !perms.canAdd) return;
     leadPrefilled.current = true;
-    activeLead.current = fromLead;
+    setActiveLead(fromLead);
     if (fromLead.customerId) {
       setCustomer({ value: fromLead.customerId, label: fromLead.customerName });
     }
@@ -943,7 +945,7 @@ export function OrderManager({
     // A blank form belongs to no lead. Cleared here so that "+ New order",
     // opened after one was created from the call list, can't link the next
     // order to the previous one's row.
-    activeLead.current = null;
+    setActiveLead(null);
     // Now, in Dhaka — the form asks for a time as well as a day, so a new order
     // opens on the moment it is being taken rather than on midnight.
     setOrderDate(toDhakaInputValue(new Date()));
@@ -1146,7 +1148,7 @@ export function OrderManager({
     // Point the call-list row at the order it just became, so that list can
     // show where the parcel got to without anyone re-typing it. A failure here
     // costs the link, not the order — say so rather than implying both failed.
-    const lead = activeLead.current;
+    const lead = activeLead;
     if (lead && res.id) {
       const linked = await linkLeadToOrder(slug, lead.leadId, res.id);
       // The lead already knows which channel the customer came through, and
@@ -1749,7 +1751,7 @@ export function OrderManager({
         <DialogContent className="flex max-h-[92dvh] max-w-[min(96vw,980px)] flex-col overflow-hidden p-0 sm:max-w-[min(96vw,980px)]">
           <DialogHeader className="shrink-0 border-b bg-muted/30 px-4 py-4 pr-14 sm:px-5">
             <DialogTitle className="text-lg">
-              {fromLead ? `New order for ${fromLead.customerName}` : "New order"}
+              {activeLead ? `New order for ${activeLead.customerName}` : "New order"}
             </DialogTitle>
             <p className="text-sm text-muted-foreground">
               Add products first, then payment and delivery details.
@@ -1757,15 +1759,15 @@ export function OrderManager({
             {/* What the caller wrote down, shown rather than auto-added: lead
                 items are free text and a wrong catalogue match would put the
                 wrong cost on the order and take the wrong item out of stock. */}
-            {fromLead && (
+            {activeLead && (
               <div className="rounded-md border border-sky-500/40 bg-sky-500/10 px-3 py-2 text-sm">
                 <div className="font-medium">From the call list</div>
                 <div className="text-muted-foreground">
-                  {fromLead.itemsText || "No items were written down"}
-                  {fromLead.total > 0 && ` · agreed total ${formatMoney(fromLead.total)}`}
+                  {activeLead.itemsText || "No items were written down"}
+                  {activeLead.total > 0 && ` · agreed total ${formatMoney(activeLead.total)}`}
                 </div>
-                {fromLead.address && (
-                  <div className="text-muted-foreground">{fromLead.address}</div>
+                {activeLead.address && (
+                  <div className="text-muted-foreground">{activeLead.address}</div>
                 )}
               </div>
             )}
