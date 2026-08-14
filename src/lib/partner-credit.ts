@@ -14,8 +14,15 @@ import { prisma } from "@/lib/prisma";
  * (see boosting.ts) — this is the same idea for product and internal purchases.
  */
 
-/** Which source row a credit belongs to. Exactly one field, never both. */
-export type CreditLink = { purchaseId: string } | { internalPurchaseId: string };
+/** Which source row a credit belongs to. Exactly one field, never two. */
+export type CreditLink =
+  | { purchaseId: string }
+  | { internalPurchaseId: string }
+  // Boosting wrote and deleted its own credit by hand for as long as it was
+  // the only module that had one. It gained an edit path — funding can now be
+  // changed after the fact — and an edit is exactly where a hand-rolled copy
+  // starts disagreeing, so it came in here instead.
+  | { boostSpendId: string };
 
 /** The link columns that mark a ledger row as generated rather than typed in. */
 export const DERIVED_SELECT = {
@@ -136,7 +143,17 @@ export async function removePartnerCredit(
  * backfilled blindly. Counted here to drive the "needs reconciling" prompt.
  */
 export async function unlinkedPartnerFundingCount(workspaceId: string): Promise<number> {
-  const where = { workspaceId, paidByPartnerId: { not: null }, partnerTxn: { is: null } };
+  // A reimbursed row names a partner and deliberately has no credit — the
+  // treasury is what paid, so there is nothing of theirs left in the business
+  // to credit (see lib/funding.ts). Without this it would sit in the "needs
+  // reconciling" prompt for ever, and generating the credit it asks for would
+  // be the bug the state exists to prevent.
+  const where = {
+    workspaceId,
+    paidByPartnerId: { not: null },
+    paidFromTreasury: false,
+    partnerTxn: { is: null },
+  };
   const [purchases, internal] = await Promise.all([
     prisma.purchase.count({ where }),
     prisma.internalPurchase.count({ where }),

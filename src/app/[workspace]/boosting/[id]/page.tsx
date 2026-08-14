@@ -14,6 +14,7 @@ import {
   toAttributable,
 } from "@/lib/boost-results";
 import { dhakaRecordStamp } from "@/lib/dhaka-time";
+import { fundingSourceOf } from "@/lib/funding";
 
 /** Ad set dates are date-only, so a window's last day counts in full. */
 function endOfDay(date: Date): Date {
@@ -93,17 +94,28 @@ export default async function BoostCampaignPage({
       dailyBudget: a.dailyBudget !== null ? Number(a.dailyBudget) : null,
       notes: a.notes,
       totalSpent,
-      spends: a.spends.map((x) => ({
-        id: x.id,
-        ...dhakaRecordStamp(x.date, x.createdAt, x.dateHasTime),
-        amount: Number(x.amount),
-        note: x.note,
-        paidFrom: x.paidFromTreasury
-          ? "Treasury"
-          : x.paidByPartner
-            ? (x.paidByPartner.user.name ?? x.paidByPartner.user.email)
-            : null,
-      })),
+      spends: a.spends.map((x) => {
+        const partnerName = x.paidByPartner
+          ? (x.paidByPartner.user.name ?? x.paidByPartner.user.email)
+          : null;
+        return {
+          id: x.id,
+          ...dhakaRecordStamp(x.date, x.createdAt, x.dateHasTime),
+          amount: Number(x.amount),
+          note: x.note,
+          // The raw columns as well as the label, so the edit dialog can reopen
+          // on the state the row was saved with rather than guessing it back
+          // out of a display string.
+          paidByPartnerId: x.paidByPartnerId,
+          paidFromTreasury: x.paidFromTreasury,
+          paidFrom:
+            fundingSourceOf(x) === "REIMBURSED"
+              ? `Treasury (${partnerName} fronted)`
+              : x.paidFromTreasury
+                ? "Treasury"
+                : partnerName,
+        };
+      }),
     };
   });
 

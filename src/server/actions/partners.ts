@@ -390,6 +390,7 @@ async function loadSource(
       select: {
         id: true,
         paidByPartnerId: true,
+        paidFromTreasury: true,
         unitCost: true,
         quantity: true,
         date: true,
@@ -400,7 +401,10 @@ async function loadSource(
         },
       },
     });
-    if (!p || !p.paidByPartnerId) return null;
+    // A reimbursed row names a partner and has no credit by design — it is not
+    // an unreconciled one, and generating a credit for it would put capital
+    // back that the treasury has already paid out.
+    if (!p || !p.paidByPartnerId || p.paidFromTreasury) return null;
     const label = variantFullName(p.productVariant.product.name, p.productVariant.attributes);
     return {
       partnerId: p.paidByPartnerId,
@@ -417,6 +421,7 @@ async function loadSource(
     select: {
       id: true,
       paidByPartnerId: true,
+      paidFromTreasury: true,
       cost: true,
       quantity: true,
       date: true,
@@ -425,7 +430,7 @@ async function loadSource(
       partnerTxn: { select: { id: true } },
     },
   });
-  if (!ip || !ip.paidByPartnerId) return null;
+  if (!ip || !ip.paidByPartnerId || ip.paidFromTreasury) return null;
   return {
     partnerId: ip.paidByPartnerId,
     amount: round2(Number(ip.cost) * ip.quantity),
@@ -448,7 +453,15 @@ async function loadUnlinkedSources(
   workspaceId: string,
   partnerId: string,
 ): Promise<UnlinkedSource[]> {
-  const where = { workspaceId, paidByPartnerId: partnerId, partnerTxn: { is: null } } as const;
+  // Reimbursed rows are excluded for the same reason as in
+  // unlinkedPartnerFundingCount: they name a partner but the treasury paid, so
+  // there is no credit missing from them.
+  const where = {
+    workspaceId,
+    paidByPartnerId: partnerId,
+    paidFromTreasury: false,
+    partnerTxn: { is: null },
+  } as const;
   const [purchases, internals] = await Promise.all([
     prisma.purchase.findMany({
       where,

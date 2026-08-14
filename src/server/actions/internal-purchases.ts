@@ -7,6 +7,12 @@ import { requireAccess } from "@/lib/authz";
 import { InsufficientTreasury, assertTreasuryCovers } from "@/lib/finance";
 import { ConcurrentWrite, runSerializable } from "@/lib/tx";
 import { removePartnerCredit, syncPartnerCredit } from "@/lib/partner-credit";
+import {
+  FUNDING_SOURCES,
+  creditedPartnerId,
+  fundingNeedsPartner,
+  resolveFunding,
+} from "@/lib/funding";
 import { failed, type ActionFailure } from "@/lib/form";
 import { diffFields, recordActivity } from "@/lib/activity";
 import { dhakaDateField } from "@/lib/date-field";
@@ -29,7 +35,7 @@ const Schema = z.object({
   supplierId: z.string().optional().or(z.literal("")),
   // Funding source is one of four mutually exclusive states — driven by a
   // single field instead of trying to infer exclusivity from three raw ones.
-  fundingSource: z.enum(["NONE", "PARTNER", "TREASURY", "CREDIT"]).default("NONE"),
+  fundingSource: z.enum(FUNDING_SOURCES).default("NONE"),
   paidByPartnerId: z.string().optional().or(z.literal("")),
   cost: z.coerce.number().nonnegative("Cost must be ≥ 0"),
   quantity: z.coerce.number().int().positive("Quantity must be > 0"),
@@ -96,23 +102,28 @@ export async function createInternalPurchase(
   const d = parsed.data;
   const workspaceId = gate.access.workspaceId;
 
-  if (d.fundingSource === "PARTNER" && !d.paidByPartnerId) {
+  const needsPartner = fundingNeedsPartner(d.fundingSource);
+  if (needsPartner && !d.paidByPartnerId) {
     return { ok: false, error: "Select a partner" };
   }
 
-  let paidByPartnerId: string | null = null;
-  if (d.fundingSource === "PARTNER" && d.paidByPartnerId) {
+  let namedPartnerId: string | null = null;
+  if (needsPartner && d.paidByPartnerId) {
     const partner = await prisma.partner.findFirst({
       where: { id: d.paidByPartnerId, workspaceId },
       select: { id: true },
     });
     if (!partner) return { ok: false, error: "Partner not found" };
-    paidByPartnerId = partner.id;
+    namedPartnerId = partner.id;
   }
-  const paidFromTreasury = d.fundingSource === "TREASURY";
-  // Nothing has been paid yet — no treasury deduction, no partner credit, and
-  // a supplier due instead of consumed capital.
-  const onCredit = d.fundingSource === "CREDIT";
+  // CREDIT pays nothing yet — no treasury deduction, no partner credit, and a
+  // supplier due instead of consumed capital. REIMBURSED names the partner who
+  // fronted it and still spends the treasury, so it deducts and does not credit.
+  const { paidByPartnerId, paidFromTreasury, onCredit } = resolveFunding(
+    d.fundingSource,
+    namedPartnerId,
+  );
+  const creditTo = creditedPartnerId({ paidByPartnerId, paidFromTreasury, onCredit });
   const supplier = await resolveSupplier(workspaceId, d.supplierId);
 
   const cost = round2(d.cost * d.quantity);
@@ -154,11 +165,11 @@ export async function createInternalPurchase(
         },
       });
     }
-    if (paidByPartnerId) {
+    if (creditTo) {
       await syncPartnerCredit(tx, {
         workspaceId,
         link: { internalPurchaseId: item.id },
-        partnerId: paidByPartnerId,
+        partnerId: creditTo,
         amount: cost,
         purpose: `Internal purchase: ${d.itemName}`,
         date: d.date.at,
@@ -200,7 +211,8 @@ export async function updateInternalPurchase(
   const d = parsed.data;
   const workspaceId = gate.access.workspaceId;
 
-  if (d.fundingSource === "PARTNER" && !d.paidByPartnerId) {
+  const needsPartner = fundingNeedsPartner(d.fundingSource);
+  if (needsPartner && !d.paidByPartnerId) {
     return { ok: false, error: "Select a partner" };
   }
 
@@ -210,19 +222,22 @@ export async function updateInternalPurchase(
   });
   if (!existing) return { ok: false, error: "Entry not found" };
 
-  let paidByPartnerId: string | null = null;
-  if (d.fundingSource === "PARTNER" && d.paidByPartnerId) {
+  let namedPartnerId: string | null = null;
+  if (needsPartner && d.paidByPartnerId) {
     const partner = await prisma.partner.findFirst({
       where: { id: d.paidByPartnerId, workspaceId },
       select: { id: true },
     });
     if (!partner) return { ok: false, error: "Partner not found" };
-    paidByPartnerId = partner.id;
+    namedPartnerId = partner.id;
   }
-  const paidFromTreasury = d.fundingSource === "TREASURY";
-  // Nothing has been paid yet — no treasury deduction, no partner credit, and
-  // a supplier due instead of consumed capital.
-  const onCredit = d.fundingSource === "CREDIT";
+  const { paidByPartnerId, paidFromTreasury, onCredit } = resolveFunding(
+    d.fundingSource,
+    namedPartnerId,
+  );
+  // Null on a reimbursed row, so the unconditional syncPartnerCredit below
+  // removes the credit when a partner-funded entry becomes a reimbursed one.
+  const creditTo = creditedPartnerId({ paidByPartnerId, paidFromTreasury, onCredit });
   const supplier = await resolveSupplier(workspaceId, d.supplierId);
   const newCost = round2(d.cost * d.quantity);
   const wasTreasuryFunded = existing.paidFromTreasury;
@@ -291,11 +306,11 @@ export async function updateInternalPurchase(
     }
 
     // Unconditional: this one call covers becoming partner-funded, ceasing to
-    // be, switching partner, and a plain cost change.
+    // be, switching partner, becoming reimbursed, and a plain cost change.
     await syncPartnerCredit(tx, {
       workspaceId,
       link: { internalPurchaseId: id },
-      partnerId: paidByPartnerId,
+      partnerId: creditTo,
       amount: newCost,
       purpose: `Internal purchase: ${d.itemName}`,
       date: d.date.at,

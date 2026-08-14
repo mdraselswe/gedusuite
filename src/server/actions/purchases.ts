@@ -8,6 +8,12 @@ import { refreshInventoryAlerts, variantStockMap } from "@/lib/inventory";
 import { InsufficientTreasury, assertTreasuryCovers } from "@/lib/finance";
 import { ConcurrentWrite, runSerializable } from "@/lib/tx";
 import { removePartnerCredit, syncPartnerCredit } from "@/lib/partner-credit";
+import {
+  FUNDING_SOURCES,
+  creditedPartnerId,
+  fundingNeedsPartner,
+  resolveFunding,
+} from "@/lib/funding";
 import { variantFullName } from "@/lib/variants";
 import { failed, type ActionFailure } from "@/lib/form";
 import { diffFields, recordActivity } from "@/lib/activity";
@@ -33,9 +39,9 @@ function revalidateAll(slug: string) {
 const PurchaseSchema = z.object({
   productVariantId: z.string().min(1, "Select a product variant"),
   supplierId: z.string().optional().or(z.literal("")),
-  // Funding source is one of four mutually exclusive states — driven by a
-  // single field instead of trying to infer exclusivity from three raw ones.
-  fundingSource: z.enum(["NONE", "PARTNER", "TREASURY", "CREDIT"]).default("NONE"),
+  // One field rather than three raw flags, so the states stay closed and the
+  // mapping to those flags lives in one place — see lib/funding.ts.
+  fundingSource: z.enum(FUNDING_SOURCES).default("NONE"),
   paidByPartnerId: z.string().optional().or(z.literal("")),
   date: dhakaDateField,
   unitCost: z.coerce.number().nonnegative("Unit cost must be ≥ 0"),
@@ -72,7 +78,8 @@ export async function createPurchase(
   }
   const d = parsed.data;
 
-  if (d.fundingSource === "PARTNER" && !d.paidByPartnerId) {
+  const needsPartner = fundingNeedsPartner(d.fundingSource);
+  if (needsPartner && !d.paidByPartnerId) {
     return { ok: false, error: "Select a partner" };
   }
 
@@ -87,19 +94,23 @@ export async function createPurchase(
     d.supplierId
       ? prisma.supplier.findFirst({ where: { id: d.supplierId, workspaceId }, select: { id: true } })
       : Promise.resolve(null),
-    d.fundingSource === "PARTNER" && d.paidByPartnerId
+    needsPartner && d.paidByPartnerId
       ? prisma.partner.findFirst({ where: { id: d.paidByPartnerId, workspaceId }, select: { id: true } })
       : Promise.resolve(null),
   ]);
   if (!variant) return { ok: false, error: "Product variant not found" };
   if (d.supplierId && !supplier) return { ok: false, error: "Supplier not found" };
-  if (d.fundingSource === "PARTNER" && !partner) return { ok: false, error: "Partner not found" };
+  if (needsPartner && !partner) return { ok: false, error: "Partner not found" };
   const supplierId = supplier?.id ?? null;
-  const paidByPartnerId = d.fundingSource === "PARTNER" ? (partner?.id ?? null) : null;
-  const paidFromTreasury = d.fundingSource === "TREASURY";
-  // Nothing has been paid yet — no treasury deduction, no partner credit, and
-  // a supplier due instead of consumed capital.
-  const onCredit = d.fundingSource === "CREDIT";
+  // CREDIT pays nothing yet — no treasury deduction, no partner credit, and a
+  // supplier due instead of consumed capital. REIMBURSED sets the partner AND
+  // the treasury: the partner's name records who fronted it, the treasury is
+  // what actually paid, so the deduction below happens and the credit does not.
+  const { paidByPartnerId, paidFromTreasury, onCredit } = resolveFunding(
+    d.fundingSource,
+    partner?.id ?? null,
+  );
+  const creditTo = creditedPartnerId({ paidByPartnerId, paidFromTreasury, onCredit });
 
   const cost = round2(d.unitCost * d.quantity);
   const label = variantFullName(variant.product.name, variant.attributes);
@@ -140,11 +151,11 @@ export async function createPurchase(
         },
       });
     }
-    if (paidByPartnerId) {
+    if (creditTo) {
       await syncPartnerCredit(tx, {
         workspaceId,
         link: { purchaseId: purchase.id },
-        partnerId: paidByPartnerId,
+        partnerId: creditTo,
         amount: cost,
         purpose: `Product purchase: ${label}`,
         date: d.date.at,
@@ -202,7 +213,8 @@ export async function updatePurchase(
   }
   const d = parsed.data;
 
-  if (d.fundingSource === "PARTNER" && !d.paidByPartnerId) {
+  const needsPartner = fundingNeedsPartner(d.fundingSource);
+  if (needsPartner && !d.paidByPartnerId) {
     return { ok: false, error: "Select a partner" };
   }
 
@@ -218,20 +230,24 @@ export async function updatePurchase(
     d.supplierId
       ? prisma.supplier.findFirst({ where: { id: d.supplierId, workspaceId }, select: { id: true } })
       : Promise.resolve(null),
-    d.fundingSource === "PARTNER" && d.paidByPartnerId
+    needsPartner && d.paidByPartnerId
       ? prisma.partner.findFirst({ where: { id: d.paidByPartnerId, workspaceId }, select: { id: true } })
       : Promise.resolve(null),
   ]);
   if (!existing) return { ok: false, error: "Purchase not found" };
   if (!variant) return { ok: false, error: "Product variant not found" };
   if (d.supplierId && !supplier) return { ok: false, error: "Supplier not found" };
-  if (d.fundingSource === "PARTNER" && !partner) return { ok: false, error: "Partner not found" };
+  if (needsPartner && !partner) return { ok: false, error: "Partner not found" };
 
-  const paidByPartnerId = d.fundingSource === "PARTNER" ? (partner?.id ?? null) : null;
-  const paidFromTreasury = d.fundingSource === "TREASURY";
-  // Nothing has been paid yet — no treasury deduction, no partner credit, and
-  // a supplier due instead of consumed capital.
-  const onCredit = d.fundingSource === "CREDIT";
+  const { paidByPartnerId, paidFromTreasury, onCredit } = resolveFunding(
+    d.fundingSource,
+    partner?.id ?? null,
+  );
+  // Null on a reimbursed row, which is what makes the unconditional
+  // syncPartnerCredit below REMOVE the credit when a partner-funded purchase is
+  // switched to reimbursed — the same call that removes it when the funding
+  // switches to the treasury.
+  const creditTo = creditedPartnerId({ paidByPartnerId, paidFromTreasury, onCredit });
   const newCost = round2(d.unitCost * d.quantity);
   const wasTreasuryFunded = existing.paidFromTreasury;
   const oldEntryAmount = existing.treasuryEntry ? Number(existing.treasuryEntry.amount) : 0;
@@ -305,7 +321,7 @@ export async function updatePurchase(
     await syncPartnerCredit(tx, {
       workspaceId,
       link: { purchaseId: id },
-      partnerId: paidByPartnerId,
+      partnerId: creditTo,
       amount: newCost,
       purpose: `Product purchase: ${label}`,
       date: d.date.at,

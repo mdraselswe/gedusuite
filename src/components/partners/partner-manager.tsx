@@ -213,7 +213,14 @@ export function PartnerManager({
               key: "toTreasury",
               // Part of "Net capital", not a figure beside it — cash handed to
               // the treasury is capital in like any other.
-              header: "Cash to treasury",
+              //
+              // "put into", not "in": this is a lifetime total of what they
+              // have handed over, and it never goes down — not when the
+              // treasury spends it, not when they withdraw (that lands in
+              // "Capital taken back"). Read as a balance it looks stuck, and a
+              // deposit fully consumed by a purchase still shows its original
+              // figure. What is actually left of their money is "Remaining".
+              header: "Cash put into treasury",
               align: "right",
               hideable: true,
               sortValue: (p) => p.depositedToTreasury,

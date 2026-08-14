@@ -12,6 +12,7 @@ import {
   updateAdSet,
   deleteAdSet,
   deleteDailySpend,
+  updateDailySpend,
 } from "@/server/actions/boosting";
 import { submitOrQueue } from "@/lib/offline-queue";
 import { Button } from "@/components/ui/button";
@@ -42,12 +43,23 @@ import { Money } from "@/components/ui/money";
 import { Field } from "@/components/ui/field";
 import { Stamp } from "@/components/ui/stamp";
 import { toDhakaInputValue, type DhakaStamp } from "@/lib/dhaka-time";
+import { fundingSourceOf, type FundingSource } from "@/lib/funding";
+import {
+  FundingPicker,
+  NO_PARTNER,
+  fundingPartnerField,
+} from "@/components/shared/funding-picker";
 
 type Spend = DhakaStamp & {
   id: string;
   amount: number;
   note: string | null;
-  paidFrom: string | null; // "Treasury" | partner display name | null (untracked)
+  /** How it reads in the table: "Treasury", "Treasury (X fronted)", a partner name, or nothing. */
+  paidFrom: string | null;
+  // The columns behind that label, so the edit dialog reopens on the state the
+  // row was saved with instead of parsing it back out of the display string.
+  paidByPartnerId: string | null;
+  paidFromTreasury: boolean;
 };
 type PartnerOption = { id: string; label: string };
 type AdSet = {
@@ -72,8 +84,6 @@ type Campaign = {
 };
 
 const STATUSES = ["ACTIVE", "PAUSED", "COMPLETED", "CANCELLED"] as const;
-const NONE = "__none__";
-const TREASURY = "__treasury__";
 /** "Any channel" in the campaign form — the estimate then doesn't narrow. */
 const ANY_CHANNEL = "__any__";
 
@@ -534,7 +544,15 @@ function AdSetCard({
   const [spendDate, setSpendDate] = useState(() => toDhakaInputValue(new Date()));
   // Sticky across entries — daily spends for an ad set almost always come off
   // the same card, so keep the last choice selected after submit.
-  const [paidFrom, setPaidFrom] = useState<string>(NONE);
+  const [fundingSource, setFundingSource] = useState<FundingSource>("NONE");
+  const [paidByPartnerId, setPaidByPartnerId] = useState<string>(NO_PARTNER);
+  const [editingSpend, setEditingSpend] = useState<Spend | null>(null);
+  const [editSpendDate, setEditSpendDate] = useState("");
+  const [editSpendAmount, setEditSpendAmount] = useState("");
+  const [editSpendNote, setEditSpendNote] = useState("");
+  const [editFundingSource, setEditFundingSource] = useState<FundingSource>("NONE");
+  const [editPaidByPartnerId, setEditPaidByPartnerId] = useState<string>(NO_PARTNER);
+  const [savingSpend, setSavingSpend] = useState(false);
 
   // Facebook can charge several times in one day, so budget comparison is
   // against the DAY'S TOTAL, not each entry. A day is over budget when its
@@ -557,8 +575,8 @@ function AdSetCard({
     const fd = new FormData(e.currentTarget);
     const res = await submitOrQueue("boostSpend.create", slug, {
       adSetId: adSet.id,
-      fundingSource: paidFrom === NONE ? "NONE" : paidFrom === TREASURY ? "TREASURY" : "PARTNER",
-      paidByPartnerId: paidFrom === NONE || paidFrom === TREASURY ? "" : paidFrom,
+      fundingSource,
+      paidByPartnerId: fundingPartnerField(fundingSource, paidByPartnerId),
       ...(Object.fromEntries(fd.entries()) as Record<string, unknown>),
     });
     setAdding(false);
@@ -568,6 +586,33 @@ function AdSetCard({
     );
     (e.target as HTMLFormElement).reset();
     setSpendDate(toDhakaInputValue(new Date()));
+    router.refresh();
+  }
+
+  function openEditSpend(s: Spend) {
+    setEditingSpend(s);
+    setEditSpendDate(s.dateInput);
+    setEditSpendAmount(String(s.amount));
+    setEditSpendNote(s.note ?? "");
+    setEditFundingSource(fundingSourceOf(s));
+    setEditPaidByPartnerId(s.paidByPartnerId ?? NO_PARTNER);
+  }
+
+  async function onSubmitEditSpend(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!editingSpend) return;
+    setSavingSpend(true);
+    const fd = new FormData();
+    fd.set("date", editSpendDate);
+    fd.set("amount", editSpendAmount);
+    fd.set("note", editSpendNote);
+    fd.set("fundingSource", editFundingSource);
+    fd.set("paidByPartnerId", fundingPartnerField(editFundingSource, editPaidByPartnerId));
+    const res = await updateDailySpend(slug, editingSpend.id, fd);
+    setSavingSpend(false);
+    if (!res.ok) return toast.error(res.error ?? "Failed");
+    toast.success("Spend updated");
+    setEditingSpend(null);
     router.refresh();
   }
 
@@ -664,31 +709,15 @@ function AdSetCard({
                 required
               />
             </div>
-            <div className="space-y-2">
-              <Label>Paid from</Label>
-              <Select
-                value={paidFrom}
-                onValueChange={(v) => setPaidFrom(v ?? NONE)}
-                items={[
-                  { value: NONE, label: "— not tracked" },
-                  { value: TREASURY, label: "Treasury" },
-                  ...partnerOptions.map((p) => ({ value: p.id, label: p.label })),
-                ]}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={NONE}>— not tracked</SelectItem>
-                  <SelectItem value={TREASURY}>Treasury</SelectItem>
-                  {partnerOptions.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            <FundingPicker
+              idPrefix={`sp-funding-${adSet.id}`}
+              value={fundingSource}
+              onChange={setFundingSource}
+              partnerId={paidByPartnerId}
+              onPartnerChange={setPaidByPartnerId}
+              partnerOptions={partnerOptions}
+              allowCredit={false}
+            />
             <div className="space-y-2">
               <Label htmlFor={`sp-note-${adSet.id}`}>Note (optional)</Label>
               <Input id={`sp-note-${adSet.id}`} name="note" />
@@ -747,9 +776,14 @@ function AdSetCard({
                       header: "",
                       cardFullWidth: true,
                       cell: (s: Spend) => (
-                        <Button variant="ghost" size="sm" onClick={() => onDeleteSpend(s)}>
-                          Delete
-                        </Button>
+                        <>
+                          <Button variant="ghost" size="sm" onClick={() => openEditSpend(s)}>
+                            Edit
+                          </Button>
+                          <Button variant="ghost" size="sm" onClick={() => onDeleteSpend(s)}>
+                            Delete
+                          </Button>
+                        </>
                       ),
                     },
                   ]
@@ -758,6 +792,67 @@ function AdSetCard({
           }
         />
       </CardContent>
+
+      {/* Editing a spend is mostly about funding: the amount is read off a
+          billing statement and rarely wrong, but who ends up paying for it is
+          settled days later, when the treasury reimburses whoever's card it
+          went on. */}
+      <Dialog open={!!editingSpend} onOpenChange={(o) => !o && setEditingSpend(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit spend</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={onSubmitEditSpend} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-sp-date">Date</Label>
+              <Input
+                id="edit-sp-date"
+                type="datetime-local"
+                required
+                value={editSpendDate}
+                onChange={(e) => setEditSpendDate(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-sp-amount">Amount</Label>
+              <Input
+                id="edit-sp-amount"
+                type="number"
+                step="0.01"
+                min="0"
+                required
+                value={editSpendAmount}
+                onChange={(e) => setEditSpendAmount(e.target.value)}
+              />
+            </div>
+            <FundingPicker
+              idPrefix="edit-sp-funding"
+              value={editFundingSource}
+              onChange={setEditFundingSource}
+              partnerId={editPaidByPartnerId}
+              onPartnerChange={setEditPaidByPartnerId}
+              partnerOptions={partnerOptions}
+              allowCredit={false}
+            />
+            <div className="space-y-2">
+              <Label htmlFor="edit-sp-note">Note (optional)</Label>
+              <Input
+                id="edit-sp-note"
+                value={editSpendNote}
+                onChange={(e) => setEditSpendNote(e.target.value)}
+              />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setEditingSpend(null)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={savingSpend}>
+                {savingSpend ? "Saving…" : "Save"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }

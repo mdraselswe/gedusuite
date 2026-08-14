@@ -79,16 +79,22 @@ export default async function PurchasesPage({
           },
         }
       : {};
+  // Each option is the exact pair of columns lib/funding.ts writes for it, so
+  // the filter and the badge on the row can't disagree. PARTNER and TREASURY
+  // both pin the other column: a reimbursed row carries both, and left loose it
+  // would turn up under all three.
   const fundingWhere =
     listFilters.funding === "PARTNER"
-      ? { paidByPartnerId: { not: null } }
+      ? { paidByPartnerId: { not: null }, paidFromTreasury: false }
       : listFilters.funding === "TREASURY"
-        ? { paidFromTreasury: true }
-        : listFilters.funding === "CREDIT"
-          ? { onCredit: true }
-          : listFilters.funding === "NONE"
-            ? { paidByPartnerId: null, paidFromTreasury: false, onCredit: false }
-            : {};
+        ? { paidFromTreasury: true, paidByPartnerId: null }
+        : listFilters.funding === "REIMBURSED"
+          ? { paidFromTreasury: true, paidByPartnerId: { not: null } }
+          : listFilters.funding === "CREDIT"
+            ? { onCredit: true }
+            : listFilters.funding === "NONE"
+              ? { paidByPartnerId: null, paidFromTreasury: false, onCredit: false }
+              : {};
   const sort: PurchaseSort = sp.sort && sp.sort in SORTS ? (sp.sort as PurchaseSort) : "date_desc";
   const access = await workspaceAccess(slug);
   if (!access) redirect("/");

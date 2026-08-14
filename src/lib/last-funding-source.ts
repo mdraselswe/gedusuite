@@ -18,9 +18,11 @@
  * unlikely to be run the same way.
  */
 
-export type FundingSource = "NONE" | "PARTNER" | "TREASURY" | "CREDIT";
+import { FUNDING_SOURCES, type FundingSource } from "@/lib/funding";
 
-const VALID: readonly FundingSource[] = ["NONE", "PARTNER", "TREASURY", "CREDIT"];
+export type { FundingSource };
+
+const VALID: readonly string[] = FUNDING_SOURCES;
 
 const key = (workspace: string, form: string) => `funding:${workspace}:${form}`;
 
@@ -35,7 +37,7 @@ export function readLastFundingSource(workspace: string, form: string): FundingS
   if (typeof window === "undefined") return "NONE";
   try {
     const raw = window.localStorage.getItem(key(workspace, form));
-    return VALID.includes(raw as FundingSource) ? (raw as FundingSource) : "NONE";
+    return raw && VALID.includes(raw) ? (raw as FundingSource) : "NONE";
   } catch {
     // Private browsing and blocked storage both throw. A forgotten preference
     // is not worth breaking the form over.

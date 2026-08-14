@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { variantFullName } from "@/lib/variants";
+import { fundingSourceOf } from "@/lib/funding";
 import type { DateRange } from "@/lib/reports";
 import { dhakaRecordStamp, type DhakaStamp } from "@/lib/dhaka-time";
 
@@ -43,10 +44,16 @@ export const spendCategoryLabel: Record<SpendCategory, string> = {
 };
 
 /** Whose money it was. The other half of "where did it go". */
-export type SpendFunding = "TREASURY" | "PARTNER" | "CREDIT" | "UNRECORDED";
+export type SpendFunding = "TREASURY" | "REIMBURSED" | "PARTNER" | "CREDIT" | "UNRECORDED";
 
 export const spendFundingLabel: Record<SpendFunding, string> = {
   TREASURY: "From the treasury",
+  // Kept apart from a plain treasury row rather than folded into it. The money
+  // that left was the treasury's either way, so the two belong on the same side
+  // of the ledger — but "who actually handed it over" is the question this page
+  // exists to answer, and a partner who fronted 1,677.85 on their own card is
+  // owed a row that says so.
+  REIMBURSED: "From the treasury — a partner fronted it",
   PARTNER: "From a partner's own money",
   CREDIT: "On credit — not paid yet",
   UNRECORDED: "Nobody recorded who paid",
@@ -93,7 +100,13 @@ export type SpendingSummary = SpendTotals & {
   payoutTotal: number;
 };
 
-export const FUNDING_ORDER = ["TREASURY", "PARTNER", "CREDIT", "UNRECORDED"] as const;
+export const FUNDING_ORDER = [
+  "TREASURY",
+  "REIMBURSED",
+  "PARTNER",
+  "CREDIT",
+  "UNRECORDED",
+] as const;
 
 /**
  * Add up a set of rows — all of them, the ones left after a category is
@@ -136,16 +149,18 @@ export function summarizeRows(rows: SpendRow[]): SpendTotals {
   };
 }
 
-/** A purchase's funding, as one of the four mutually exclusive states. */
+/**
+ * A row's funding, for display. The rule itself lives in lib/funding.ts — this
+ * only renames the untagged case, which reads as a gap to close here and as a
+ * plain default on a form.
+ */
 function fundingOf(p: {
-  paidFromTreasury: boolean;
-  paidByPartnerId: string | null;
-  onCredit: boolean;
+  paidFromTreasury?: boolean | null;
+  paidByPartnerId?: string | null;
+  onCredit?: boolean | null;
 }): SpendFunding {
-  if (p.paidFromTreasury) return "TREASURY";
-  if (p.paidByPartnerId) return "PARTNER";
-  if (p.onCredit) return "CREDIT";
-  return "UNRECORDED";
+  const source = fundingSourceOf(p);
+  return source === "NONE" ? "UNRECORDED" : source;
 }
 
 export async function spendingForRange(
@@ -246,12 +261,9 @@ export async function spendingForRange(
       category: "BOOSTING" as const,
       label: b.adSet.campaign.name,
       detail: b.adSet.name,
-      // Boost spends have no credit state — an ad is paid when it runs.
-      funding: b.paidFromTreasury
-        ? ("TREASURY" as const)
-        : b.paidByPartnerId
-          ? ("PARTNER" as const)
-          : ("UNRECORDED" as const),
+      // Boost spends have no credit state — an ad is paid when it runs — but
+      // the rest of the rule is the same one, so it comes from the same place.
+      funding: fundingOf(b),
       paidBy: partnerName(b.paidByPartner),
       amount: round2(n(b.amount)),
       href: `/${slug}/boosting/${b.adSet.campaign.id}`,

@@ -32,11 +32,13 @@ import { type ComboOption } from "@/components/ui/async-combobox";
 import { SupplierPicker } from "@/components/products/supplier-picker";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { useFilterBar, type FilterDef } from "@/components/ui/filter-bar";
+import { readLastFundingSource, writeLastFundingSource } from "@/lib/last-funding-source";
+import { fundingSourceOf, type FundingSource } from "@/lib/funding";
 import {
-  readLastFundingSource,
-  writeLastFundingSource,
-  type FundingSource as SharedFundingSource,
-} from "@/lib/last-funding-source";
+  FundingPicker,
+  NO_PARTNER,
+  fundingPartnerField,
+} from "@/components/shared/funding-picker";
 import { Receipt } from "lucide-react";
 import { Money } from "@/components/ui/money";
 import { formatMoney as money } from "@/lib/money";
@@ -62,22 +64,6 @@ type Item = DhakaStamp & {
   category: string;
 };
 type Perms = { canAdd: boolean; canEdit: boolean };
-// Deliberately the shared type rather than a second copy: a fourth funding
-// state added in one place and missed in the other is how a form silently stops
-// offering it.
-type FundingSource = SharedFundingSource;
-const NO_PARTNER = "__none__";
-
-function fundingSourceOf(i: {
-  paidByPartnerId: string | null;
-  paidFromTreasury: boolean;
-  onCredit: boolean;
-}): FundingSource {
-  if (i.paidFromTreasury) return "TREASURY";
-  if (i.paidByPartnerId) return "PARTNER";
-  if (i.onCredit) return "CREDIT";
-  return "NONE";
-}
 
 const CATEGORIES = [
   "OFFICE_SUPPLIES",
@@ -156,6 +142,7 @@ export function InternalPurchaseManager({
       options: [
         { value: "PARTNER", label: "A partner's money" },
         { value: "TREASURY", label: "Treasury" },
+        { value: "REIMBURSED", label: "Treasury (a partner fronted it)" },
         { value: "CREDIT", label: "On credit (unpaid)" },
         { value: "NONE", label: "Not recorded" },
       ],
@@ -229,7 +216,7 @@ export function InternalPurchaseManager({
     fd.set("category", category);
     fd.set("supplierId", supplier?.value ?? "");
     fd.set("fundingSource", fundingSource);
-    fd.set("paidByPartnerId", fundingSource === "PARTNER" && paidByPartnerId !== NO_PARTNER ? paidByPartnerId : "");
+    fd.set("paidByPartnerId", fundingPartnerField(fundingSource, paidByPartnerId));
     const res = editing
       ? await updateInternalPurchase(slug, editing.id, fd)
       : await createInternalPurchase(slug, fd);
@@ -411,50 +398,15 @@ export function InternalPurchaseManager({
                 <Label>Supplier / shop</Label>
                 <SupplierPicker slug={slug} value={supplier} onChange={setSupplier} />
               </div>
-              <div className="space-y-2">
-                <Label>Funding source</Label>
-                <Select
-                  value={fundingSource}
-                  onValueChange={(v) => setFundingSource((v as FundingSource) ?? "NONE")}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="NONE">Not tracked</SelectItem>
-                    <SelectItem value="PARTNER">Partner</SelectItem>
-                    <SelectItem value="TREASURY">Treasury</SelectItem>
-                    <SelectItem value="CREDIT">On credit (owed to supplier)</SelectItem>
-                  </SelectContent>
-                </Select>
-                {fundingSource === "TREASURY" && (
-                  <p className="text-xs text-muted-foreground">
-                    Treasury balance: <Money value={treasuryBalance} />
-                    {editing?.paidFromTreasury ? " (excluding this entry's current amount)" : ""}
-                  </p>
-                )}
-              </div>
-              {fundingSource === "PARTNER" && (
-                <div className="space-y-2">
-                  <Label>Partner</Label>
-                  <Select
-                    value={paidByPartnerId}
-                    onValueChange={(v) => setPaidByPartnerId(v ?? NO_PARTNER)}
-                    items={partnerOptions.map((p) => ({ value: p.id, label: p.label }))}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Select partner" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {partnerOptions.map((p) => (
-                        <SelectItem key={p.id} value={p.id}>
-                          {p.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
+              <FundingPicker
+                idPrefix="internal-funding"
+                value={fundingSource}
+                onChange={setFundingSource}
+                partnerId={paidByPartnerId}
+                onPartnerChange={setPaidByPartnerId}
+                partnerOptions={partnerOptions}
+                treasuryBalance={treasuryBalance}
+              />
               <Field name="cost" error={formError} label="Unit cost" required>
                 <Input
                   id="ip-cost"

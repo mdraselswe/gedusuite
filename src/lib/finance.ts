@@ -30,6 +30,9 @@ export type PartnerBalance = {
    * profit doesn't reduce what you have invested, so this is tracked apart.
    */
   profitWithdrawn: number;
+  // The three "their own money" figures. A row the treasury reimbursed them
+  // for is excluded from all three — it names them, but the treasury is what
+  // paid (see lib/funding.ts).
   customerProductSpend: number; // Purchase (inventory to resell) rows tagged to this partner
   internalPurchaseSpend: number; // InternalPurchase rows tagged to this partner
   boostSpend: number; // BoostDailySpend rows tagged to this partner (ad money from their own pocket)
@@ -112,17 +115,24 @@ export async function partnerBalances(
       },
       _sum: { amount: true },
     }),
+    // `paidFromTreasury: false` is what keeps a reimbursed row out of the
+    // partner's expenses. A row carrying both columns means they fronted the
+    // cash and the treasury paid them back (see lib/funding.ts): the money that
+    // finally left was the treasury's, so it belongs to treasuryFundedSpend
+    // below and not here. Their name stays on the row as a record of who
+    // handed it over, and counting that as their spending is exactly what used
+    // to drive a reimbursing partner's "remaining" negative.
     prisma.purchase.findMany({
-      where: { workspaceId, paidByPartnerId: { not: null } },
+      where: { workspaceId, paidByPartnerId: { not: null }, paidFromTreasury: false },
       select: { paidByPartnerId: true, unitCost: true, quantity: true },
     }),
     prisma.internalPurchase.findMany({
-      where: { workspaceId, paidByPartnerId: { not: null } },
+      where: { workspaceId, paidByPartnerId: { not: null }, paidFromTreasury: false },
       select: { paidByPartnerId: true, cost: true, quantity: true },
     }),
     prisma.boostDailySpend.groupBy({
       by: ["paidByPartnerId"],
-      where: { workspaceId, paidByPartnerId: { not: null } },
+      where: { workspaceId, paidByPartnerId: { not: null }, paidFromTreasury: false },
       _sum: { amount: true },
     }),
     // Everything the treasury paid for. Read again here rather than handed down

@@ -37,11 +37,13 @@ import { SupplierPicker } from "@/components/products/supplier-picker";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { ANY_VALUE, UrlFilterBar, type FilterDef } from "@/components/ui/filter-bar";
 import { formatStock } from "@/lib/units";
+import { readLastFundingSource, writeLastFundingSource } from "@/lib/last-funding-source";
+import { fundingSourceOf, type FundingSource } from "@/lib/funding";
 import {
-  readLastFundingSource,
-  writeLastFundingSource,
-  type FundingSource as SharedFundingSource,
-} from "@/lib/last-funding-source";
+  FundingPicker,
+  NO_PARTNER,
+  fundingPartnerField,
+} from "@/components/shared/funding-picker";
 import { Columns3, MoreVertical, PackageOpen, X } from "lucide-react";
 import { Money } from "@/components/ui/money";
 import { Field, type FieldError } from "@/components/ui/field";
@@ -67,13 +69,8 @@ type PurchaseRow = DhakaStamp & {
   expiryDate: string | null;
 };
 type Perms = { canAdd: boolean; canEdit: boolean };
-// Deliberately the shared type rather than a second copy: a fourth funding
-// state added in one place and missed in the other is how a form silently stops
-// offering it.
-type FundingSource = SharedFundingSource;
 
 const ALL_SUPPLIERS = "__all__";
-const NO_PARTNER = "__none__";
 
 // Optional (toggleable) columns for the Recent purchases table. Date, product,
 // qty, and total always show; the rest start hidden to keep the table narrow.
@@ -93,17 +90,6 @@ const SORT_OPTIONS = [
   { value: "qty_desc", label: "Quantity: high → low" },
   { value: "qty_asc", label: "Quantity: low → high" },
 ];
-
-function fundingSourceOf(p: {
-  paidByPartnerId: string | null;
-  paidFromTreasury: boolean;
-  onCredit: boolean;
-}): FundingSource {
-  if (p.paidFromTreasury) return "TREASURY";
-  if (p.paidByPartnerId) return "PARTNER";
-  if (p.onCredit) return "CREDIT";
-  return "NONE";
-}
 
 export function PurchaseManager({
   slug,
@@ -172,6 +158,7 @@ export function PurchaseManager({
       options: [
         { value: "PARTNER", label: "A partner's money" },
         { value: "TREASURY", label: "Treasury" },
+        { value: "REIMBURSED", label: "Treasury (a partner fronted it)" },
         { value: "CREDIT", label: "On credit (unpaid)" },
         { value: "NONE", label: "Not recorded" },
       ],
@@ -318,7 +305,7 @@ export function PurchaseManager({
     fd.set("productVariantId", variant.value);
     fd.set("supplierId", supplier?.value ?? "");
     fd.set("fundingSource", fundingSource);
-    fd.set("paidByPartnerId", fundingSource === "PARTNER" && paidByPartnerId !== NO_PARTNER ? paidByPartnerId : "");
+    fd.set("paidByPartnerId", fundingPartnerField(fundingSource, paidByPartnerId));
     if (buyingByPack && upp) {
       // Entered per packet → stored per piece.
       const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
@@ -343,7 +330,9 @@ export function PurchaseManager({
     setSupplier(null);
     // Kept for the next purchase, which is nearly always funded the same way.
     writeLastFundingSource(slug, "purchase", fundingSource);
-    setPaidByPartnerId(fundingSource === "PARTNER" ? paidByPartnerId : NO_PARTNER);
+    setPaidByPartnerId(
+      fundingPartnerField(fundingSource, paidByPartnerId) ? paidByPartnerId : NO_PARTNER,
+    );
     setBuyUnit("PIECE");
     router.refresh();
   }
@@ -360,10 +349,7 @@ export function PurchaseManager({
     fd.set("productVariantId", editVariant.value);
     fd.set("supplierId", editSupplier?.value ?? "");
     fd.set("fundingSource", editFundingSource);
-    fd.set(
-      "paidByPartnerId",
-      editFundingSource === "PARTNER" && editPaidByPartnerId !== NO_PARTNER ? editPaidByPartnerId : "",
-    );
+    fd.set("paidByPartnerId", fundingPartnerField(editFundingSource, editPaidByPartnerId));
     // Controlled fields → per-piece values (packet entries get converted).
     const qty = parseFloat(editQty) || 0;
     const cost = parseFloat(editCost) || 0;
@@ -467,49 +453,15 @@ export function PurchaseManager({
                   <Label>Supplier</Label>
                   <SupplierPicker slug={slug} value={supplier} onChange={setSupplier} />
                 </div>
-                <div className="space-y-2">
-                  <Label>Funding source</Label>
-                  <Select
-                    value={fundingSource}
-                    onValueChange={(v) => setFundingSource((v as FundingSource) ?? "NONE")}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="NONE">Not tracked</SelectItem>
-                      <SelectItem value="PARTNER">Partner</SelectItem>
-                      <SelectItem value="TREASURY">Treasury</SelectItem>
-                      <SelectItem value="CREDIT">On credit (owed to supplier)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  {fundingSource === "TREASURY" && (
-                    <p className="text-xs text-muted-foreground">
-                      Treasury balance: <Money value={treasuryBalance} />
-                    </p>
-                  )}
-                </div>
-                {fundingSource === "PARTNER" && (
-                  <div className="space-y-2">
-                    <Label>Partner</Label>
-                    <Select
-                      value={paidByPartnerId}
-                      onValueChange={(v) => setPaidByPartnerId(v ?? NO_PARTNER)}
-                      items={partnerOptions.map((p) => ({ value: p.id, label: p.label }))}
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Select partner" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {partnerOptions.map((p) => (
-                          <SelectItem key={p.id} value={p.id}>
-                            {p.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
+                <FundingPicker
+                  idPrefix="purchase-funding"
+                  value={fundingSource}
+                  onChange={setFundingSource}
+                  partnerId={paidByPartnerId}
+                  onPartnerChange={setPaidByPartnerId}
+                  partnerOptions={partnerOptions}
+                  treasuryBalance={treasuryBalance}
+                />
                 <Field name="date" error={formError} label="Date" required>
                   <Input
                     id="date"
@@ -817,50 +769,15 @@ export function PurchaseManager({
                 <Label>Supplier</Label>
                 <SupplierPicker slug={slug} value={editSupplier} onChange={setEditSupplier} />
               </div>
-              <div className="space-y-2">
-                <Label>Funding source</Label>
-                <Select
-                  value={editFundingSource}
-                  onValueChange={(v) => setEditFundingSource((v as FundingSource) ?? "NONE")}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="NONE">Not tracked</SelectItem>
-                    <SelectItem value="PARTNER">Partner</SelectItem>
-                    <SelectItem value="TREASURY">Treasury</SelectItem>
-                    <SelectItem value="CREDIT">On credit (owed to supplier)</SelectItem>
-                  </SelectContent>
-                </Select>
-                {editFundingSource === "TREASURY" && (
-                  <p className="text-xs text-muted-foreground">
-                    Treasury balance: <Money value={treasuryBalance} />
-                    {editing?.paidFromTreasury ? " (excluding this entry's current amount)" : ""}
-                  </p>
-                )}
-              </div>
-              {editFundingSource === "PARTNER" && (
-                <div className="space-y-2">
-                  <Label>Partner</Label>
-                  <Select
-                    value={editPaidByPartnerId}
-                    onValueChange={(v) => setEditPaidByPartnerId(v ?? NO_PARTNER)}
-                    items={partnerOptions.map((p) => ({ value: p.id, label: p.label }))}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Select partner" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {partnerOptions.map((p) => (
-                        <SelectItem key={p.id} value={p.id}>
-                          {p.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
+              <FundingPicker
+                idPrefix="edit-purchase-funding"
+                value={editFundingSource}
+                onChange={setEditFundingSource}
+                partnerId={editPaidByPartnerId}
+                onPartnerChange={setEditPaidByPartnerId}
+                partnerOptions={partnerOptions}
+                treasuryBalance={treasuryBalance}
+              />
               <Field name="date" error={formError} label="Date" required>
                 <Input
                   id="edit-date"

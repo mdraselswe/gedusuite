@@ -20,6 +20,7 @@ import {
   spendFundingLabel,
   summarizeRows,
   type SpendCategory,
+  type SpendFunding,
   type SpendRow,
   type SpendingSummary,
 } from "@/lib/spending";
@@ -45,12 +46,17 @@ function prettyDay(day: string): string {
 }
 
 /** Credit is the one funding state that hasn't cost anything yet. */
-const fundingTone = {
+// Typed against SpendFunding rather than inferred, so a funding state added to
+// the shared list can't be left without a tone and fall through to no class.
+const fundingTone: Record<SpendFunding, string> = {
   TREASURY: "text-foreground",
+  // The money came out of the treasury like any other treasury row; the
+  // partner's name beside it is a record, not a claim, so it stays neutral.
+  REIMBURSED: "text-foreground",
   PARTNER: "text-foreground",
   CREDIT: "text-amber-700 dark:text-amber-400",
   UNRECORDED: "text-muted-foreground",
-} as const;
+};
 
 export function ExpensesView({
   slug,
