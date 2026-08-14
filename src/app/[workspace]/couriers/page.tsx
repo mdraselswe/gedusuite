@@ -5,7 +5,7 @@ import { workspaceAccess } from "@/lib/authz";
 import { can } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
 import { computeOrderTotals } from "@/lib/orders";
-import { deliveryCostCharged } from "@/lib/order-cash";
+import { codCollectable, deliveryCostCharged } from "@/lib/order-cash";
 import { expectedCourierBalance } from "@/lib/courier";
 import { loadCourierCredentials } from "@/lib/courier-credentials";
 import { getBalance } from "@/lib/steadfast";
@@ -135,9 +135,18 @@ export default async function CouriersPage({
     // collected the invoice, less anything that went missing before it reached
     // the courier's app — a rider who banked 900 against a 960 invoice leaves
     // this page expecting 60 the courier is never going to remit.
-    const cod = cancelled
-      ? Number(o.cancelledCollected)
-      : round2(Math.max(0, t.customerTotal - t.collectionShortfall));
+    // Through codCollectable, like every other surface that asks what the
+    // courier is holding. A parcel can travel by courier and still have been
+    // paid in advance — bKash or cash up front, then shipped — and the courier
+    // collects nothing on those. Read as a collection, each one added its whole
+    // invoice to a balance the courier never held, on the page whose only job
+    // is to be compared against the courier's own figure. The delivery charge
+    // still counts: the trip was made and gets billed either way, so a prepaid
+    // parcel is a minus here rather than a plus.
+    const cod = codCollectable(
+      o.paymentMethod,
+      cancelled ? Number(o.cancelledCollected) : t.invoicedTotal - t.collectionShortfall,
+    );
     // Shared with depositAmount rather than re-derived: a cancellation with no
     // courier charge recorded owes nothing for the trip, and this page saying
     // otherwise would put the balance out by a bill the courier never sent.
