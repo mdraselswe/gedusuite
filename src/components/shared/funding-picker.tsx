@@ -19,6 +19,8 @@ import {
   type FundingSource,
 } from "@/lib/funding";
 
+export { fundingLabel } from "@/lib/funding";
+
 /**
  * Who paid, on every form that asks.
  *

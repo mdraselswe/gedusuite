@@ -121,6 +121,35 @@ export function fundingSourceOf(row: {
 }
 
 /**
+ * How a saved row's funding reads in a list — short, and naming the partner
+ * where there is one.
+ *
+ * A reimbursed row would otherwise read as a plain "Treasury" and lose the one
+ * thing this state exists to keep: which of them actually handed the money
+ * over. That is what somebody is looking for when they turn this column on.
+ */
+export function fundingLabel(row: {
+  paidByPartnerId?: string | null;
+  paidFromTreasury?: boolean | null;
+  onCredit?: boolean | null;
+  /** The partner's display name, when the row carries one. */
+  paidBy?: string | null;
+}): string {
+  switch (fundingSourceOf(row)) {
+    case "REIMBURSED":
+      return row.paidBy ? `Treasury (${row.paidBy} fronted)` : "Treasury (a partner fronted)";
+    case "TREASURY":
+      return "Treasury";
+    case "PARTNER":
+      return row.paidBy ? `Partner: ${row.paidBy}` : "A partner";
+    case "CREDIT":
+      return "On credit";
+    default:
+      return "—";
+  }
+}
+
+/**
  * Who gets the automatic INVESTMENT credit — nobody, on a reimbursed row.
  *
  * The credit exists to cancel the expense that the same purchase puts on that

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   creditedPartnerId,
+  fundingLabel,
   fundingNeedsPartner,
   fundingSourceOf,
   fundingSpendsTreasury,
@@ -99,6 +100,27 @@ describe("fundingSourceOf", () => {
 
   it("reads a row carrying both columns as a reimbursement, not partner-funded", () => {
     expect(fundingSourceOf({ paidByPartnerId: P, paidFromTreasury: true })).toBe("REIMBURSED");
+  });
+});
+
+describe("fundingLabel", () => {
+  it("keeps the name of whoever fronted a reimbursed row", () => {
+    expect(
+      fundingLabel({ paidByPartnerId: P, paidFromTreasury: true, paidBy: "Muhammad Rasel" }),
+    ).toBe("Treasury (Muhammad Rasel fronted)");
+  });
+
+  it("still says a partner fronted it when the name wasn't loaded", () => {
+    expect(fundingLabel({ paidByPartnerId: P, paidFromTreasury: true })).toBe(
+      "Treasury (a partner fronted)",
+    );
+  });
+
+  it("reads the other states as they always did", () => {
+    expect(fundingLabel({ paidFromTreasury: true })).toBe("Treasury");
+    expect(fundingLabel({ paidByPartnerId: P, paidBy: "Tinny" })).toBe("Partner: Tinny");
+    expect(fundingLabel({ onCredit: true })).toBe("On credit");
+    expect(fundingLabel({})).toBe("—");
   });
 });
 

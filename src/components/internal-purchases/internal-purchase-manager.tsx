@@ -37,6 +37,7 @@ import { fundingSourceOf, type FundingSource } from "@/lib/funding";
 import {
   FundingPicker,
   NO_PARTNER,
+  fundingLabel,
   fundingPartnerField,
 } from "@/components/shared/funding-picker";
 import { Receipt } from "lucide-react";
@@ -312,14 +313,7 @@ export function InternalPurchaseManager({
               key: "funding",
               header: "Funding",
               hideable: true,
-              cell: (i) =>
-                i.paidFromTreasury
-                  ? "Treasury"
-                  : i.paidBy
-                    ? `Partner: ${i.paidBy}`
-                    : i.onCredit
-                      ? "On credit"
-                      : "—",
+              cell: (i) => fundingLabel(i),
             },
             { key: "cost", header: "Cost", align: "right", hideable: true, sortValue: (i) => i.cost, cell: (i) => <Money value={i.cost} /> },
             {

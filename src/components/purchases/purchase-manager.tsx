@@ -42,6 +42,7 @@ import { fundingSourceOf, type FundingSource } from "@/lib/funding";
 import {
   FundingPicker,
   NO_PARTNER,
+  fundingLabel,
   fundingPartnerField,
 } from "@/components/shared/funding-picker";
 import { Columns3, MoreVertical, PackageOpen, X } from "lucide-react";
@@ -645,14 +646,7 @@ export function PurchaseManager({
                     {
                       key: "funding",
                       header: "Funding",
-                      cell: (p: PurchaseRow) =>
-                        p.paidFromTreasury
-                          ? "Treasury"
-                          : p.paidBy
-                            ? `Partner: ${p.paidBy}`
-                            : p.onCredit
-                              ? "On credit"
-                              : "—",
+                      cell: (p: PurchaseRow) => fundingLabel(p),
                     },
                   ]
                 : []),
