@@ -107,6 +107,19 @@ export function ProductDetailView({
       value: -totals.codFeeCost,
       note: "the courier's percentage fee",
     },
+    // Only when there is one — most orders collect what they were supposed to,
+    // and a permanent zero row in a waterfall is noise. It has to be here when
+    // it isn't zero, though: net profit carries it, so a waterfall without it
+    // stops adding up to its own last line.
+    ...(totals.collectionShortfall > 0
+      ? [
+          {
+            label: "Collected short (allocated)",
+            value: -totals.collectionShortfall,
+            note: "what the customer paid that never reached the business",
+          },
+        ]
+      : []),
     {
       label: "Delivery margin (allocated)",
       value: totals.deliveryMargin,

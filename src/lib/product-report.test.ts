@@ -11,11 +11,18 @@ type Item = {
   returns: { quantity: number; refundAmount: number }[];
 };
 
+/**
+ * Every order-level field computeOrderTotals reads, so a case can put any of
+ * them in play. `collectionShortfall` was missing from this helper, which meant
+ * all five cases below ran with it permanently zero — and the one order-level
+ * cost the allocator forgot to split was the one no case could see.
+ */
 function order(over: Record<string, number | null>, items: Item[]) {
   return {
     deliveryCharge: (over.deliveryCharge ?? 0) as number,
     deliveryCost: over.deliveryCost ?? null,
     codFeeCost: (over.codFeeCost ?? 0) as number,
+    collectionShortfall: (over.collectionShortfall ?? 0) as number,
     packagingCost: (over.packagingCost ?? 0) as number,
     giftCost: (over.giftCost ?? 0) as number,
     discount: (over.discount ?? 0) as number,
@@ -73,6 +80,23 @@ const cases: { name: string; order: ReturnType<typeof order> }[] = [
       line("a", { unitPrice: 350, unitCost: 210, quantity: 6, discount: 100, returns: [{ quantity: 1, refundAmount: 350 }] }),
     ]),
   },
+  {
+    // The rider banked less than the invoice and kept the difference. The
+    // order carries the loss, so the lines have to carry their share of it —
+    // without this they summed to exactly `collectionShortfall` more profit
+    // than the order made.
+    name: "the courier collected short",
+    order: order(
+      { deliveryCharge: 80, deliveryCost: 60, codFeeCost: 12, collectionShortfall: 60, packagingCost: 25, giftCost: 40, discount: 100 },
+      [line("a", { quantity: 3, discount: 50 }), line("b", { unitPrice: 200, unitCost: 120, quantity: 2 })],
+    ),
+  },
+  {
+    name: "collected short on a single line, some of it returned",
+    order: order({ deliveryCharge: 60, collectionShortfall: 45, codFeeCost: 5 }, [
+      line("a", { quantity: 4, returns: [{ quantity: 1, refundAmount: 500 }] }),
+    ]),
+  },
 ];
 
 describe("allocateOrderLines", () => {
@@ -91,6 +115,7 @@ describe("allocateOrderLines", () => {
       expect(sum((l) => l.packagingCost)).toBeCloseTo(totals.packagingCost, 2);
       expect(sum((l) => l.giftCost)).toBeCloseTo(totals.giftCost, 2);
       expect(sum((l) => l.codFeeCost)).toBeCloseTo(totals.codFeeCost, 2);
+      expect(sum((l) => l.collectionShortfall)).toBeCloseTo(totals.collectionShortfall, 2);
       expect(sum((l) => l.deliveryMargin)).toBeCloseTo(totals.deliveryMargin, 2);
       expect(sum((l) => l.share)).toBeCloseTo(1, 6);
     });

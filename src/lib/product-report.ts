@@ -103,6 +103,8 @@ export type ProductReport = {
     packagingCost: number;
     giftCost: number;
     codFeeCost: number;
+    /** This product's share of money collected that never reached the business. */
+    collectionShortfall: number;
     /** Charged to the customer minus paid to the courier; can be negative. */
     deliveryMargin: number;
     netProfit: number;
@@ -147,6 +149,14 @@ export type AllocatedLine = {
   packagingCost: number;
   giftCost: number;
   codFeeCost: number;
+  /**
+   * This line's share of what the customer paid that never reached the
+   * business. Allocated like any other order-level cost — it was missing here
+   * while computeOrderTotals subtracted it, so the lines of an order with a
+   * shortfall summed to more profit than the order made, by exactly that
+   * shortfall.
+   */
+  collectionShortfall: number;
   /** Signed: positive when delivery was charged for more than it cost. */
   deliveryMargin: number;
   netProfit: number;
@@ -206,6 +216,7 @@ export function allocateOrderLines(order: AllocatableOrder): Map<string, Allocat
     const packagingCost = totals.packagingCost * share;
     const giftCost = totals.giftCost * share;
     const codFeeCost = totals.codFeeCost * share;
+    const collectionShortfall = totals.collectionShortfall * share;
     const deliveryMargin = totals.deliveryMargin * share;
 
     out.set(it.id, {
@@ -217,11 +228,16 @@ export function allocateOrderLines(order: AllocatableOrder): Map<string, Allocat
       packagingCost,
       giftCost,
       codFeeCost,
+      collectionShortfall,
       deliveryMargin,
       // Packaging is allocated and reported but not charged — see the note on
       // OrderTotals.packagingCost. Subtracting it here as well as counting the
       // packaging-material purchase in opex was the same money twice.
-      netProfit: revenue - cogs - giftCost - codFeeCost + deliveryMargin,
+      //
+      // Everything else computeOrderTotals subtracts is subtracted here too,
+      // which is what makes the lines add back up to the order. The shortfall
+      // was the one that got away.
+      netProfit: revenue - cogs - giftCost - codFeeCost - collectionShortfall + deliveryMargin,
     });
   }
   return out;
@@ -334,6 +350,7 @@ export async function buildProductReport(
   let packagingCost = 0;
   let giftCost = 0;
   let codFeeCost = 0;
+  let collectionShortfall = 0;
   let deliveryMargin = 0;
   let refunds = 0;
 
@@ -365,6 +382,7 @@ export async function buildProductReport(
       packagingCost += line.packagingCost;
       giftCost += line.giftCost;
       codFeeCost += line.codFeeCost;
+      collectionShortfall += line.collectionShortfall;
       deliveryMargin += line.deliveryMargin;
 
       const v = perVariant.get(it.productVariantId);
@@ -472,8 +490,10 @@ export async function buildProductReport(
 
   const grossMargin = revenue - cogs;
   // Packaging out, for the same reason as everywhere else: the material was
-  // expensed when it was bought.
-  const netProfit = grossMargin - giftCost - codFeeCost + deliveryMargin;
+  // expensed when it was bought. Everything else the order carries is in,
+  // including the shortfall — the same list computeOrderTotals subtracts.
+  const netProfit =
+    grossMargin - giftCost - codFeeCost - collectionShortfall + deliveryMargin;
 
   const purchaseQty = purchases.reduce((s, p) => s + p.quantity, 0);
   const purchaseSpend = purchases.reduce((s, p) => s + Number(p.unitCost) * p.quantity, 0);
@@ -508,6 +528,7 @@ export async function buildProductReport(
       packagingCost: round2(packagingCost),
       giftCost: round2(giftCost),
       codFeeCost: round2(codFeeCost),
+      collectionShortfall: round2(collectionShortfall),
       deliveryMargin: round2(deliveryMargin),
       netProfit: round2(netProfit),
       refunds: round2(refunds),
