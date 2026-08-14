@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { computeOrderTotals, orderNetProfit } from "@/lib/orders";
 import { orderRecipient } from "@/lib/order-recipient";
 import { phoneSearchTerms } from "@/lib/phone";
+import { isCourierStatus, NO_COURIER_STATUS } from "@/lib/courier-status";
 import { dhakaDayEnd, dhakaDayStart, dhakaRecordStamp } from "@/lib/dhaka-time";
 import { amountOutstanding } from "@/lib/order-cash";
 import { OrderManager } from "@/components/sales/order-manager";
@@ -36,6 +37,8 @@ export default async function OrdersPage({
     source?: string;
     held?: string;
     delivery?: string;
+    /** What the courier last said — its own status, not the order's. */
+    courier?: string;
     free?: string;
     /** Set by the call list's "+ Order" button. */
     fromLead?: string;
@@ -58,6 +61,11 @@ export default async function OrdersPage({
     // Validated against the enum: an unknown value must narrow to nothing
     // rather than reach Prisma as a bare string.
     delivery: DELIVERY_TYPES.includes(sp.delivery as never) ? (sp.delivery as string) : "",
+    // The courier's own word for it, plus "__none__" for the parcels it has
+    // said nothing about. Checked against the known list so a hand-edited link
+    // is ignored rather than showing an empty table with no filter to clear.
+    courier:
+      sp.courier === NO_COURIER_STATUS || isCourierStatus(sp.courier) ? (sp.courier as string) : "",
     // "__yes__" only: there is no reason to filter for orders that AREN'T gifts.
     free: sp.free === "__yes__" ? sp.free : "",
   };
@@ -112,6 +120,12 @@ export default async function OrdersPage({
       ? { deliveryType: listFilters.delivery as (typeof DELIVERY_TYPES)[number] }
       : {}),
     ...(listFilters.free ? { isGiveaway: true } : {}),
+    ...(listFilters.courier
+      ? {
+          courierStatus:
+            listFilters.courier === NO_COURIER_STATUS ? null : listFilters.courier,
+        }
+      : {}),
     ...dateWhere,
     ...heldWhere,
     ...(q

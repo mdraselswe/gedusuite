@@ -58,6 +58,12 @@ import {
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { ANY_VALUE, UrlFilterBar, type FilterDef } from "@/components/ui/filter-bar";
 import { ORDER_SOURCES, ORDER_SOURCE_LABEL } from "@/lib/order-source";
+import {
+  COURIER_STATUSES,
+  COURIER_STATUS_LABEL,
+  COURIER_STATUS_TONE,
+  NO_COURIER_STATUS,
+} from "@/lib/courier-status";
 import { OrderSourceCell } from "@/components/sales/order-source-cell";
 import { OrderCampaignCell, type CampaignOption } from "@/components/sales/order-campaign-cell";
 import { ParcelBookingDialog } from "@/components/sales/parcel-booking-dialog";
@@ -331,49 +337,6 @@ function formatEnum(value: string) {
 
 /** Inline click-to-edit courier order/consignment number — usually unknown
  * at order creation time and filled in later once the courier is booked. */
-/**
- * The courier's own vocabulary, in this app's words.
- *
- * Steadfast's status list and this app's order statuses share the word
- * "pending" and mean opposite things by it: to the courier a pending parcel has
- * been accepted and is moving, to the order list a pending order is one nobody
- * has done anything with yet. Both would have sat on the same row — Status
- * "Packed", courier "Pending" — which is a screen that has to be explained
- * every time somebody new reads it.
- *
- * So the courier's answer is translated rather than prettified. Only the
- * wording changes; the stored status stays the courier's own, and everything
- * that decides anything — the apply rule, the tones, the payout import — still
- * reads that.
- *
- * "Delivered" is deliberately the same word in both: there the two really do
- * mean one thing, and inventing a difference would be its own confusion.
- */
-const COURIER_STATUS_LABEL: Record<string, string> = {
-  in_review: "Booked",
-  pending: "In transit",
-  delivered: "Delivered",
-  // Not in Steadfast's documented list, but it sends it: the rider has
-  // reported the parcel delivered and the office has not signed it off. The
-  // money is not settled and the parcel can still come back, so it reads as
-  // what it is and moves nothing by itself.
-  delivered_approval_pending: "Delivered, awaiting approval",
-  partial_delivered: "Partly delivered",
-  cancelled: "Returned",
-  hold: "On hold",
-  unknown: "No update",
-};
-
-/** How each courier status reads, and how loudly. */
-const COURIER_STATUS_TONE: Record<string, string> = {
-  delivered: "text-emerald-600 dark:text-emerald-400",
-  // Amber, with the others that aren't final yet.
-  delivered_approval_pending: "text-amber-600 dark:text-amber-400",
-  partial_delivered: "text-amber-600 dark:text-amber-400",
-  cancelled: "text-destructive",
-  hold: "text-amber-600 dark:text-amber-400",
-};
-
 /**
  * Which courier statuses have an unambiguous order status behind them.
  *
@@ -777,6 +740,18 @@ export function OrderManager({
         { value: "COURIER", label: "Courier" },
       ],
     },
+    // What the courier says, as its own question: "which parcels are still out"
+    // and "which came back" are asked of the courier's answer, not of the order
+    // status — the order sits at Shipped through all of them.
+    {
+      key: "courier",
+      label: "Courier says",
+      kind: "select",
+      options: [
+        { value: NO_COURIER_STATUS, label: "Nothing from the courier" },
+        ...COURIER_STATUSES.map((s) => ({ value: s, label: COURIER_STATUS_LABEL[s] ?? s })),
+      ],
+    },
     {
       key: "held",
       label: "Cash held by",
@@ -797,6 +772,7 @@ export function OrderManager({
   const BAR_TO_URL: Record<string, string> = {
     source: "source",
     delivery: "delivery",
+    courier: "courier",
     held: "held",
     free: "free",
     "date:from": "from",
