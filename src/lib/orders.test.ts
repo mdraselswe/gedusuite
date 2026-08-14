@@ -251,3 +251,54 @@ describe("orderNetProfit", () => {
     ).toBe(0);
   });
 });
+
+describe("invoicedTotal", () => {
+  const item = (over: Partial<{ unitPrice: number; unitCost: number; quantity: number; discount: number; returns: { quantity: number; refundAmount: number }[] }> = {}) => ({
+    unitPrice: 500,
+    unitCost: 300,
+    quantity: 2,
+    discount: 0,
+    returns: [] as { quantity: number; refundAmount: number }[],
+    ...over,
+  });
+  const base = { deliveryCharge: 100, packagingCost: 0, giftCost: 0, discount: 0 };
+
+  it("matches the customer total while nothing has come back", () => {
+    const t = computeOrderTotals({ ...base, items: [item()] });
+    expect(t.invoicedTotal).toBe(1100);
+    expect(t.invoicedTotal).toBe(t.customerTotal);
+  });
+
+  /**
+   * The reason it exists: the courier's percentage fee is charged on what it
+   * collected at the door, and a return recorded afterwards must not move it.
+   */
+  it("holds still when a unit is returned, unlike the customer total", () => {
+    const t = computeOrderTotals({
+      ...base,
+      items: [item({ returns: [{ quantity: 1, refundAmount: 500 }] })],
+    });
+    expect(t.customerTotal).toBe(600);
+    expect(t.invoicedTotal).toBe(1100);
+  });
+
+  it("takes both discounts off at full size, not scaled to what was kept", () => {
+    const t = computeOrderTotals({
+      ...base,
+      discount: 50,
+      items: [item({ discount: 100, returns: [{ quantity: 1, refundAmount: 400 }] })],
+    });
+    // 1,000 goods − 100 line − 50 order + 100 delivery, none of it scaled.
+    expect(t.invoicedTotal).toBe(950);
+    // The kept-quantity figure, for contrast: half the goods went back, so
+    // both discounts halve with them — 500 − 50 − 25. Delivery is not scaled;
+    // the parcel was carried whatever came back afterwards.
+    expect(t.customerTotal).toBe(525);
+  });
+
+  it("prices a giveaway at the delivery alone", () => {
+    // goodsDiscount makes the discount exactly the goods total.
+    const t = computeOrderTotals({ ...base, discount: 1000, items: [item()] });
+    expect(t.invoicedTotal).toBe(100);
+  });
+});

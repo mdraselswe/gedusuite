@@ -14,6 +14,7 @@ import { ConcurrentWrite, runSerializable } from "@/lib/tx";
 import { variantFullName } from "@/lib/variants";
 import {
   blockedByDepositedCash,
+  codBaseFor,
   codCollectable,
   depositAmount,
   syncOrderCashEntry,
@@ -461,6 +462,8 @@ export async function createOrder(
     courierZoneId: d.courierZoneId || undefined,
     weightKg: d.weightKg,
     deliveryCost: d.deliveryCost,
+    // A fresh order has nothing returned and nothing missing, so this figure
+    // IS the invoiced total codBaseFor works from on every later save.
     codAmount: codCollectable(d.paymentMethod, customerTotal),
   });
 
@@ -631,6 +634,10 @@ export async function updateOrderHeader(
       status: true,
       items: { select: { unitPrice: true, quantity: true, discount: true } },
       gifts: { select: { quantity: true, unitCost: true } },
+      // Not edited here, but the courier's fee is quoted net of it — without
+      // it a header save re-quoted on the full invoice and quietly undid the
+      // correction recordCollectedAmount had made.
+      collectionShortfall: true,
       // Carries cancelledCollected among others, so a save that leaves the
       // partial-payment field alone still re-quotes the courier's fee against
       // the figure already stored.
@@ -709,10 +716,18 @@ export async function updateOrderHeader(
     0,
   );
   const discount = goodsDiscount(d.isGiveaway, d.discount, itemsNet);
-  const collectable =
-    order.status === "CANCELLED"
-      ? (d.cancelledCollected ?? Number(order.cancelledCollected))
-      : Math.max(0, itemsNet - discount + d.deliveryCharge);
+  // Built from the values being saved, not the stored ones — this edit may be
+  // changing the discount or the delivery charge, and the fee follows. Returns
+  // don't enter into it: this is the invoice the courier collected against.
+  const invoicedTotal = round2(itemsNet - discount + d.deliveryCharge);
+  const collectable = codBaseFor(
+    {
+      status: order.status,
+      cancelledCollected: d.cancelledCollected ?? order.cancelledCollected,
+      collectionShortfall: order.collectionShortfall,
+    },
+    { invoicedTotal },
+  );
   const courierQuote = await quoteForOrder(workspaceId, {
     courierId: d.courierId || undefined,
     courierZoneId: d.courierZoneId || undefined,
@@ -841,10 +856,18 @@ export async function updateOrderStatus(
   // fee stored at order time went on describing a delivery that wasn't
   // happening — 9.60 taken out of a 120 partial payment that was quoted
   // against a 960 parcel.
-  const collectable =
-    status === "CANCELLED"
-      ? (costs.cancelledCollected ?? Number(order.cancelledCollected))
-      : computeOrderTotals(order).customerTotal;
+  // The invoice, not `customerTotal`. This used to read the returns-aware
+  // figure while the header edit read the invoice, so an order with a return
+  // stored a different fee depending on which of the two was saved last. The
+  // courier took its cut at the door, before anything came back.
+  const collectable = codBaseFor(
+    {
+      status,
+      cancelledCollected: costs.cancelledCollected ?? order.cancelledCollected,
+      collectionShortfall: order.collectionShortfall,
+    },
+    computeOrderTotals(order),
+  );
   const { codFeeCost } = await quoteForOrder(workspaceId, {
     courierId: order.courierId ?? undefined,
     courierZoneId: order.courierZoneId ?? undefined,
@@ -1125,15 +1148,19 @@ export async function recordCollectedAmount(
   if (!Number.isFinite(collected) || collected < 0) {
     return { ok: false, error: "Enter what the courier actually collected" };
   }
-  if (collected > totals.customerTotal) {
+  if (collected > totals.invoicedTotal) {
     // More than the invoice isn't a shortfall, and quietly storing a negative
     // one would credit the treasury with money nobody has.
     return {
       ok: false,
-      error: `That's more than the order's ${totals.customerTotal}. Edit the order instead if the price changed.`,
+      error: `That's more than the order's ${totals.invoicedTotal}. Edit the order instead if the price changed.`,
     };
   }
-  const shortfall = Math.round((totals.customerTotal - collected + Number.EPSILON) * 100) / 100;
+  // Measured against the invoice rather than `customerTotal`, which has any
+  // return taken off. The rider handed over what was on the label, so the gap
+  // is against the label — and a return recorded later can't then leave a
+  // shortfall stranded above what the order is now worth.
+  const shortfall = round2(totals.invoicedTotal - collected);
 
   const quote = await quoteForOrder(workspaceId, {
     courierId: order.courierId ?? undefined,
@@ -1142,7 +1169,13 @@ export async function recordCollectedAmount(
     // A typed cost stays typed: the person who read the courier's bill knows
     // better than the rate table, and re-quoting would silently overwrite it.
     deliveryCost: order.deliveryCost == null ? undefined : Number(order.deliveryCost),
-    codAmount: codCollectable(order.paymentMethod, collected),
+    // Through the same helper as the other three, with the shortfall about to
+    // be stored — which reproduces `collected` exactly, and keeps this path
+    // from being a fourth private copy of the rule.
+    codAmount: codCollectable(
+      order.paymentMethod,
+      codBaseFor({ ...order, collectionShortfall: shortfall }, totals),
+    ),
   });
 
   await prisma.$transaction(async (tx) => {

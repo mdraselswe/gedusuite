@@ -6,6 +6,7 @@ import {
   amountCollected,
   amountOutstanding,
   amountRemitted,
+  codBaseFor,
   collectionRecorded,
   courierChargeNote,
   deliveryCostCharged,
@@ -428,5 +429,52 @@ describe("depositAmount with a collection shortfall", () => {
     expect(d.gross).toBe(900);
     expect(d.courierCharges).toBe(72.85);
     expect(d.net).toBe(827.15);
+  });
+});
+
+describe("codBaseFor", () => {
+  /**
+   * The bug this exists for: three actions worked this out separately, and a
+   * return made two of them disagree. The courier collected the invoice at the
+   * door — goods sent back afterwards don't bring its cut back.
+   */
+  it("quotes on the invoice, not on what's left after a return", () => {
+    const order = { status: "DELIVERED", collectionShortfall: 0 };
+    // 1,100 invoiced, 300 of it returned since.
+    expect(codBaseFor(order, { invoicedTotal: 1100 })).toBe(1100);
+  });
+
+  it("takes off what never reached the courier", () => {
+    // The rider banked 1,040 of an 1,100 invoice and kept the rest.
+    expect(
+      codBaseFor({ status: "DELIVERED", collectionShortfall: 60 }, { invoicedTotal: 1100 }),
+    ).toBe(1040);
+  });
+
+  it("quotes a cancellation on what came back with the parcel", () => {
+    // Nobody paid the 1,100; the customer paid the shipping and refused the
+    // goods. The fee is on the 120, not on the parcel that never arrived.
+    expect(
+      codBaseFor(
+        { status: "CANCELLED", cancelledCollected: 120, collectionShortfall: 0 },
+        { invoicedTotal: 1100 },
+      ),
+    ).toBe(120);
+  });
+
+  it("charges nothing on a cancellation that collected nothing", () => {
+    expect(
+      codBaseFor({ status: "CANCELLED", cancelledCollected: 0 }, { invoicedTotal: 1100 }),
+    ).toBe(0);
+  });
+
+  it("never goes below zero when the shortfall covers the whole invoice", () => {
+    expect(
+      codBaseFor({ status: "DELIVERED", collectionShortfall: 5000 }, { invoicedTotal: 1100 }),
+    ).toBe(0);
+  });
+
+  it("treats a missing shortfall as none", () => {
+    expect(codBaseFor({ status: "DELIVERED" }, { invoicedTotal: 1100 })).toBe(1100);
   });
 });

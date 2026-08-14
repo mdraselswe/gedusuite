@@ -112,6 +112,42 @@ export function codCollectable(paymentMethod: string, amount: number): number {
 }
 
 /**
+ * The amount a courier's percentage fee is charged on: what its own ledger
+ * shows for this parcel.
+ *
+ * Three actions re-quoted this and each worked it out again. They agreed until
+ * a return was recorded, and then they didn't: the header edit quoted on the
+ * invoice, the status change on `customerTotal`, which has the return taken
+ * off. The same order therefore stored a different fee depending on which
+ * action was saved last, and neither the orders list nor the courier page
+ * could tell which one it was looking at.
+ *
+ * The invoice is the right base. The courier took its cut of what it collected
+ * at the door, on the day; goods sent back afterwards don't bring any of it
+ * back — exactly the reasoning `collectionShortfall` already follows in
+ * computeOrderTotals. So `updateOrderStatus` was the one that was wrong.
+ *
+ * A cancellation collected only whatever came back with a partial delivery,
+ * and a shortfall means the courier's ledger is lighter than the invoice by
+ * that much. Both come off the same base rather than replacing it.
+ */
+export function codBaseFor(
+  order: {
+    status: string;
+    cancelledCollected?: Prisma.Decimal | number | null;
+    collectionShortfall?: Prisma.Decimal | number | null;
+  },
+  totals: Pick<OrderTotals, "invoicedTotal">,
+): number {
+  if (order.status === "CANCELLED") {
+    return round2(Math.max(0, Number(order.cancelledCollected ?? 0)));
+  }
+  return round2(
+    Math.max(0, totals.invoicedTotal - Number(order.collectionShortfall ?? 0)),
+  );
+}
+
+/**
  * What the customer has actually handed over so far.
  *
  * PAID is taken to mean the whole customer total whatever `amountPaid` holds —

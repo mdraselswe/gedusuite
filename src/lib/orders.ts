@@ -94,6 +94,17 @@ export type OrderTotals = {
   collectionShortfall: number;
   netProfit: number; // sale − cost − discount − gift − shortfall, plus/minus delivery margin, less the courier's COD fee
   customerTotal: number; // owed for kept goods incl. delivery
+  /**
+   * What the customer was billed before any return — the figure that was on
+   * the label, and the money the courier actually took at the door.
+   *
+   * Equal to `customerTotal` until something comes back. Kept apart because
+   * the two answer different questions and the courier's percentage fee needs
+   * this one: it took its cut of what it collected on the day, and goods
+   * returned afterwards don't bring any of that back. The same reasoning
+   * `collectionShortfall` already follows.
+   */
+  invoicedTotal: number;
   returnedUnits: number;
 };
 
@@ -114,6 +125,9 @@ export type OrderTotals = {
 export function computeOrderTotals(order: OrderWithTotals): OrderTotals {
   let grossRevenue = 0;
   let itemDiscounts = 0;
+  // The same line discounts unscaled — what was actually knocked off the
+  // invoice the customer was handed, before anything came back.
+  let invoicedItemDiscounts = 0;
   let cogs = 0;
   let refunds = 0;
   let returnedUnits = 0;
@@ -128,6 +142,7 @@ export function computeOrderTotals(order: OrderWithTotals): OrderTotals {
     grossRevenue += n(item.unitPrice) * qty;
     effectiveRevenue += n(item.unitPrice) * effectiveQty;
     itemDiscounts += n(item.discount) * fraction;
+    invoicedItemDiscounts += n(item.discount);
     cogs += n(item.unitCost) * effectiveQty;
     refunds += item.returns.reduce((s, r) => s + n(r.refundAmount), 0);
     returnedUnits += returnedQty;
@@ -167,6 +182,10 @@ export function computeOrderTotals(order: OrderWithTotals): OrderTotals {
   // and they paid it. What went missing afterwards is the shop's loss, not a
   // debt to chase them for.
   const customerTotal = netRevenue + deliveryCharge;
+  // Neither discount scaled, because nothing had come back yet when this was
+  // the figure on the label.
+  const invoicedTotal =
+    grossRevenue - invoicedItemDiscounts - n(order.discount) + deliveryCharge;
 
   return {
     grossRevenue: round2(grossRevenue),
@@ -184,6 +203,7 @@ export function computeOrderTotals(order: OrderWithTotals): OrderTotals {
     collectionShortfall: round2(collectionShortfall),
     netProfit: round2(netProfit),
     customerTotal: round2(customerTotal),
+    invoicedTotal: round2(invoicedTotal),
     returnedUnits,
   };
 }
