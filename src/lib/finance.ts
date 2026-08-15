@@ -68,6 +68,136 @@ export type PartnerBalance = {
   remaining: number;
 };
 
+/** What a partner spent out of their own pocket, and on what. */
+export type PartnerSpendKind = "PRODUCT" | "INTERNAL" | "BOOST";
+
+/** The partner ledger, as the arithmetic below needs it. */
+export type PartnerLedgerInput = {
+  txns: {
+    partnerId: string;
+    type: string;
+    amount: number;
+    date: Date;
+    /** Part of a profit distribution — that hands out earnings, not capital. */
+    fromDistribution: boolean;
+    /** Whether the treasury pot itself moved. */
+    movedTreasury: boolean;
+  }[];
+  /**
+   * Spending a partner paid for themselves. A row the treasury reimbursed them
+   * for does not belong here — the money that finally left was the treasury's
+   * (see lib/funding.ts).
+   */
+  partnerSpend: { partnerId: string; amount: number; kind: PartnerSpendKind }[];
+  /** What the treasury paid for, with the dates it paid on. */
+  treasurySpend: { at: Date; amount: number }[];
+};
+
+/**
+ * The partner-balance arithmetic, with the database left outside.
+ *
+ * Split out from `partnerBalances` so the tests can reach it. They used to run
+ * against a copy of these rules declared at the top of finance.test.ts, which
+ * meant the shipped function had no coverage at all and the two were free to
+ * drift — and they did: after the pot walk replaced the old lifetime
+ * min(spend, deposits) rule, the copy went on charging by the old one and all
+ * thirty tests still passed. On this shop's live data the two disagreed by
+ * 888.67 of capital spend, with nothing to say so.
+ */
+export function rollUpBalances(input: PartnerLedgerInput): Map<string, PartnerBalance> {
+  const map = new Map<string, PartnerBalance>();
+  const ensure = (id: string): PartnerBalance =>
+    map.get(id) ??
+    map
+      .set(id, {
+        partnerId: id,
+        invested: 0,
+        withdrawn: 0,
+        capitalWithdrawn: 0,
+        profitWithdrawn: 0,
+        customerProductSpend: 0,
+        internalPurchaseSpend: 0,
+        boostSpend: 0,
+        miscExpense: 0,
+        expenses: 0,
+        depositedToTreasury: 0,
+        treasuryCapitalWithdrawn: 0,
+        treasuryCapitalSpend: 0,
+        treasuryCapitalRemaining: 0,
+        netCapital: 0,
+        remaining: 0,
+      })
+      .get(id)!;
+
+  // Every movement of the pot, in the order it happened — the ledger
+  // sharePotSpending walks below.
+  const potEvents: PotEvent[] = [];
+
+  for (const r of input.txns) {
+    const b = ensure(r.partnerId);
+    if (r.type === "INVESTMENT") b.invested += r.amount;
+    else if (r.type === "EXPENSE") b.miscExpense += r.amount;
+    else if (r.type === "DEPOSIT_TO_TREASURY") {
+      b.depositedToTreasury += r.amount;
+      potEvents.push({ at: r.date, kind: "DEPOSIT", partnerId: r.partnerId, amount: r.amount });
+    } else if (r.type === "WITHDRAWAL") {
+      b.withdrawn += r.amount;
+      // A distribution hands out earnings, not capital, so it leaves what a
+      // partner has invested exactly where it was.
+      if (r.fromDistribution) continue;
+      b.capitalWithdrawn += r.amount;
+      if (r.movedTreasury) {
+        b.treasuryCapitalWithdrawn += r.amount;
+        potEvents.push({ at: r.date, kind: "WITHDRAWAL", partnerId: r.partnerId, amount: r.amount });
+      }
+    }
+  }
+  for (const s of input.partnerSpend) {
+    const b = ensure(s.partnerId);
+    if (s.kind === "PRODUCT") b.customerProductSpend += s.amount;
+    else if (s.kind === "INTERNAL") b.internalPurchaseSpend += s.amount;
+    else b.boostSpend += s.amount;
+  }
+  for (const s of input.treasurySpend) {
+    potEvents.push({ at: s.at, kind: "SPEND", amount: s.amount });
+  }
+
+  for (const b of map.values()) {
+    b.invested = round2(b.invested);
+    b.withdrawn = round2(b.withdrawn);
+    b.customerProductSpend = round2(b.customerProductSpend);
+    b.internalPurchaseSpend = round2(b.internalPurchaseSpend);
+    b.boostSpend = round2(b.boostSpend);
+    b.miscExpense = round2(b.miscExpense);
+    b.expenses = round2(
+      b.customerProductSpend + b.internalPurchaseSpend + b.boostSpend + b.miscExpense,
+    );
+    b.depositedToTreasury = round2(b.depositedToTreasury);
+    b.capitalWithdrawn = round2(b.capitalWithdrawn);
+    b.treasuryCapitalWithdrawn = round2(b.treasuryCapitalWithdrawn);
+    b.profitWithdrawn = round2(b.withdrawn - b.capitalWithdrawn);
+    b.netCapital = round2(b.invested + b.depositedToTreasury - b.capitalWithdrawn);
+  }
+
+  // Second pass, because sharing the treasury's spending out needs every
+  // partner's stake in the pot as it stood at each moment it was spent from.
+  //
+  // This used to compare two lifetime sums — all treasury spending ever against
+  // all partner deposits ever, charged as min(spend, pool). Once lifetime
+  // spending passed lifetime deposits, which it does in any shop that has been
+  // trading a while, every partner's whole deposit read as spent the instant it
+  // landed: hand over 5,000 on a Tuesday and "remaining" would not move,
+  // because last week's purchases had already been charged against money that
+  // did not exist when they were made.
+  const share = sharePotSpending(potEvents);
+  for (const b of map.values()) {
+    b.treasuryCapitalSpend = share.capitalSpent.get(b.partnerId) ?? 0;
+    b.treasuryCapitalRemaining = share.stillInPot.get(b.partnerId) ?? 0;
+    b.remaining = round2(b.netCapital - b.expenses - b.treasuryCapitalSpend);
+  }
+  return map;
+}
+
 /**
  * Derive each partner's balances — never stored, always computed from the
  * underlying records. `expenses` is auto-summed from three real sources —
@@ -157,110 +287,40 @@ export async function partnerBalances(
     }),
   ]);
 
-  const map = new Map<string, PartnerBalance>();
-  const ensure = (id: string): PartnerBalance =>
-    map.get(id) ??
-    map
-      .set(id, {
-        partnerId: id,
-        invested: 0,
-        withdrawn: 0,
-        capitalWithdrawn: 0,
-        profitWithdrawn: 0,
-        customerProductSpend: 0,
-        internalPurchaseSpend: 0,
-        boostSpend: 0,
-        miscExpense: 0,
-        expenses: 0,
-        depositedToTreasury: 0,
-        treasuryCapitalWithdrawn: 0,
-        treasuryCapitalSpend: 0,
-        treasuryCapitalRemaining: 0,
-        netCapital: 0,
-        remaining: 0,
-      })
-      .get(id)!;
-
-  // Every movement of the pot, in the order it happened — the ledger
-  // sharePotSpending walks below.
-  const potEvents: PotEvent[] = [];
-
-  for (const r of txns) {
-    const b = ensure(r.partnerId);
-    const amt = Number(r.amount);
-    if (r.type === "INVESTMENT") b.invested += amt;
-    else if (r.type === "EXPENSE") b.miscExpense += amt;
-    else if (r.type === "DEPOSIT_TO_TREASURY") {
-      b.depositedToTreasury += amt;
-      potEvents.push({ at: r.date, kind: "DEPOSIT", partnerId: r.partnerId, amount: amt });
-    } else if (r.type === "WITHDRAWAL") {
-      b.withdrawn += amt;
-      // A distribution hands out earnings, not capital, so it leaves what a
-      // partner has invested exactly where it was.
-      if (r.distributionId) continue;
-      b.capitalWithdrawn += amt;
-      if (r.treasuryEntry) {
-        b.treasuryCapitalWithdrawn += amt;
-        potEvents.push({ at: r.date, kind: "WITHDRAWAL", partnerId: r.partnerId, amount: amt });
-      }
-    }
-  }
-  for (const p of purchaseRows) {
-    const b = ensure(p.paidByPartnerId!);
-    b.customerProductSpend += Number(p.unitCost) * p.quantity;
-  }
-  for (const ip of internalRows) {
-    const b = ensure(ip.paidByPartnerId!);
-    b.internalPurchaseSpend += Number(ip.cost) * ip.quantity;
-  }
-  for (const bs of boostRows) {
-    const b = ensure(bs.paidByPartnerId!);
-    b.boostSpend += Number(bs._sum.amount ?? 0);
-  }
-  for (const p of treasuryPurchases) {
-    potEvents.push({ at: p.date, kind: "SPEND", amount: Number(p.unitCost) * p.quantity });
-  }
-  for (const ip of treasuryInternals) {
-    potEvents.push({ at: ip.date, kind: "SPEND", amount: Number(ip.cost) * ip.quantity });
-  }
-  for (const bs of treasuryBoost) {
-    potEvents.push({ at: bs.date, kind: "SPEND", amount: Number(bs.amount) });
-  }
-
-  for (const b of map.values()) {
-    b.invested = round2(b.invested);
-    b.withdrawn = round2(b.withdrawn);
-    b.customerProductSpend = round2(b.customerProductSpend);
-    b.internalPurchaseSpend = round2(b.internalPurchaseSpend);
-    b.boostSpend = round2(b.boostSpend);
-    b.miscExpense = round2(b.miscExpense);
-    b.expenses = round2(
-      b.customerProductSpend + b.internalPurchaseSpend + b.boostSpend + b.miscExpense,
-    );
-    b.depositedToTreasury = round2(b.depositedToTreasury);
-    b.capitalWithdrawn = round2(b.capitalWithdrawn);
-    b.treasuryCapitalWithdrawn = round2(b.treasuryCapitalWithdrawn);
-    b.profitWithdrawn = round2(b.withdrawn - b.capitalWithdrawn);
-    b.netCapital = round2(b.invested + b.depositedToTreasury - b.capitalWithdrawn);
-  }
-
-  // Second pass, because sharing the treasury's spending out needs every
-  // partner's stake in the pot as it stood at each moment it was spent from.
-  //
-  // This used to compare two lifetime sums — all treasury spending ever against
-  // all partner deposits ever, charged as min(spend, pool). Once lifetime
-  // spending passed lifetime deposits, which it does in any shop that has been
-  // trading a while, every partner's whole deposit read as spent the instant it
-  // landed: hand over 5,000 on a Tuesday and "remaining" would not move,
-  // because last week's purchases had already been charged against money that
-  // did not exist when they were made.
-  const share = sharePotSpending(potEvents);
-  for (const b of map.values()) {
-    b.treasuryCapitalSpend = share.capitalSpent.get(b.partnerId) ?? 0;
-    b.treasuryCapitalRemaining = share.stillInPot.get(b.partnerId) ?? 0;
-    b.remaining = round2(b.netCapital - b.expenses - b.treasuryCapitalSpend);
-  }
-  return map;
+  // Nothing but shape-shifting from here: the arithmetic is rollUpBalances,
+  // which the tests can call without a database in front of it.
+  return rollUpBalances({
+    txns: txns.map((r) => ({
+      partnerId: r.partnerId,
+      type: r.type,
+      amount: Number(r.amount),
+      date: r.date,
+      fromDistribution: r.distributionId != null,
+      movedTreasury: r.treasuryEntry != null,
+    })),
+    partnerSpend: [
+      ...purchaseRows.map((p) => ({
+        partnerId: p.paidByPartnerId!,
+        amount: Number(p.unitCost) * p.quantity,
+        kind: "PRODUCT" as const,
+      })),
+      ...internalRows.map((ip) => ({
+        partnerId: ip.paidByPartnerId!,
+        amount: Number(ip.cost) * ip.quantity,
+        kind: "INTERNAL" as const,
+      })),
+      ...boostRows.map((bs) => ({
+        partnerId: bs.paidByPartnerId!,
+        amount: Number(bs._sum.amount ?? 0),
+        kind: "BOOST" as const,
+      })),
+    ],
+    treasurySpend: [
+      ...treasuryPurchases.map((p) => ({ at: p.date, amount: Number(p.unitCost) * p.quantity })),
+      ...treasuryInternals.map((ip) => ({ at: ip.date, amount: Number(ip.cost) * ip.quantity })),
+      ...treasuryBoost.map((bs) => ({ at: bs.date, amount: Number(bs.amount) })),
+    ],
+  });
 }
 
 export type BusinessCapitalSummary = {
@@ -353,6 +413,114 @@ export type BusinessCapitalSummary = {
   businessHoldings: number;
 };
 
+/** What the whole-business rollup needs, with the database left outside. */
+export type CapitalInput = {
+  /** Every partner's balances — the output of rollUpBalances. */
+  balances: Iterable<PartnerBalance>;
+  /**
+   * Every bit of spending in the workspace, tagged or not. `MISC` is a manual
+   * partner expense, which is their own money by definition and so is never
+   * treasury-funded and never on credit.
+   */
+  spend: {
+    amount: number;
+    kind: PartnerSpendKind | "MISC";
+    paidFromTreasury: boolean;
+    onCredit: boolean;
+  }[];
+  inventory: { value: number; units: number; fromCorrections: number };
+  treasuryBalance: number;
+};
+
+/**
+ * The whole-business capital arithmetic, with the database left outside.
+ *
+ * Split out for the same reason as rollUpBalances: this is the sum that decides
+ * what each partner is told they still own, and the only thing testing it was a
+ * paraphrase of it living in the test file.
+ */
+export function summariseCapital(input: CapitalInput): BusinessCapitalSummary {
+  let totalInvested = 0;
+  let totalCapitalWithdrawn = 0;
+  // The pot's partner-funded part, stake by stake — the same walk
+  // rollUpBalances runs, so the table and this card can't disagree about how
+  // much of the treasury is still capital.
+  //
+  // Net of what the treasury has since spent of it, which it did not used to
+  // be: a deposit fully consumed by a purchase went on being reported as
+  // partner money sitting in the pot, and the note under the card promised the
+  // partners a share of a balance that was by then entirely sales cash.
+  let partnerCashInTreasury = 0;
+  // Their side of the same sum: treasury spending that came out of partner
+  // deposits rather than takings.
+  let treasuryCapitalSpend = 0;
+  for (const b of input.balances) {
+    // Both routes into the business, added together: money a partner spent
+    // straight from their pocket, and money they handed to the treasury.
+    totalInvested += b.invested + b.depositedToTreasury;
+    totalCapitalWithdrawn += b.capitalWithdrawn;
+    partnerCashInTreasury += b.treasuryCapitalRemaining;
+    treasuryCapitalSpend += b.treasuryCapitalSpend;
+  }
+  // What's still in. Summing `invested` alone would go on reporting money a
+  // partner has already taken back as though it were still funding the shop.
+  const netInvested = totalInvested - totalCapitalWithdrawn;
+
+  const sumWhere = (pick: (r: CapitalInput["spend"][number]) => boolean) =>
+    input.spend.filter(pick).reduce((s, r) => s + r.amount, 0);
+  const customerProductSpend = sumWhere((r) => r.kind === "PRODUCT");
+  const internalPurchaseSpend = sumWhere((r) => r.kind === "INTERNAL");
+  const boostSpend = sumWhere((r) => r.kind === "BOOST");
+  const miscExpense = sumWhere((r) => r.kind === "MISC");
+  const totalExpenses = customerProductSpend + internalPurchaseSpend + boostSpend + miscExpense;
+
+  // Paid for out of the shared pot. A manual PartnerTxn EXPENSE is a partner's
+  // own money by definition, so it never appears here.
+  const treasuryFundedSpend = sumWhere((r) => r.paidFromTreasury);
+  // Owed, not spent. Nobody's money has left for these yet, so they can't come
+  // off partner capital — but the debt is real, which is why it's reported
+  // rather than simply ignored.
+  const supplierDue = sumWhere((r) => r.onCredit);
+  // Treasury spending is charged against the partner money in the pot first,
+  // and only the excess is treated as the shop's own takings. Charging none of
+  // it counted partner capital twice: still "unspent" here, and already stock
+  // on the shelf over in inventoryValue.
+  //
+  // Taken from what the pot walk actually charged the partners rather than
+  // recomputed from lifetime totals — every spend it saw was split between the
+  // two, so the remainder is this by construction, and the per-partner table
+  // and this card cannot land on different answers.
+  const salesFundedSpend = Math.max(0, round2(treasuryFundedSpend - treasuryCapitalSpend));
+  const capitalSpend = totalExpenses - salesFundedSpend - supplierDue;
+  const totalRemaining = netInvested - capitalSpend;
+
+  return {
+    totalInvested: round2(totalInvested),
+    totalCapitalWithdrawn: round2(totalCapitalWithdrawn),
+    netInvested: round2(netInvested),
+    customerProductSpend: round2(customerProductSpend),
+    internalPurchaseSpend: round2(internalPurchaseSpend),
+    boostSpend: round2(boostSpend),
+    miscExpense: round2(miscExpense),
+    totalExpenses: round2(totalExpenses),
+    treasuryFundedSpend: round2(treasuryFundedSpend),
+    partnerCashInTreasury: round2(partnerCashInTreasury),
+    salesFundedSpend: round2(salesFundedSpend),
+    treasuryCapitalSpend: round2(treasuryCapitalSpend),
+    supplierDue: round2(supplierDue),
+    capitalSpend: round2(capitalSpend),
+    totalRemaining: round2(totalRemaining),
+    inventoryValue: input.inventory.value,
+    inventoryUnits: input.inventory.units,
+    inventoryFromCorrections: input.inventory.fromCorrections,
+    treasuryBalance: round2(input.treasuryBalance),
+    // Cash and goods less the bills against them. Nothing from the capital
+    // arithmetic above goes in: a partner deposit is already counted once as
+    // treasury cash, and adding "unspent capital" on top would count it twice.
+    businessHoldings: round2(input.treasuryBalance + input.inventory.value - supplierDue),
+  };
+}
+
 /**
  * Whole-business rollup: what the partners put in, what's still in, and what's
  * left of it once the spending is accounted for.
@@ -388,7 +556,6 @@ export async function businessCapitalSummary(
     internalPurchases,
     miscRows,
     boostRows,
-    treasuryBoost,
     stock,
     treasury,
   ] = await Promise.all([
@@ -405,12 +572,11 @@ export async function businessCapitalSummary(
       where: { workspaceId, type: "EXPENSE" },
       _sum: { amount: true },
     }),
-    prisma.boostDailySpend.aggregate({
+    // Grouped rather than two aggregates: the treasury-funded half and the
+    // whole now come from one read and cannot disagree about the same rows.
+    prisma.boostDailySpend.groupBy({
+      by: ["paidFromTreasury"],
       where: { workspaceId },
-      _sum: { amount: true },
-    }),
-    prisma.boostDailySpend.aggregate({
-      where: { workspaceId, paidFromTreasury: true },
       _sum: { amount: true },
     }),
     // The asset side of all that purchasing — see businessHoldings.
@@ -418,102 +584,41 @@ export async function businessCapitalSummary(
     treasuryBalance(workspaceId),
   ]);
 
-  let totalInvested = 0;
-  let totalCapitalWithdrawn = 0;
-  // The pot's partner-funded part, stake by stake — the same walk
-  // partnerBalances runs, so the table and this card can't disagree about how
-  // much of the treasury is still capital.
-  //
-  // Net of what the treasury has since spent of it, which it did not used to
-  // be: a deposit fully consumed by a purchase went on being reported as
-  // partner money sitting in the pot, and the note under the card promised the
-  // partners a share of a balance that was by then entirely sales cash.
-  let partnerCashInTreasury = 0;
-  // Their side of the same sum: treasury spending that came out of partner
-  // deposits rather than takings.
-  let treasuryCapitalSpend = 0;
-  for (const b of balances.values()) {
-    // Both routes into the business, added together: money a partner spent
-    // straight from their pocket, and money they handed to the treasury.
-    totalInvested += b.invested + b.depositedToTreasury;
-    totalCapitalWithdrawn += b.capitalWithdrawn;
-    partnerCashInTreasury += b.treasuryCapitalRemaining;
-    treasuryCapitalSpend += b.treasuryCapitalSpend;
-  }
-  // What's still in. Summing `invested` alone would go on reporting money a
-  // partner has already taken back as though it were still funding the shop.
-  const netInvested = totalInvested - totalCapitalWithdrawn;
-
-  const customerProductSpend = purchases.reduce(
-    (s, p) => s + Number(p.unitCost) * p.quantity,
-    0,
-  );
-  const internalPurchaseSpend = internalPurchases.reduce(
-    (s, ip) => s + Number(ip.cost) * ip.quantity,
-    0,
-  );
-  const miscExpense = Number(miscRows._sum.amount ?? 0);
-  const boostSpend = Number(boostRows._sum.amount ?? 0);
-  const totalExpenses = customerProductSpend + internalPurchaseSpend + boostSpend + miscExpense;
-
-  // Paid for out of the shared pot. A manual PartnerTxn EXPENSE is a partner's
-  // own money by definition, so it never appears here.
-  const treasuryFundedSpend =
-    purchases
-      .filter((p) => p.paidFromTreasury)
-      .reduce((s, p) => s + Number(p.unitCost) * p.quantity, 0) +
-    internalPurchases
-      .filter((ip) => ip.paidFromTreasury)
-      .reduce((s, ip) => s + Number(ip.cost) * ip.quantity, 0) +
-    Number(treasuryBoost._sum.amount ?? 0);
-  // Owed, not spent. Nobody's money has left for these yet, so they can't come
-  // off partner capital — but the debt is real, which is why it's reported
-  // rather than simply ignored.
-  const supplierDue =
-    purchases
-      .filter((p) => p.onCredit)
-      .reduce((s, p) => s + Number(p.unitCost) * p.quantity, 0) +
-    internalPurchases
-      .filter((ip) => ip.onCredit)
-      .reduce((s, ip) => s + Number(ip.cost) * ip.quantity, 0);
-  // Treasury spending is charged against the partner money in the pot first,
-  // and only the excess is treated as the shop's own takings. Charging none of
-  // it counted partner capital twice: still "unspent" here, and already stock
-  // on the shelf over in inventoryValue.
-  //
-  // Taken from what the pot walk actually charged the partners rather than
-  // recomputed from lifetime totals — every spend it saw was split between the
-  // two, so the remainder is this by construction, and the per-partner table
-  // and this card cannot land on different answers.
-  const salesFundedSpend = Math.max(0, round2(treasuryFundedSpend - treasuryCapitalSpend));
-  const capitalSpend = totalExpenses - salesFundedSpend - supplierDue;
-  const totalRemaining = netInvested - capitalSpend;
-
-  return {
-    totalInvested: round2(totalInvested),
-    totalCapitalWithdrawn: round2(totalCapitalWithdrawn),
-    netInvested: round2(netInvested),
-    customerProductSpend: round2(customerProductSpend),
-    internalPurchaseSpend: round2(internalPurchaseSpend),
-    boostSpend: round2(boostSpend),
-    miscExpense: round2(miscExpense),
-    totalExpenses: round2(totalExpenses),
-    treasuryFundedSpend: round2(treasuryFundedSpend),
-    partnerCashInTreasury: round2(partnerCashInTreasury),
-    salesFundedSpend: round2(salesFundedSpend),
-    treasuryCapitalSpend: round2(treasuryCapitalSpend),
-    supplierDue: round2(supplierDue),
-    capitalSpend: round2(capitalSpend),
-    totalRemaining: round2(totalRemaining),
-    inventoryValue: stock.value,
-    inventoryUnits: stock.units,
-    inventoryFromCorrections: stock.fromCorrections,
-    treasuryBalance: round2(treasury),
-    // Cash and goods less the bills against them. Nothing from the capital
-    // arithmetic above goes in: a partner deposit is already counted once as
-    // treasury cash, and adding "unspent capital" on top would count it twice.
-    businessHoldings: round2(treasury + stock.value - supplierDue),
-  };
+  // Nothing but shape-shifting from here: the arithmetic is summariseCapital,
+  // which the tests can call without a database in front of it.
+  return summariseCapital({
+    balances: balances.values(),
+    spend: [
+      ...purchases.map((p) => ({
+        amount: Number(p.unitCost) * p.quantity,
+        kind: "PRODUCT" as const,
+        paidFromTreasury: p.paidFromTreasury,
+        onCredit: p.onCredit,
+      })),
+      ...internalPurchases.map((ip) => ({
+        amount: Number(ip.cost) * ip.quantity,
+        kind: "INTERNAL" as const,
+        paidFromTreasury: ip.paidFromTreasury,
+        onCredit: ip.onCredit,
+      })),
+      ...boostRows.map((b) => ({
+        amount: Number(b._sum.amount ?? 0),
+        kind: "BOOST" as const,
+        paidFromTreasury: b.paidFromTreasury,
+        // Ads are never bought on terms — there is no supplier to owe.
+        onCredit: false,
+      })),
+      {
+        amount: Number(miscRows._sum.amount ?? 0),
+        kind: "MISC" as const,
+        // A manual partner expense is their own money by definition.
+        paidFromTreasury: false,
+        onCredit: false,
+      },
+    ],
+    inventory: stock,
+    treasuryBalance: treasury,
+  });
 }
 
 export type SupplierDue = {
