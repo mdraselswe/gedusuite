@@ -3,8 +3,8 @@ import { variantFullName } from "@/lib/variants";
 import { fundingSourceOf } from "@/lib/funding";
 import type { DateRange } from "@/lib/reports";
 import { dhakaRecordStamp, type DhakaStamp } from "@/lib/dhaka-time";
+import { round2 } from "@/lib/money";
 
-const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
 const n = (v: unknown) => Number(v ?? 0);
 
 /**

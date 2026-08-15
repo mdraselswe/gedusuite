@@ -8,8 +8,8 @@ import { ReconcileManager, type ReconcileGroup } from "@/components/partners/rec
 import { PageHeader } from "@/components/ui/page-header";
 import { Scale } from "lucide-react";
 import { dhakaDayKey, dhakaRecordStamp } from "@/lib/dhaka-time";
+import { round2 } from "@/lib/money";
 
-const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
 const day = (d: Date) => dhakaDayKey(d);
 
 /**

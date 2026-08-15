@@ -50,6 +50,7 @@ import { Money } from "@/components/ui/money";
 import { Field, type FieldError } from "@/components/ui/field";
 import { Stamp } from "@/components/ui/stamp";
 import { toDhakaInputValue, type DhakaStamp } from "@/lib/dhaka-time";
+import { round2 } from "@/lib/money";
 
 type PurchaseRow = DhakaStamp & {
   id: string;
@@ -261,7 +262,6 @@ export function PurchaseManager({
     editVariant?.unitsPerPack && editVariant.unitsPerPack > 1 ? editVariant.unitsPerPack : null;
   const editByPack = !!editUpp && editBuyUnit === "PACK";
 
-  const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
 
   function openEdit(p: PurchaseRow) {
     setEditing(p);
@@ -309,7 +309,6 @@ export function PurchaseManager({
     fd.set("paidByPartnerId", fundingPartnerField(fundingSource, paidByPartnerId));
     if (buyingByPack && upp) {
       // Entered per packet → stored per piece.
-      const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
       const qty = parseInt(String(fd.get("quantity") || "0"));
       const cost = parseFloat(String(fd.get("unitCost") || "0"));
       const sale = String(fd.get("salePrice") || "");

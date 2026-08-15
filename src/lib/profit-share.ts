@@ -10,7 +10,7 @@
  * neither was wrong on its own terms.
  */
 
-const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
+import { round2 } from "@/lib/money";
 
 export type ShareHolder = { percent: number };
 

@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { computeOrderTotals } from "@/lib/orders";
 import { treasuryBalance } from "@/lib/finance";
 import type { BackupSummary } from "@/lib/google";
+import { round2 } from "@/lib/money";
 
 export const SNAPSHOT_VERSION = 1;
 
@@ -27,7 +28,6 @@ export async function computeBackupSummary(
   ]);
   const totalSales = orders.reduce((s, o) => s + computeOrderTotals(o).netRevenue, 0);
   const totalPurchases = purchases.reduce((s, p) => s + Number(p.unitCost) * p.quantity, 0);
-  const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
   return {
     workspaceName,
     totalSales: round2(totalSales),

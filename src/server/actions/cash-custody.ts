@@ -15,6 +15,7 @@ import { newActivityGroup, recordActivity } from "@/lib/activity";
 import { loadCourierCredentials } from "@/lib/courier-credentials";
 import { getPayment, listPayments } from "@/lib/steadfast";
 import type { ActionFailure } from "@/lib/form";
+import { round2 } from "@/lib/money";
 
 export type ActionResult = { ok: true } | ActionFailure;
 
@@ -229,7 +230,7 @@ export async function markAllCashDeposited(
   return {
     ok: true,
     banked,
-    total: Math.round((total + Number.EPSILON) * 100) / 100,
+    total: round2(total),
     skipped,
   };
 }
@@ -316,7 +317,6 @@ export type PayoutImportResult =
     }
   | ActionFailure;
 
-const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
 
 /**
  * Bring in what the courier has actually paid out.

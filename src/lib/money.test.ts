@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatMoney, toneForBalance } from "@/lib/money";
+import { formatMoney, round2, toneForBalance } from "@/lib/money";
 
 describe("formatMoney", () => {
   it("groups the way a Bangladeshi reader counts", () => {
@@ -52,5 +52,42 @@ describe("toneForBalance", () => {
     expect(toneForBalance(-50000)).toBe("negative");
     // Zero is neither good news nor bad; it just isn't anything.
     expect(toneForBalance(0)).toBe("muted");
+  });
+});
+
+describe("round2", () => {
+  it("rounds to the paisa", () => {
+    expect(round2(1240.456)).toBe(1240.46);
+    expect(round2(1240.454)).toBe(1240.45);
+    expect(round2(1240)).toBe(1240);
+  });
+
+  it("rounds a half up, which float storage would otherwise lose", () => {
+    // 1.005 is stored as 1.00499999999999989, so Math.round(1.005 * 100) is
+    // 100 without the nudge. This is what the nudge is for.
+    expect(round2(1.005)).toBe(1.01);
+    expect(round2(2.675)).toBe(2.68);
+  });
+
+  it("treats a negative exactly as it treats its positive", () => {
+    // The asymmetry in the 29 copies this replaced: the epsilon was added to
+    // the value rather than the magnitude, so it always pushed upward. −1.005
+    // rounded to −1.00 while 1.005 rounded to 1.01 — a difference that landed
+    // on treasury outflows and negative net profits.
+    expect(round2(-1.005)).toBe(-1.01);
+    expect(round2(-2.675)).toBe(-2.68);
+    expect(round2(-1240.456)).toBe(-1240.46);
+  });
+
+  it("hands back a plain zero, never a negative one", () => {
+    expect(Object.is(round2(-0.001), 0)).toBe(true);
+    expect(Object.is(round2(-0), 0)).toBe(true);
+  });
+
+  it("leaves a figure that is already rounded alone", () => {
+    // Money goes through this repeatedly on its way across the app; it has to
+    // be idempotent or a total would drift from its own parts.
+    const once = round2(11192.455);
+    expect(round2(once)).toBe(once);
   });
 });

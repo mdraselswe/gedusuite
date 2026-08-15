@@ -14,7 +14,7 @@
  * formulas that agree until they don't.
  */
 
-const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
+import { round2 } from "@/lib/money";
 
 export type CodFeeBase = "GROSS" | "NET";
 export type ReturnChargeType = "NONE" | "FLAT" | "PERCENT_OF_DELIVERY";

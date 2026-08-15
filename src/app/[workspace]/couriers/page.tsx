@@ -13,6 +13,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { buttonVariants } from "@/components/ui/button";
 import { CourierReconciliation, type CourierAccount } from "@/components/sales/courier-reconciliation";
 import { dhakaRecordStamp } from "@/lib/dhaka-time";
+import { round2 } from "@/lib/money";
 
 /**
  * What each courier is holding.
@@ -106,7 +107,6 @@ export default async function CouriersPage({
       }),
   );
 
-  const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
   const UNASSIGNED = "__none__";
   const accounts = new Map<string, CourierAccount>();
   const account = (id: string, name: string) => {
@@ -170,7 +170,7 @@ export default async function CouriersPage({
       // Not floored at zero, unlike a treasury deposit: a parcel that cost more
       // to bring back than it collected means the shop owes the courier, and a
       // balance has to be able to say so.
-      net: Math.round((cod - deliveryCost - t.codFeeCost + Number.EPSILON) * 100) / 100,
+      net: round2(cod - deliveryCost - t.codFeeCost),
     };
     // Money is only with the courier once it has actually been collected —
     // which a delivered parcel has, and a partly-delivered one has too.

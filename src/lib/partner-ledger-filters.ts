@@ -1,3 +1,4 @@
+import { round2 } from "@/lib/money";
 /**
  * The partner-ledger-specific pieces of its filter bar. The generic filtering
  * lives in filter-bar.tsx; what's here is the vocabulary only this list has.
@@ -19,7 +20,7 @@ export function totalsByType(rows: { type: string; amount: number }[]): Map<stri
   const totals = new Map<string, number>();
   for (const t of rows) {
     const next = (totals.get(t.type) ?? 0) + t.amount;
-    totals.set(t.type, Math.round((next + Number.EPSILON) * 100) / 100);
+    totals.set(t.type, round2(next));
   }
   return totals;
 }

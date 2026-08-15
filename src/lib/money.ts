@@ -25,6 +25,32 @@ const GROUPING_LOCALE = "en-IN";
 
 export const TAKA = "৳";
 
+/**
+ * Two decimal places, the same way everywhere.
+ *
+ * The app has one rule about figures — each is computed in exactly one place —
+ * and rounding was the one that escaped it: 29 hand-written copies across 28
+ * files, in three spellings. They all agreed, which is the only reason it was
+ * never a bug, and one edit to any of them would have ended that.
+ *
+ * Two notes on the shape, since the copies were subtly wrong about both.
+ * `+ Number.EPSILON` is kept because it is what makes 1.005 round to 1.01
+ * rather than to 1.00 — floating point stores that as 1.00499999999999989 —
+ * but it buys nothing above about 1.0, where it is smaller than one ULP:
+ * 1000 + Number.EPSILON === 1000. And it is added to the magnitude rather than
+ * to the value, so the nudge goes the same way on both sides of zero. Added to
+ * the value, it biased upward: round2(1.005) gave 1.01 while round2(−1.005)
+ * gave −1.00, an asymmetry that landed on treasury outflows and negative net
+ * profits, the two places the app deals in negatives.
+ */
+export function round2(value: number): number {
+  const sign = value < 0 ? -1 : 1;
+  const rounded = (sign * Math.round((Math.abs(value) + Number.EPSILON) * 100)) / 100;
+  // −0 is a real value in JavaScript and prints as "0" in most places but not
+  // all; nobody needs to see a negative nothing.
+  return rounded === 0 ? 0 : rounded;
+}
+
 /** A real minus sign, not a hyphen: −1,240 lines up, -1,240 doesn't. */
 const MINUS = "−";
 

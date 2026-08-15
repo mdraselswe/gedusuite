@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatLeadItems, parseLeadItem, splitLeadItems } from "@/lib/lead-items";
 import { formatStock } from "@/lib/units";
+import { round2 } from "@/lib/money";
 
 /**
  * One row per item, because a website order routinely has several and typing
@@ -56,7 +57,7 @@ export function itemsTotal(rows: ItemRow[]): number | null {
   const priced = rows.filter((r) => r.option?.salePrice != null);
   if (priced.length === 0 || priced.length !== rows.filter((r) => rowName(r)).length) return null;
   const sum = priced.reduce((s, r) => s + (r.option!.salePrice ?? 0) * qtyOf(r), 0);
-  return Math.round((sum + Number.EPSILON) * 100) / 100;
+  return round2(sum);
 }
 
 export const rowName = (r: ItemRow) => (r.option ? r.option.label : r.text.trim());

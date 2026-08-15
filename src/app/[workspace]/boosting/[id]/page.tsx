@@ -15,6 +15,7 @@ import {
 } from "@/lib/boost-results";
 import { dhakaRecordStamp } from "@/lib/dhaka-time";
 import { fundingSourceOf } from "@/lib/funding";
+import { round2 } from "@/lib/money";
 
 /** Ad set dates are date-only, so a window's last day counts in full. */
 function endOfDay(date: Date): Date {
@@ -81,7 +82,6 @@ export default async function BoostCampaignPage({
     label: p.user.name ?? p.user.email,
   }));
 
-  const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
 
   const adSets = campaign.adSets.map((a) => {
     const totalSpent = round2(a.spends.reduce((s, x) => s + Number(x.amount), 0));

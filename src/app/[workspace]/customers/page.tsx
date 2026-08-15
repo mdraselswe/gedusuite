@@ -11,6 +11,7 @@ import { Pagination, parsePage } from "@/components/ui/pagination";
 import { PageHeader } from "@/components/ui/page-header";
 import { Money } from "@/components/ui/money";
 import { Users } from "lucide-react";
+import { round2 } from "@/lib/money";
 
 const PAGE_SIZE = 50;
 
@@ -53,7 +54,6 @@ export default async function CustomersPage({
     }),
   ]);
 
-  const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
   const today = dhakaToday();
 
   const rows = customers.map((c) => {

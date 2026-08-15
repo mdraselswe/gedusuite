@@ -19,8 +19,8 @@
  */
 
 import { dhakaDayStart, dhakaToday } from "@/lib/dhaka-time";
+import { round2 } from "@/lib/money";
 
-const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
 
 /**
  * How far recognition has got, when the caller doesn't say: the start of today

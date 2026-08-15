@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { variantSuffix } from "@/lib/variants";
+import { round2 } from "@/lib/money";
 
 /** Enough of a Prisma client to derive stock — the real one or a transaction. */
 type StockClient = Pick<
@@ -231,7 +232,6 @@ export async function inventoryValue(workspaceId: string): Promise<InventoryValu
     // sold aren't sitting in the value any more.
     fromCorrections += Math.min(onHand, addedByHand.get(v.id) ?? 0) * unitCost;
   }
-  const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
   return { units, value: round2(value), fromCorrections: round2(fromCorrections) };
 }
 

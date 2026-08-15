@@ -14,7 +14,7 @@
  * back out of the total that was agreed.
  */
 
-const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
+import { round2 } from "@/lib/money";
 
 /**
  * What the total should become when the items price themselves.

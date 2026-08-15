@@ -1,7 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { computeOrderTotals, type OrderTotals } from "@/lib/orders";
+import { round2 } from "@/lib/money";
 
-const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
 
 /**
  * Keeping an order's deposited cash in step with the order.

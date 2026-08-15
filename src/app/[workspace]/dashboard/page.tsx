@@ -19,7 +19,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { buttonVariants } from "@/components/ui/button";
 import { StatGrid, StatTile } from "@/components/ui/stat-tile";
 import { Money } from "@/components/ui/money";
-import { formatMoney, toneForBalance } from "@/lib/money";
+import { formatMoney, round2, toneForBalance } from "@/lib/money";
 import {
   LayoutDashboard,
   Users,
@@ -98,7 +98,6 @@ export default async function DashboardPage({
     ]);
   const monthAdSpend = monthExpenses.adSpend;
 
-  const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
   let monthRevenue = 0;
   let monthTradingProfit = 0;
   for (const o of monthOrders) {

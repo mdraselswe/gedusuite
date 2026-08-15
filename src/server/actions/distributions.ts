@@ -16,8 +16,8 @@ import { beyondDistributableProfit, splitByShare } from "@/lib/profit-share";
 import { failed, type ActionFailure } from "@/lib/form";
 import { recordActivity } from "@/lib/activity";
 import { dhakaDateField } from "@/lib/date-field";
+import { round2 } from "@/lib/money";
 
-const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
 
 export type ActionResult =
   | { ok: true }

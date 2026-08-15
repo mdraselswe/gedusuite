@@ -5,8 +5,8 @@ import { variantChip } from "@/lib/variants";
 import type { DateRange } from "@/lib/reports";
 import { dhakaDayKey } from "@/lib/dhaka-time";
 import { dhakaRecordStamp, type DhakaStamp } from "@/lib/dhaka-time";
+import { round2 } from "@/lib/money";
 
-const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
 
 /**
  * Everything one product earned, cost and moved.

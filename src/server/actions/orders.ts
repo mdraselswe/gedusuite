@@ -28,6 +28,7 @@ import { checkboxField, failed, type ActionFailure } from "@/lib/form";
 import { diffFields, newActivityGroup, recordActivity } from "@/lib/activity";
 import { shipSnapshot } from "@/lib/order-recipient";
 import { dhakaDateField } from "@/lib/date-field";
+import { round2 } from "@/lib/money";
 
 /**
  * How an order reads in the history — the same short id the breakdown page
@@ -78,7 +79,6 @@ export type ActionResult =
 
 const CONSUMING: readonly string[] = STOCK_CONSUMING_STATUSES;
 
-const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
 
 const ItemSchema = z.object({
   productVariantId: z.string().min(1),

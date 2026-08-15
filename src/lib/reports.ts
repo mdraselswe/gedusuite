@@ -5,8 +5,8 @@ import { amountCollected } from "@/lib/order-cash";
 import { splitByShare } from "@/lib/profit-share";
 import { dhakaDayEnd, dhakaDayKey, dhakaDayStart, dhakaDaysAgo, dhakaToday } from "@/lib/dhaka-time";
 import { operatingExpenses } from "@/lib/finance";
+import { round2 } from "@/lib/money";
 
-const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
 
 export type DateRange = { from: Date; to: Date };
 

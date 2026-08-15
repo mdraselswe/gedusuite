@@ -1,4 +1,5 @@
 import type { Prisma } from "@prisma/client";
+import { round2 } from "@/lib/money";
 
 // Minimal shape needed to compute totals — works with a Prisma query that
 // includes items and each item's returns.
@@ -22,7 +23,6 @@ export type OrderWithTotals = {
 };
 
 const n = (v: Prisma.Decimal | number): number => Number(v);
-const round2 = (v: number): number => Math.round((v + Number.EPSILON) * 100) / 100;
 
 /**
  * The number a customer-facing document identifies this order by.

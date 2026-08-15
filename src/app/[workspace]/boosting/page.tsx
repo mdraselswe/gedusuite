@@ -14,6 +14,7 @@ import {
 } from "@/lib/boost-results";
 import { Money } from "@/components/ui/money";
 import { dhakaDayKey, dhakaDayStart, dhakaMonthStart } from "@/lib/dhaka-time";
+import { round2 } from "@/lib/money";
 
 export default async function BoostingPage({
   params,
@@ -46,7 +47,6 @@ export default async function BoostingPage({
     },
   });
 
-  const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
   const now = new Date();
   // The Dhaka month, like the dashboard's: a spend entered just after midnight
   // on the 1st is six hours short of a UTC month start and would be counted

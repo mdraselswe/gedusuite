@@ -74,7 +74,7 @@ import { cn } from "@/lib/utils";
 import { Money } from "@/components/ui/money";
 import { Stamp } from "@/components/ui/stamp";
 import { toDhakaInputValue, type DhakaStamp } from "@/lib/dhaka-time";
-import { formatMoney } from "@/lib/money";
+import { formatMoney, round2 } from "@/lib/money";
 import { Field } from "@/components/ui/field";
 import { MoneyInput } from "@/components/ui/money-input";
 
@@ -314,7 +314,7 @@ function prefillPrice(variant: SearchVariantOption | null, unit: "PIECE" | "PACK
   if (variant?.salePrice == null) return "";
   const upp = variant.unitsPerPack && variant.unitsPerPack > 1 ? variant.unitsPerPack : 1;
   const perUnit = unit === "PACK" ? variant.salePrice * upp : variant.salePrice;
-  return String(Math.round((perUnit + Number.EPSILON) * 100) / 100);
+  return String(round2(perUnit));
 }
 
 /** Units-per-pack for a draft's selected variant, or null when not pack-based. */
@@ -1075,7 +1075,6 @@ export function OrderManager({
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
     const cleanItems = items
       .filter((it) => it.variant && parseInt(it.quantity) > 0)
       .map((it) => {

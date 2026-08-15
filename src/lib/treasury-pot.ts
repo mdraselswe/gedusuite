@@ -1,4 +1,5 @@
 import { splitByShare } from "@/lib/profit-share";
+import { round2 } from "@/lib/money";
 
 /**
  * Whose money the treasury spent, in the order it actually happened.
@@ -26,7 +27,6 @@ import { splitByShare } from "@/lib/profit-share";
  * testing, and finance.ts is where the database lives.
  */
 
-const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
 
 export type PotEventKind = "DEPOSIT" | "WITHDRAWAL" | "SPEND";
 

@@ -12,10 +12,10 @@ import { amortizeAll } from "@/lib/amortize";
 import { splitByShare } from "@/lib/profit-share";
 import { sharePotSpending, type PotEvent } from "@/lib/treasury-pot";
 import { dhakaRecordStamp, type DhakaStamp } from "@/lib/dhaka-time";
+import { round2 } from "@/lib/money";
 
 export const OVERDUE_DAYS = 7;
 
-const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
 
 export type PartnerBalance = {
   partnerId: string;

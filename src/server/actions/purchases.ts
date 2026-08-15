@@ -18,10 +18,10 @@ import { variantFullName } from "@/lib/variants";
 import { failed, type ActionFailure } from "@/lib/form";
 import { diffFields, recordActivity } from "@/lib/activity";
 import { dhakaDateField } from "@/lib/date-field";
+import { round2 } from "@/lib/money";
 
 export type ActionResult = { ok: true } | ActionFailure;
 
-const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
 
 /**
  * Funding touches three ledgers besides this list. Partners is revalidated as
