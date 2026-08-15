@@ -157,7 +157,28 @@ export async function deleteTreasuryEntry(
     };
   }
 
-  await prisma.treasuryEntry.delete({ where: { id } });
+  // Taking an IN back out moves the balance exactly as spending does, and this
+  // was the one path in the module that never checked. Delete a ৳20,000 "Sales
+  // collection" after ৳15,000 has been spent against it and the treasury went
+  // to −৳15,000 without a word — the state createTreasuryEntry, purchases,
+  // boost spends, withdrawals and distributions all exist to prevent.
+  //
+  // Serializable and inside the transaction for the same reason the create
+  // path is: two deletions at the same moment would otherwise both read a
+  // balance that only covers one of them.
+  try {
+    await runSerializable(async (tx) => {
+      if (entry.type === "IN") {
+        await assertTreasuryCovers(tx, gate.access.workspaceId, Number(entry.amount));
+      }
+      await tx.treasuryEntry.delete({ where: { id } });
+    });
+  } catch (e) {
+    if (e instanceof InsufficientTreasury || e instanceof ConcurrentWrite) {
+      return { ok: false, error: e.message };
+    }
+    throw e;
+  }
 
   // The balance moved and the row explaining it is gone, so this line is now
   // the only account of it.
