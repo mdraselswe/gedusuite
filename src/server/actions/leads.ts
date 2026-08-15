@@ -54,6 +54,9 @@ const LeadSchema = z.object({
   // Same vocabulary as an order's source, so a lead and the order it becomes
   // describe the channel the same way. Blank stays blank.
   channel: z.string().trim().optional().or(z.literal("")),
+  // An existing customer picked in the form. Optional: most rows are typed for
+  // somebody who isn't in the customer list yet, and that has to keep working.
+  customerId: z.string().trim().optional().or(z.literal("")),
   // "2026-08-04T21:30" from a datetime-local input, read as Dhaka time.
   orderedAt: z.string().trim().optional().or(z.literal("")),
 });
@@ -70,8 +73,31 @@ function parseLead(formData: FormData) {
     deliveryCharge: formData.get("deliveryCharge") ?? 0,
     total: formData.get("total") ?? 0,
     channel: formData.get("channel") ?? undefined,
+    customerId: formData.get("customerId") ?? undefined,
     orderedAt: formData.get("orderedAt") ?? undefined,
   });
+}
+
+/**
+ * The picked customer, if it really is one of this workspace's.
+ *
+ * OrderLead.convertedCustomerId is a plain string with no foreign key (same
+ * reason as orderId — see the schema note about backup restores), so nothing at
+ * the database level would catch an id belonging to another workspace. Returns
+ * null for a blank pick and for an id that doesn't check out, which is the same
+ * thing as far as the lead is concerned: no customer record attached.
+ */
+async function ownedCustomerId(
+  workspaceId: string,
+  id?: string | null,
+): Promise<string | null> {
+  const wanted = clean(id);
+  if (!wanted) return null;
+  const found = await prisma.customer.findFirst({
+    where: { id: wanted, workspaceId },
+    select: { id: true },
+  });
+  return found?.id ?? null;
 }
 
 /**
@@ -108,10 +134,15 @@ export async function createLead(slug: string, formData: FormData): Promise<Acti
     return failed(parsed.error);
   }
   const d = parsed.data;
+  // A repeat buyer picked in the form is linked from the moment the row is
+  // written, so "+ Order" doesn't have to rediscover them by phone and the
+  // list shows them as already in the customer book.
+  const customerId = await ownedCustomerId(gate.access.workspaceId, d.customerId);
 
   const lead = await prisma.orderLead.create({
     data: {
       workspaceId: gate.access.workspaceId,
+      convertedCustomerId: customerId,
       source: "MANUAL",
       // The unique key is (workspace, source, externalId); manual rows have no
       // upstream id, so mint one rather than leaving it blank and colliding.
@@ -168,6 +199,7 @@ export async function updateLead(
   }
   const d = parsed.data;
   const orderedAt = dhakaInputToDate(d.orderedAt);
+  const customerId = await ownedCustomerId(gate.access.workspaceId, d.customerId);
 
   const res = await prisma.orderLead.updateMany({
     where: { id, workspaceId: gate.access.workspaceId },
@@ -181,6 +213,11 @@ export async function updateLead(
       deliveryCharge: d.deliveryCharge,
       total: d.total,
       channel: isOrderSource(d.channel) ? d.channel : null,
+      // Only ever set here, never cleared. The link is also made by "Add as
+      // customer" and by creating the order, so an edit that happens to come
+      // back with an empty picker must not silently unlink a buyer and split
+      // their history in two.
+      ...(customerId ? { convertedCustomerId: customerId } : {}),
       // Left alone when the field comes back unparseable, rather than
       // overwriting a good timestamp with a guess.
       ...(orderedAt ? { orderedAt } : {}),

@@ -43,6 +43,11 @@ export default async function LeadsPage({
     canAdd: can(access.role, "sales", "add", access.permissions),
     canDelete: can(access.role, "sales", "edit", access.permissions),
     canAddCustomer: can(access.role, "customers", "add", access.permissions),
+    // Drives the "existing customer" picker in the add form — searching the
+    // customer book is a customers:view action, and the server action behind
+    // the box enforces that anyway, so hiding it beats offering a search that
+    // always comes back empty.
+    canViewCustomers: can(access.role, "customers", "view", access.permissions),
   };
 
   // The search reaches the database rather than the rows already on screen.

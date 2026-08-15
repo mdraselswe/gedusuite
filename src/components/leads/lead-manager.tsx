@@ -27,7 +27,10 @@ import {
   unlinkLeadOrder,
   type LinkCandidate,
 } from "@/server/actions/leads";
+import { searchCustomers } from "@/server/actions/search";
+import { customerContact } from "@/server/actions/customers";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
+import { AsyncCombobox, type ComboOption } from "@/components/ui/async-combobox";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -108,7 +111,12 @@ type Lead = DhakaStamp & {
   /** What this phone number ordered before. null when it's a first-time buyer. */
   history: BuyerHistory | null;
 };
-type Perms = { canAdd: boolean; canDelete: boolean; canAddCustomer: boolean };
+type Perms = {
+  canAdd: boolean;
+  canDelete: boolean;
+  canAddCustomer: boolean;
+  canViewCustomers: boolean;
+};
 
 // How the CALL went — where the parcel got to is the Order column, read off
 // the linked order. DELIVERED used to sit in this list, which made "called 3
@@ -223,6 +231,18 @@ export function LeadManager({
   // person on the phone may have agreed a different figure.
   const [totalTouched, setTotalTouched] = useState(false);
   const [channel, setChannel] = useState<string>(UNTAGGED);
+  // The customer book, searchable from the form. Most rows are still a name
+  // typed off the phone, but a repeat buyer was previously retyped from
+  // scratch every time — three fields the app already knew, and a lead that
+  // ended up unlinked from the record holding their order history.
+  const [customer, setCustomer] = useState<ComboOption | null>(null);
+  // Contact details are prefilled from a pick, so they can't stay uncontrolled.
+  const [customerName, setCustomerName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [address, setAddress] = useState("");
+  // Same guard as the order-number suggestion: a slow lookup started by one
+  // open dialog must not drop its answer into the next one.
+  const customerToken = useRef(0);
   const [orderedAt, setOrderedAt] = useState("");
   const [orderNo, setOrderNo] = useState("");
   // Whether what's in the box is the app's guess rather than something typed —
@@ -381,8 +401,27 @@ export function LeadManager({
     router.refresh();
   }
 
+  /** Fill the contact fields from a picked customer — or clear the pick. */
+  async function onPickCustomer(opt: ComboOption | null) {
+    setCustomer(opt);
+    if (!opt) return;
+    const token = ++customerToken.current;
+    const c = await customerContact(slug, opt.value);
+    if (!c || token !== customerToken.current) return;
+    // Overwritten rather than merged: picking a different person and keeping
+    // the last one's address is how a parcel goes to the wrong house.
+    setCustomerName(c.name);
+    setPhone(c.phone ?? "");
+    setAddress(c.address ?? "");
+  }
+
   function openNew() {
     setEditing(null);
+    customerToken.current++;
+    setCustomer(null);
+    setCustomerName("");
+    setPhone("");
+    setAddress("");
     setItemRows([newItemRow()]);
     setTotal("0");
     setDelivery("0");
@@ -411,6 +450,24 @@ export function LeadManager({
     setOrderNo(l.orderNo ?? "");
     setOrderNoSuggested(false);
     orderNoTouched.current = true;
+    setCustomerName(l.customerName);
+    setPhone(l.phone);
+    setAddress(l.address ?? "");
+    // The row knows the id it was linked to but not that customer's name, so
+    // the box would otherwise open blank on a lead that is already linked —
+    // and look like nothing was picked. Fetched rather than carried on every
+    // row: it's one label, needed only once the dialog is open.
+    const linkedId = l.convertedCustomerId;
+    const token = ++customerToken.current;
+    setCustomer(null);
+    if (linkedId) {
+      customerContact(slug, linkedId).then((c) => {
+        if (!c || token !== customerToken.current) return;
+        // Same shape as the search results, so the picked row and the list
+        // below it read alike.
+        setCustomer({ value: linkedId, label: c.phone ? `${c.name} · ${c.phone}` : c.name });
+      });
+    }
     setItemRows(rowsFromItemsText(l.itemsText));
     setTotal(String(l.total));
     setDelivery(String(l.deliveryCharge));
@@ -429,6 +486,7 @@ export function LeadManager({
     // The rows are the form's real state; itemsText is what the server stores.
     fd.set("itemsText", rowsToItemsText(itemRows));
     fd.set("channel", channel === UNTAGGED ? "" : channel);
+    fd.set("customerId", customer?.value ?? "");
     const res = editing
       ? await updateLead(slug, editing.id, fd)
       : await createLead(slug, fd);
@@ -910,6 +968,34 @@ export function LeadManager({
                 hint makes one side taller. Single column below `sm`, in the
                 same order. */}
             <div className="grid items-start gap-x-4 gap-y-3 py-4 sm:grid-cols-2">
+              {/* Above the contact fields because it fills them in: a repeat
+                  buyer is found once and the three below stop being typing.
+                  Optional throughout — a new caller has no record yet, so the
+                  fields stay editable whether or not anything is picked. */}
+              {perms.canViewCustomers && (
+                <div className="grid content-start gap-1.5 sm:col-span-2">
+                  <Label htmlFor="lead-customer">Existing customer</Label>
+                  <AsyncCombobox
+                    id="lead-customer"
+                    value={customer}
+                    onChange={onPickCustomer}
+                    fetchPage={async (q, cursor) => {
+                      const res = await searchCustomers(slug, q, cursor);
+                      return res.ok
+                        ? { items: res.items, next: res.next }
+                        : { items: [], next: null };
+                    }}
+                    placeholder="Search name or phone — or just type the details below"
+                    emptyText="No customers"
+                  />
+                  {customer && (
+                    <p className="text-xs text-muted-foreground">
+                      Linked — this order counts towards their history, and the details
+                      below can still be corrected for this one.
+                    </p>
+                  )}
+                </div>
+              )}
               <div className="grid content-start gap-1.5">
                 <Label htmlFor="customerName">Customer name</Label>
                 <Input
@@ -917,7 +1003,8 @@ export function LeadManager({
                   name="customerName"
                   required
                   maxLength={120}
-                  defaultValue={editing?.customerName ?? ""}
+                  value={customerName}
+                  onChange={(e) => setCustomerName(e.target.value)}
                 />
               </div>
               <div className="grid content-start gap-1.5">
@@ -928,7 +1015,8 @@ export function LeadManager({
                   required
                   maxLength={40}
                   inputMode="tel"
-                  defaultValue={editing?.phone ?? ""}
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
                 />
               </div>
               <div className="grid content-start gap-1.5">
@@ -997,7 +1085,8 @@ export function LeadManager({
                   name="address"
                   rows={2}
                   maxLength={500}
-                  defaultValue={editing?.address ?? ""}
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
                 />
               </div>
               {/* A product search, a quantity and a delete button per row —
