@@ -1146,7 +1146,7 @@ export async function recordPayment(
     return {
       ok: false,
       error:
-        "This order is cancelled — there's nothing left to collect. Record what was taken on the doorstep in the cancellation costs instead.",
+        "This order is cancelled — there is no balance left to pay down. What the customer handed over at the door is edited on the order itself, under \"Collected on a partial delivery\".",
     };
   }
 
@@ -1234,7 +1234,8 @@ export async function recordCollectedAmount(
     // and two ways to say the same thing is how they end up disagreeing.
     return {
       ok: false,
-      error: "Use the cancellation's own collected figure for a cancelled order",
+      error:
+        'A cancelled order has no invoice to fall short of. Edit "Collected on a partial delivery" on the order instead.',
     };
   }
 

@@ -1551,7 +1551,37 @@ export function OrderManager({
                 // Wraps in the mobile card (narrow value area) but stays a
                 // single line in the desktop table.
                 <div className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1 md:flex-nowrap md:justify-start">
-                  {perms.canEdit ? (
+                  {/* A cancelled order has no payment status worth showing. The
+                      sale was undone, so there is nothing to settle and nothing
+                      owed — every money figure in the app (amountCollected,
+                      depositAmount, the courier balance, profit) reads the
+                      cancellation's own collected amount instead and ignores
+                      this column entirely.
+
+                      Left as the dropdown it read "UNPAID" on a refused parcel
+                      where the customer had handed the delivery charge over at
+                      the door, which says the opposite of what happened; and
+                      picking PARTIAL to correct it opened the instalment dialog,
+                      which recordPayment can only refuse — there is no balance
+                      on a cancelled order to pay down. What was collected is
+                      edited where it was entered, on the order itself. */}
+                  {o.status === "CANCELLED" ? (
+                    o.cancelledCollected > 0 ? (
+                      <span
+                        className="whitespace-nowrap font-medium text-amber-700 dark:text-amber-400"
+                        title="Taken at the door on a refused parcel. Change it in Edit order → Collected on a partial delivery."
+                      >
+                        <Money value={o.cancelledCollected} /> collected
+                      </span>
+                    ) : (
+                      <span
+                        className="whitespace-nowrap text-muted-foreground"
+                        title="Nothing was taken at the door. Change it in Edit order → Collected on a partial delivery."
+                      >
+                        Nothing collected
+                      </span>
+                    )
+                  ) : perms.canEdit ? (
                     <Select
                       value={o.paymentStatus}
                       onValueChange={(v) => v && onPaymentStatusChange(o.id, v)}
@@ -1574,8 +1604,12 @@ export function OrderManager({
                     · {formatEnum(o.paymentMethod)}
                   </span>
                   {/* A part-paid order that shows only "PARTIAL" tells nobody
-                      what is still owed, which is the only part that matters. */}
-                  {o.paymentStatus === "PARTIAL" && (
+                      what is still owed, which is the only part that matters.
+                      Not on a cancelled one: an order cancelled after an advance
+                      keeps the old PARTIAL in the column, and nothing is owed on
+                      a sale that was undone — it would print "৳0 due" beside the
+                      collected figure and invite the reader to chase it. */}
+                  {o.paymentStatus === "PARTIAL" && o.status !== "CANCELLED" && (
                     <span className="whitespace-nowrap text-xs text-muted-foreground">
                       <Money value={o.amountPaid} /> paid · <Money value={o.amountDue} /> due
                     </span>
