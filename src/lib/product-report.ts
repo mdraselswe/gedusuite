@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { cancelledOrderCost, computeOrderTotals } from "@/lib/orders";
-import { variantStockMap } from "@/lib/inventory";
+import { variantCostMap, variantStockMap } from "@/lib/inventory";
 import { variantChip } from "@/lib/variants";
 import type { DateRange } from "@/lib/reports";
 import { dhakaDayKey } from "@/lib/dhaka-time";
@@ -258,7 +258,7 @@ export async function buildProductReport(
   const variantIds = product.variants.map((v) => v.id);
   const dateWhere = range ? { date: { gte: range.from, lte: range.to } } : {};
 
-  const [allOrders, purchases, adjustments, stockMap, gifts] = await Promise.all([
+  const [allOrders, purchases, adjustments, stockMap, costMap, gifts] = await Promise.all([
     // Every order containing this product — but with ALL of its items, since
     // allocating the order's costs needs the whole order's revenue, not just
     // this product's slice of it.
@@ -301,6 +301,12 @@ export async function buildProductReport(
     variantIds.length
       ? variantStockMap(workspaceId, variantIds)
       : Promise.resolve(new Map<string, number>()),
+    // Not date-filtered, unlike the purchases above: what a piece on the shelf
+    // cost is the last purchase there has ever been, not the last one inside
+    // the range this report happens to cover.
+    variantIds.length
+      ? variantCostMap(workspaceId, variantIds)
+      : Promise.resolve(new Map<string, number>()),
     // Given away free with an order: no revenue, but stock left and it cost
     // something. Reported on its own rather than folded into profit — the
     // gift's cost belongs to the order that gave it, not to this product.
@@ -327,7 +333,11 @@ export async function buildProductReport(
         label: variantChip(v.attributes),
         sku: v.sku,
         salePrice: v.salePrice != null ? Number(v.salePrice) : null,
-        unitCost: v.unitCost != null ? Number(v.unitCost) : null,
+        // Through the shared cost chain, so the stock value below agrees with
+        // the capital rollup about the same pieces. Reading the catalogue cost
+        // alone valued every variant whose real cost was only ever typed on a
+        // purchase form at nothing — most of them.
+        unitCost: costMap.get(v.id) ?? null,
         unitsSold: 0,
         unitsReturned: 0,
         revenue: 0,

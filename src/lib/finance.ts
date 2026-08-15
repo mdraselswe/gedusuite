@@ -7,7 +7,7 @@ import {
   depositAmount,
   deliveryCostCharged,
 } from "@/lib/order-cash";
-import { inventoryValue } from "@/lib/inventory";
+import { inventoryValue, variantCost } from "@/lib/inventory";
 import { amortizeAll } from "@/lib/amortize";
 import { splitByShare } from "@/lib/profit-share";
 import { sharePotSpending, type PotEvent } from "@/lib/treasury-pot";
@@ -666,15 +666,6 @@ export async function assertTreasuryCovers(
   if (available < need) throw new InsufficientTreasury(available, need);
 }
 
-/** What one written-off piece cost: last purchase, else catalogue, else zero. */
-function writeOffUnitCost(a: {
-  productVariant: { unitCost: unknown; purchases: { unitCost: unknown }[] };
-}): number {
-  const lastPurchase = a.productVariant.purchases[0];
-  if (lastPurchase) return Number(lastPurchase.unitCost);
-  return a.productVariant.unitCost != null ? Number(a.productVariant.unitCost) : 0;
-}
-
 export type OperatingExpenses = {
   /** Advertising — every BoostDailySpend in the range, whoever funded it. */
   adSpend: number;
@@ -762,7 +753,7 @@ export async function operatingExpenses(
   const internalPurchaseSpend = internal.recognized;
   const miscExpense = round2(Number(miscAgg._sum.amount ?? 0));
   const stockLoss = round2(
-    writeOffs.reduce((s, a) => s + Math.abs(Math.min(0, a.delta)) * writeOffUnitCost(a), 0),
+    writeOffs.reduce((s, a) => s + Math.abs(Math.min(0, a.delta)) * variantCost(a.productVariant), 0),
   );
   return {
     adSpend,

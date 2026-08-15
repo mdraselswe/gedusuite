@@ -109,6 +109,55 @@ export async function variantStockMap(
   return map;
 }
 
+/**
+ * What one piece of a variant cost: what it last cost to buy, then the
+ * catalogue cost, then nothing.
+ *
+ * The one chain, because a sale's cost snapshot follows it and stock value has
+ * to agree with COGS about the same piece. It was written out by hand in four
+ * places, and one of them — the product detail page — had only the catalogue
+ * half. Most variants have no catalogue cost at all, since the real figure is
+ * typed on the purchase form, so that page valued 54 of this shop's 73 stocked
+ * variants at zero and put the shelf at 5,020 while the capital rollup put it
+ * at 31,996.
+ */
+export function variantCost(v: {
+  unitCost: unknown;
+  purchases: { unitCost: unknown }[];
+}): number {
+  if (v.purchases[0]) return Number(v.purchases[0].unitCost);
+  return v.unitCost != null ? Number(v.unitCost) : 0;
+}
+
+/**
+ * `variantCost` for a set of variants, ready to multiply by stock.
+ *
+ * Deliberately not date-filtered: "what it last cost" means the last purchase
+ * there has ever been, not the last one inside whatever range a report is
+ * being run over. A March-only report does not make the shelf worth nothing.
+ */
+export async function variantCostMap(
+  workspaceId: string,
+  variantIds?: string[],
+): Promise<Map<string, number>> {
+  const variants = await prisma.productVariant.findMany({
+    where: {
+      ...(variantIds ? { id: { in: variantIds } } : { product: { workspaceId } }),
+    },
+    select: {
+      id: true,
+      unitCost: true,
+      purchases: {
+        where: { workspaceId },
+        orderBy: { date: "desc" },
+        take: 1,
+        select: { unitCost: true },
+      },
+    },
+  });
+  return new Map(variants.map((v) => [v.id, variantCost(v)]));
+}
+
 export type InventoryValue = {
   /** Pieces on the shelf, across every variant. Negative stock is ignored. */
   units: number;
@@ -175,11 +224,7 @@ export async function inventoryValue(workspaceId: string): Promise<InventoryValu
   for (const v of variants) {
     const onHand = Math.max(0, stock.get(v.id) ?? 0);
     if (onHand === 0) continue;
-    const unitCost = v.purchases[0]
-      ? Number(v.purchases[0].unitCost)
-      : v.unitCost != null
-        ? Number(v.unitCost)
-        : 0;
+    const unitCost = variantCost(v);
     units += onHand;
     value += onHand * unitCost;
     // Capped at what's actually on the shelf: pieces added by hand and since
