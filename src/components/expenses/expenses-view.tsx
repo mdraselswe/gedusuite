@@ -332,10 +332,23 @@ export function ExpensesView({
                 : `${shown.byCategory.length} categor${shown.byCategory.length === 1 ? "y" : "ies"} · ${visible.length} entries`
           }
           footer={
-            excluded.size > 0 ? (
-              <p className="text-xs text-muted-foreground">
-                Everything together: <Money value={summary.total} />
-              </p>
+            excluded.size > 0 || shown.onCredit > 0 ? (
+              <div className="space-y-0.5 text-xs text-muted-foreground">
+                {excluded.size > 0 && (
+                  <p>
+                    Everything together: <Money value={summary.total} />
+                  </p>
+                )}
+                {/* Beside the figure, never inside it: goods on terms have
+                    arrived but the money hasn't moved, and this page's one
+                    question is what left. */}
+                {shown.onCredit > 0 && (
+                  <p>
+                    Plus <Money value={shown.onCredit} /> bought on credit — not paid
+                    for yet
+                  </p>
+                )}
+              </div>
             ) : undefined
           }
         />

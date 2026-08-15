@@ -137,6 +137,27 @@ describe("summarizeRows", () => {
     expect(sum(s.byFunding)).toBe(s.total);
   });
 
+  it("keeps goods bought on credit out of what left, and says so separately", () => {
+    // The page's question is what money left the business today. Stock taken
+    // on terms hasn't left anybody's hands yet — counted inside the total, a
+    // day that took 50,000 of stock on credit read as a day that spent it.
+    const withCredit = [...day, row({ amount: 50000, funding: "CREDIT" })];
+    const s = summarizeRows(withCredit);
+    expect(s.total).toBe(13231.68);
+    expect(s.onCredit).toBe(50000);
+    // The breakdown still explains everything that was bought, so it foots to
+    // the two figures together rather than to the headline alone.
+    const sum = (xs: { amount: number }[]) =>
+      Math.round(xs.reduce((a, b) => a + b.amount, 0) * 100) / 100;
+    expect(sum(s.byCategory)).toBe(s.total + s.onCredit);
+    expect(s.byFunding.find((f) => f.funding === "CREDIT")?.amount).toBe(50000);
+  });
+
+  it("reports no credit when there is none, rather than leaving it undefined", () => {
+    expect(summarizeRows(day).onCredit).toBe(0);
+    expect(summarizeRows([]).onCredit).toBe(0);
+  });
+
   it("re-totals a filtered set instead of subtracting from the whole", () => {
     // "What did the day cost apart from the restock?"
     const withoutStock = day.filter((r) => r.category !== "PRODUCT_PURCHASE");

@@ -89,8 +89,21 @@ export type PayoutRow = DhakaStamp & {
 
 /** The figures any set of spend rows adds up to. */
 export type SpendTotals = {
+  /**
+   * What actually left. Rows bought on credit are NOT in here: the goods have
+   * arrived and the money hasn't moved, which is the whole question this page
+   * exists to answer. They were inside it, so a day that took 50,000 of stock
+   * on terms read as a day that spent 50,000.
+   */
   total: number;
+  /**
+   * Bought on credit — owed, not yet paid. Beside the total rather than inside
+   * it, the same way prepaidExpenses sits beside profit.
+   */
+  onCredit: number;
+  /** Every row, credit included: this is the breakdown of what was bought. */
   byCategory: { category: SpendCategory; amount: number; count: number }[];
+  /** Every row, credit included — CREDIT is one of the buckets. */
   byFunding: { funding: SpendFunding; amount: number; count: number }[];
 };
 
@@ -134,8 +147,12 @@ export function summarizeRows(rows: SpendRow[]): SpendTotals {
       .map((k) => ({ key: k, amount: round2(acc.get(k)!.amount), count: acc.get(k)!.count }));
   };
 
+  const onCredit = rows.filter((r) => r.funding === "CREDIT");
   return {
-    total: round2(rows.reduce((s, r) => s + r.amount, 0)),
+    total: round2(
+      rows.filter((r) => r.funding !== "CREDIT").reduce((s, r) => s + r.amount, 0),
+    ),
+    onCredit: round2(onCredit.reduce((s, r) => s + r.amount, 0)),
     byCategory: group(SPEND_CATEGORIES, (r) => r.category).map((x) => ({
       category: x.key,
       amount: x.amount,
