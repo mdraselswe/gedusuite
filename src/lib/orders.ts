@@ -163,10 +163,25 @@ export function computeOrderTotals(order: OrderWithTotals): OrderTotals {
   // Kept out of deliveryCost so a report can tell a bad delivery rate from a
   // bad COD rate — they're fixed by different decisions.
   const codFeeCost = order.codFeeCost != null ? n(order.codFeeCost) : 0;
+  // Neither discount scaled, because nothing had come back yet when this was
+  // the figure on the label.
+  const invoicedTotal =
+    grossRevenue - invoicedItemDiscounts - n(order.discount) + deliveryCharge;
   // Not scaled by keptFraction, unlike a discount: the money went missing at
   // the door, on the day, and returning goods afterwards doesn't bring any of
   // it back.
-  const collectionShortfall = order.collectionShortfall != null ? n(order.collectionShortfall) : 0;
+  //
+  // Bounded by the invoice it was measured against, because the invoice can
+  // move afterwards and the stored figure doesn't follow. Record 900 collected
+  // on a 960 parcel, then edit an item off the order so it invoices 500, and
+  // the shortfall stayed at 60 — describing a gap against a bill that no longer
+  // exists. amountRemitted floored it at zero and survived; netProfit
+  // subtracted the stale figure in full, so the order carried a loss larger
+  // than the sale had ever been.
+  const collectionShortfall = Math.min(
+    Math.max(0, order.collectionShortfall != null ? n(order.collectionShortfall) : 0),
+    Math.max(0, invoicedTotal),
+  );
 
   const netRevenue = effectiveRevenue - itemDiscounts - orderDiscount;
   // packagingCost is deliberately absent. Packaging material is bought as an
@@ -182,10 +197,6 @@ export function computeOrderTotals(order: OrderWithTotals): OrderTotals {
   // and they paid it. What went missing afterwards is the shop's loss, not a
   // debt to chase them for.
   const customerTotal = netRevenue + deliveryCharge;
-  // Neither discount scaled, because nothing had come back yet when this was
-  // the figure on the label.
-  const invoicedTotal =
-    grossRevenue - invoicedItemDiscounts - n(order.discount) + deliveryCharge;
 
   return {
     grossRevenue: round2(grossRevenue),

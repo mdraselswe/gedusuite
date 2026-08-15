@@ -296,6 +296,32 @@ describe("invoicedTotal", () => {
     expect(t.customerTotal).toBe(525);
   });
 
+  it("won't let a stale shortfall outlive the invoice it was measured against", () => {
+    // 900 collected on a 1,100 parcel leaves 200 short. Then the order is
+    // edited down to one unit, so it invoices 600 — and the stored 200 is a
+    // gap against a bill that no longer exists. Left at full size it was
+    // subtracted from profit whole, and the order carried a loss bigger than
+    // the sale had ever been.
+    const t = computeOrderTotals({
+      ...base,
+      collectionShortfall: 200,
+      items: [item({ quantity: 1 })],
+    });
+    expect(t.invoicedTotal).toBe(600);
+    expect(t.collectionShortfall).toBe(200);
+
+    const shrunk = computeOrderTotals({
+      ...base,
+      deliveryCharge: 0,
+      collectionShortfall: 200,
+      items: [item({ quantity: 1, unitPrice: 150 })],
+    });
+    expect(shrunk.invoicedTotal).toBe(150);
+    expect(shrunk.collectionShortfall).toBe(150);
+    // Not −200 against 150 of revenue.
+    expect(shrunk.netProfit).toBe(150 - 300 - 150);
+  });
+
   it("prices a giveaway at the delivery alone", () => {
     // goodsDiscount makes the discount exactly the goods total.
     const t = computeOrderTotals({ ...base, discount: 1000, items: [item()] });
