@@ -412,38 +412,55 @@ export async function importCourierPayouts(
     const difference = round2(Number(detail.data.total) - ordersTotal);
 
     const group = newActivityGroup();
-    const payout = await prisma.courierPayout.create({
-      data: {
-        workspaceId,
-        courierId: courier.id,
-        externalId: detail.data.payment_id,
-        amount: detail.data.amount,
-        deliveryBills: detail.data.due_bills,
-        charges: detail.data.charges,
-        total: detail.data.total,
-        method: detail.data.method,
-        paidAt: detail.data.paid_at ? new Date(detail.data.paid_at.replace(" ", "T") + "Z") : null,
-        consignmentIds,
-        ordersTotal,
-      },
-    });
+    const paidAt = detail.data.paid_at
+      ? new Date(detail.data.paid_at.replace(" ", "T") + "Z")
+      : null;
 
-    if (Math.abs(difference) >= 0.01) {
-      const outward = difference < 0;
-      await prisma.treasuryEntry.create({
+    // The payout row and the entry that balances it, in one transaction.
+    // Written one after the other, a failure in between left the payout
+    // recorded — so the next import skips it as already known — with the
+    // difference missing from the treasury for good. Small (it is the rounded
+    // percentage fee) and permanent, and invisible, because the payout looks
+    // imported.
+    //
+    // The per-order banking above stays outside it: that half is already
+    // idempotent through the unique TreasuryEntry.orderId, and holding a
+    // transaction open across it would mean holding one open across every
+    // order in the payout.
+    const payout = await prisma.$transaction(async (tx) => {
+      const row = await tx.courierPayout.create({
         data: {
           workspaceId,
-          type: outward ? "OUT" : "IN",
-          amount: Math.abs(difference),
-          source: `${courier.name} payout difference`,
-          note:
-            `${courier.name} paid ৳${detail.data.total} on ${detail.data.payment_id}; ` +
-            `the ${banked.length} order(s) in it come to ৳${ordersTotal}. The fee is charged ` +
-            `on the payout as a whole and rounded, so the two never land on the same paisa.`,
-          date: payout.paidAt ?? new Date(),
+          courierId: courier.id,
+          externalId: detail.data.payment_id,
+          amount: detail.data.amount,
+          deliveryBills: detail.data.due_bills,
+          charges: detail.data.charges,
+          total: detail.data.total,
+          method: detail.data.method,
+          paidAt,
+          consignmentIds,
+          ordersTotal,
         },
       });
-    }
+      if (Math.abs(difference) >= 0.01) {
+        const outward = difference < 0;
+        await tx.treasuryEntry.create({
+          data: {
+            workspaceId,
+            type: outward ? "OUT" : "IN",
+            amount: Math.abs(difference),
+            source: `${courier.name} payout difference`,
+            note:
+              `${courier.name} paid ৳${detail.data.total} on ${detail.data.payment_id}; ` +
+              `the ${banked.length} order(s) in it come to ৳${ordersTotal}. The fee is charged ` +
+              `on the payout as a whole and rounded, so the two never land on the same paisa.`,
+            date: paidAt ?? new Date(),
+          },
+        });
+      }
+      return row;
+    });
 
     await recordActivity(gate.access, {
       action: "CREATE",
