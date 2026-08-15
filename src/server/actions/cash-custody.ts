@@ -5,11 +5,13 @@ import { prisma } from "@/lib/prisma";
 import { requireAccess, type WorkspaceAccess } from "@/lib/authz";
 import { computeOrderTotals } from "@/lib/orders";
 import {
+  bankedSoFar,
   cashEntryNote,
   cashEntrySource,
   collectionRecorded,
   courierChargeNote,
   depositAmount,
+  stillToBank,
 } from "@/lib/order-cash";
 import { newActivityGroup, recordActivity } from "@/lib/activity";
 import { loadCourierCredentials } from "@/lib/courier-credentials";
@@ -24,6 +26,10 @@ const DEPOSIT_INCLUDE = {
   items: { include: { returns: true } },
   customer: { select: { name: true } },
   heldBy: { include: { user: { select: { name: true, email: true } } } },
+  // What the treasury already holds against this order — an order banked while
+  // it was part-paid can take another instalment afterwards, and only the
+  // difference is still waiting to be handed over.
+  treasuryEntry: { select: { id: true, type: true, amount: true } },
 } as const;
 
 type DepositableOrder = Awaited<
@@ -44,10 +50,6 @@ async function bankOrderCash(
   access: WorkspaceAccess,
   order: DepositableOrder,
 ): Promise<{ ok: true; amount: number } | { ok: false; error: string }> {
-  if (order.cashInTreasury) {
-    return { ok: false, error: "Already marked as deposited" };
-  }
-
   const totals = computeOrderTotals(order);
   // What the business receives, not what the customer paid: on a COD order the
   // courier keeps its delivery charge and percentage fee before remitting, and
@@ -55,7 +57,18 @@ async function bankOrderCash(
   // figure is signed — a parcel that collected nothing still owes the courier
   // for the trip, and that is an outflow, not a deposit of zero.
   const deposit = depositAmount(order, totals);
-  const amount = deposit.net;
+  // Signed, so a courier's charge counts the way it moves the balance.
+  const alreadyBanked = bankedSoFar(order.treasuryEntry);
+  // What is being handed over now: the whole of it on a first deposit, and only
+  // the difference on an order that was banked while it was part-paid and has
+  // taken another instalment since. The entry used to grow itself the moment
+  // that instalment was recorded, which put money in the treasury that was
+  // still in somebody's pocket.
+  const amount = stillToBank(deposit.net, alreadyBanked);
+  const total = deposit.net;
+  if (order.cashInTreasury && amount === 0) {
+    return { ok: false, error: "Already marked as deposited" };
+  }
   // PARTIAL counts as collected: an advance is real money somebody is holding,
   // and refusing to let it into the treasury until the order settled meant it
   // sat outside the accounts entirely, sometimes for weeks. A PARTIAL with no
@@ -83,28 +96,38 @@ async function bankOrderCash(
 
   // Below zero the movement is the courier's bill, not a deposit: it collected
   // nothing (a giveaway, an order already paid another way) or less than the
-  // trip cost, and takes the difference out of the shop's balance.
-  const outward = amount < 0;
+  // trip cost, and takes the difference out of the shop's balance. The entry
+  // carries the running total, not this instalment — one entry per order is all
+  // the schema allows, and the total is what the treasury is holding.
+  const outward = total < 0;
   const source = cashEntrySource(order.paymentMethod, outward ? "OUT" : "IN");
   const note = outward
     ? courierChargeNote(order, deposit.gross)
     : cashEntryNote(order, totals.returnedUnits, deposit.courierCharges);
+  const entryData = {
+    type: (outward ? "OUT" : "IN") as "IN" | "OUT",
+    // The direction is the sign; the column holds a magnitude, the same as
+    // every other entry in the ledger.
+    amount: Math.abs(total),
+    source,
+    note,
+  };
 
   const [, entry] = await prisma.$transaction([
     prisma.order.update({ where: { id: order.id }, data: { cashInTreasury: true } }),
-    prisma.treasuryEntry.create({
-      data: {
-        workspaceId: access.workspaceId,
-        type: outward ? "OUT" : "IN",
-        // The direction is the sign; the column holds a magnitude, the same as
-        // every other entry in the ledger.
-        amount: Math.abs(amount),
-        source,
-        note,
-        orderId: order.id,
-        date: new Date(),
-      },
-    }),
+    order.treasuryEntry
+      ? prisma.treasuryEntry.update({
+          where: { id: order.treasuryEntry.id },
+          data: entryData,
+        })
+      : prisma.treasuryEntry.create({
+          data: {
+            workspaceId: access.workspaceId,
+            ...entryData,
+            orderId: order.id,
+            date: new Date(),
+          },
+        }),
   ]);
 
   // Two rows, one decision: the order stops waiting for its money and the
@@ -120,18 +143,20 @@ async function bankOrderCash(
       entityLabel: label,
       summary: outward
         ? `Courier charges settled — ৳${Math.abs(amount)} out of the treasury`
-        : `Cash marked as reaching the treasury — ৳${amount}`,
-      changes: { cashInTreasury: { from: false, to: true } },
+        : `Cash marked as reaching the treasury — ৳${amount}` +
+          // Which instalment this was, when it isn't the whole of it.
+          (alreadyBanked !== 0 ? ` (৳${alreadyBanked} was already in, now ৳${total})` : ""),
+      changes: { cashInTreasury: { from: order.cashInTreasury, to: true } },
       groupId: group,
     },
     {
-      action: "CREATE",
+      action: order.treasuryEntry ? "UPDATE" : "CREATE",
       entity: "TreasuryEntry",
       entityId: entry.id,
       entityLabel: source,
       summary: outward
-        ? `৳${Math.abs(amount)} out — ${note}`
-        : `৳${amount} in — ${note}` +
+        ? `৳${Math.abs(total)} out — ${note}`
+        : `৳${total} in — ${note}` +
           (deposit.courierCharges > 0
             ? ` (customer paid ৳${deposit.gross}, courier kept ৳${deposit.courierCharges})`
             : ""),

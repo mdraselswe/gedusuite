@@ -183,6 +183,58 @@ export function amountCollected(
  * left the customer square and the shop 60 short, and one number cannot say
  * both.
  */
+/**
+ * What the treasury already holds against an order, as a signed figure.
+ *
+ * The ledger stores a magnitude and a direction; everything reasoning about an
+ * order's cash wants one number that can go either way, because an order's
+ * entry is a deposit on most orders and a courier's charge on some.
+ */
+export function bankedSoFar(
+  entry: { type: string; amount: Prisma.Decimal | number } | null | undefined,
+): number {
+  if (!entry) return 0;
+  return round2(Number(entry.amount)) * (entry.type === "IN" ? 1 : -1);
+}
+
+/**
+ * What is still to be handed over: what this order's cash comes to, less
+ * whatever of it the treasury already has.
+ *
+ * Zero on the ordinary order — banked once, for the whole of it. Non-zero on a
+ * part-paid order that was banked and has since taken another instalment: that
+ * instalment is in somebody's pocket, and this is the figure waiting to be
+ * confirmed.
+ */
+export function stillToBank(deposit: number, banked: number): number {
+  return round2(deposit - banked);
+}
+
+/**
+ * What an order's treasury entry should hold after the order itself changed.
+ *
+ * Follows the order down, never up. Down is the treasury handing money back —
+ * a return refunds it, an edit that lowers the price means less was owed all
+ * along. Up is money that has only just been collected, and is in whoever
+ * collected it's pocket rather than in the treasury; growing the entry for it
+ * banked cash nobody had deposited. What went up waits on `stillToBank` until
+ * somebody confirms it arrived.
+ */
+export function bankedAfterChange(banked: number, deposit: number): number {
+  // Down is always followed.
+  if (deposit <= banked) return deposit;
+  // Up, and the entry is already a deposit: leave it where it is. The extra is
+  // cash somebody has just collected, and waits on `stillToBank`.
+  if (banked > 0) return banked;
+  // Up, from a courier's charge. A charge is not cash anybody is holding — it
+  // is a bill the courier deducts from the next payout — so a charge correcting
+  // itself downwards is followed. What it must not do is cross into a deposit:
+  // a refused parcel that turns into a delivered one has collected real money,
+  // and that waits to be confirmed like any other. Zero clears the entry, which
+  // puts the order back on the list for the whole of it.
+  return Math.min(deposit, 0);
+}
+
 export function amountRemitted(
   order: SettleableOrder & { collectionShortfall: Prisma.Decimal | number },
   totals: Pick<OrderTotals, "customerTotal">,
@@ -394,7 +446,21 @@ export async function syncOrderCashEntry(
 
   const totals = computeOrderTotals(order);
   const deposit = depositAmount(order, totals);
-  const amount = deposit.net;
+  const existing = await tx.treasuryEntry.findFirst({
+    where: { workspaceId, orderId },
+    select: { type: true, amount: true },
+  });
+  const banked = bankedSoFar(existing);
+  // Follows the order down, never up.
+  //
+  // Down is the treasury handing money back: a return refunds it, an edit that
+  // lowers the price means less was owed all along. Up is the opposite — money
+  // that has just been collected, and is in whoever collected it's pocket, not
+  // in the treasury. Growing the entry for it put cash in the balance that
+  // nobody had deposited, and took the order off the "not deposited" list at
+  // the same time, so the gap was invisible from both ends. It stays on that
+  // list now, for the difference, until somebody confirms it arrived.
+  const amount = bankedAfterChange(banked, deposit.net);
 
   // An order whose status says nothing has been collected, with money already
   // banked against it, is a contradiction — most often a PARTIAL row nobody has

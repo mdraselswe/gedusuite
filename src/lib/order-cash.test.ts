@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   applyPayment,
+  bankedAfterChange,
+  bankedSoFar,
+  stillToBank,
   blockedByDepositedCash,
   cashEntryNote,
   cashEntrySource,
@@ -528,5 +531,60 @@ describe("applyPayment", () => {
     expect(second.ok && second.collected).toBe(666.66);
     const last = applyPayment(1000, 666.66, 333.34);
     expect(last).toEqual({ ok: true, collected: 1000, settled: true, remaining: 0 });
+  });
+});
+
+/**
+ * An order is banked once, but its cash can arrive in two goes. What the
+ * treasury holds and what the order has collected are then different numbers,
+ * and the gap between them is somebody's pocket.
+ */
+describe("banking an order that pays in instalments", () => {
+  it("reads what the treasury already holds, whichever way the entry points", () => {
+    expect(bankedSoFar({ type: "IN", amount: 500 })).toBe(500);
+    expect(bankedSoFar({ type: "OUT", amount: 115 })).toBe(-115);
+    expect(bankedSoFar(null)).toBe(0);
+    expect(bankedSoFar(undefined)).toBe(0);
+  });
+
+  it("waits only on the part that has not been handed over", () => {
+    // 500 of a 660 order banked, then the customer settles the rest. The 160
+    // is with whoever took it, so that is what is left to confirm.
+    expect(stillToBank(660, 500)).toBe(160);
+    expect(stillToBank(660, 660)).toBe(0);
+    expect(stillToBank(500, 0)).toBe(500);
+  });
+
+  it("follows the order down — a return takes money back out", () => {
+    // 660 banked, then half of it comes back: the treasury really does hand
+    // that money over, so the entry shrinks with the order.
+    expect(bankedAfterChange(660, 330)).toBe(330);
+    expect(bankedAfterChange(660, 0)).toBe(0);
+  });
+
+  it("never follows the order up on its own", () => {
+    // The bug this exists to stop. An order banked at 500 takes another 160,
+    // and the entry used to grow itself the moment the payment was recorded —
+    // putting 160 in the treasury that was still in somebody's pocket, and
+    // taking the order off the "not deposited" list at the same time, so the
+    // gap was invisible from both ends.
+    expect(bankedAfterChange(500, 660)).toBe(500);
+    expect(stillToBank(660, bankedAfterChange(500, 660))).toBe(160);
+  });
+
+  it("lets a courier charge follow either way", () => {
+    // A charge is not cash anybody is holding — it is a bill the courier
+    // applies to the next payout, so it tracks the order in both directions.
+    expect(bankedAfterChange(-115, -65)).toBe(-65);
+    expect(bankedAfterChange(-65, -115)).toBe(-115);
+  });
+
+  it("will not turn a charge into a deposit by itself", () => {
+    // A refused parcel that cost 115 gets un-cancelled and delivered, and now
+    // collects 900. That is real money arriving, and it waits to be confirmed
+    // like any other: the entry clears rather than flipping to +785, which
+    // puts the order back on the not-deposited list for the whole of it.
+    expect(bankedAfterChange(-115, 785)).toBe(0);
+    expect(stillToBank(785, 0)).toBe(785);
   });
 });

@@ -3,9 +3,11 @@ import { prisma } from "@/lib/prisma";
 import { computeOrderTotals, orderNetProfit } from "@/lib/orders";
 import {
   amountOutstanding,
+  bankedSoFar,
   collectionRecorded,
   depositAmount,
   deliveryCostCharged,
+  stillToBank,
 } from "@/lib/order-cash";
 import { inventoryValue, variantCost } from "@/lib/inventory";
 import { amortizeAll } from "@/lib/amortize";
@@ -1123,11 +1125,20 @@ export type PaidNotDeposited = DhakaStamp & {
   orderId: string;
   customerName: string;
   /**
-   * What will actually reach the treasury — a courier's cut already removed.
-   * Negative when the courier's charges outran what it collected: that is
-   * money leaving, not arriving.
+   * What is still to reach the treasury — a courier's cut already removed, and
+   * anything already banked against this order taken off. Negative when the
+   * courier's charges outran what it collected: that is money leaving, not
+   * arriving.
    */
   amount: number;
+  /**
+   * How much of this order's cash the treasury already holds.
+   *
+   * Non-zero on a part-paid order that was banked and has since taken another
+   * instalment: the first payment is in, the second is still in somebody's
+   * pocket, and only the second is waiting to be confirmed.
+   */
+  alreadyBanked: number;
   /** What the customer paid. Equal to `amount` unless a courier collected it. */
   gross: number;
   courierName: string | null;
@@ -1163,7 +1174,13 @@ export async function paidNotDeposited(workspaceId: string): Promise<PaidNotDepo
   const orders = await prisma.order.findMany({
     where: {
       workspaceId,
-      cashInTreasury: false,
+      // Deliberately not filtered to `cashInTreasury: false`. An order banked
+      // while it was part-paid can take another instalment afterwards, and that
+      // instalment is in somebody's pocket exactly as the first one was. Filtered
+      // out, it appeared nowhere — while the treasury quietly claimed it, because
+      // the entry used to grow itself. What is waiting is now worked out per
+      // order below, as collected less already banked, so an order drops off this
+      // list when the two agree rather than when a flag is set.
       OR: [
         {
           status: { not: "CANCELLED" },
@@ -1193,6 +1210,8 @@ export async function paidNotDeposited(workspaceId: string): Promise<PaidNotDepo
       // itself is read here and turned into a yes or no on the next line, and
       // never leaves the server.
       courier: { select: { name: true, apiKeyEnc: true } },
+      // What the treasury already holds against this order, if anything.
+      treasuryEntry: { select: { type: true, amount: true } },
     },
     orderBy: { date: "asc" },
   });
@@ -1200,11 +1219,15 @@ export async function paidNotDeposited(workspaceId: string): Promise<PaidNotDepo
     // What the courier will hand over, not what it collected — otherwise this
     // card promises the treasury money the courier is keeping.
     const deposit = depositAmount(o, computeOrderTotals(o));
+    // Signed, because an order's entry can be a courier's charge going the
+    // other way.
+    const alreadyBanked = bankedSoFar(o.treasuryEntry);
+    const outstanding = stillToBank(deposit.net, alreadyBanked);
     // Rows with nothing to settle drop out. A PARTIAL order nobody has typed
     // an amount onto has collected nothing yet, so there is no cash of its to
     // be waiting for — and a courier charge may not be booked as an outflow
     // against a blank figure either.
-    if (deposit.net === 0) return [];
+    if (deposit.net === 0 || outstanding === 0) return [];
     if (deposit.net < 0 && !collectionRecorded(o)) return [];
     // A courier bills for the trip when it ends — on delivery, or on the way
     // back. A parcel still in transit has been charged nothing yet, so booking
@@ -1219,7 +1242,8 @@ export async function paidNotDeposited(workspaceId: string): Promise<PaidNotDepo
         orderId: o.id,
         ...dhakaRecordStamp(o.date, o.createdAt, o.dateHasTime),
         customerName: o.customer?.name ?? "Walk-in",
-        amount: deposit.net,
+        amount: outstanding,
+        alreadyBanked,
         gross: deposit.gross,
         courierCharges: deposit.courierCharges,
         paymentMethod: o.paymentMethod,

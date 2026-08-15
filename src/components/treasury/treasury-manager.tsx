@@ -89,6 +89,8 @@ type NotDeposited = DhakaStamp & {
   courierName: string | null;
   /** The next payout will already be short of this charge — see finance.ts. */
   settlesAtPayout: boolean;
+  /** How much of this order's cash the treasury already holds. */
+  alreadyBanked: number;
   /** Delivery cost + COD fee the courier keeps before remitting. */
   courierCharges: number;
   paymentMethod: string;
@@ -789,7 +791,20 @@ export function TreasuryManager({
                     key: "amount",
                     header: "Amount",
                     align: "right",
-                    cell: (o) => <span className="font-medium"><Money value={o.amount} /></span>,
+                    cell: (o) => (
+                      <span className="font-medium">
+                        <Money value={o.amount} />
+                        {/* Only the part still to come. An order banked while it
+                            was part-paid, that has since taken another instalment,
+                            is listed for the instalment alone — saying just "160"
+                            against a 660 order reads like a mistake without this. */}
+                        {o.alreadyBanked !== 0 && (
+                          <span className="ml-1 text-xs font-normal text-muted-foreground">
+                            (<Money value={o.alreadyBanked} /> already in)
+                          </span>
+                        )}
+                      </span>
+                    ),
                   },
                   ...(canManage
                     ? [
@@ -879,7 +894,20 @@ export function TreasuryManager({
                     key: "amount",
                     header: "Amount",
                     align: "right",
-                    cell: (o) => <span className="font-medium"><Money value={o.amount} /></span>,
+                    cell: (o) => (
+                      <span className="font-medium">
+                        <Money value={o.amount} />
+                        {/* Only the part still to come. An order banked while it
+                            was part-paid, that has since taken another instalment,
+                            is listed for the instalment alone — saying just "160"
+                            against a 660 order reads like a mistake without this. */}
+                        {o.alreadyBanked !== 0 && (
+                          <span className="ml-1 text-xs font-normal text-muted-foreground">
+                            (<Money value={o.alreadyBanked} /> already in)
+                          </span>
+                        )}
+                      </span>
+                    ),
                   },
                   ...(canManage
                     ? [
