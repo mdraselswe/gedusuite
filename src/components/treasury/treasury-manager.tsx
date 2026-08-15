@@ -18,7 +18,7 @@ import { beyondDistributableProfit, splitByShare } from "@/lib/profit-share";
 import { Money } from "@/components/ui/money";
 import { Field, FormError, type FieldError } from "@/components/ui/field";
 import { MoneyInput } from "@/components/ui/money-input";
-import { formatMoney } from "@/lib/money";
+import { formatMoney, round2 } from "@/lib/money";
 import { InfoNote } from "@/components/ui/info-note";
 import { toneForBalance } from "@/lib/money";
 import { Button } from "@/components/ui/button";
@@ -210,6 +210,13 @@ export function TreasuryManager({
   const courierTotal = withCourier.reduce((s, o) => s + o.amount, 0);
   const courierGross = withCourier.reduce((s, o) => s + o.gross, 0);
   const courierCharges = withCourier.reduce((s, o) => s + o.courierCharges, 0);
+  // The two courier cards are one pot of money, not two. A courier settles
+  // everything it is holding in a single payout: the charges on the parcels
+  // that collected nothing come out of the collections on the parcels that
+  // did, so what actually lands is the difference. Shown because reading the
+  // two cards as separate figures is what makes this page look like it
+  // disagrees with the courier's own app.
+  const courierNet = round2(courierTotal - owedToCourierTotal);
   const membersTotal = withMembers.reduce((s, o) => s + o.amount, 0);
   // Grouped by who is holding it, because that is who hands it over. One
   // "mark all" across the card would confirm money from people who haven't
@@ -537,6 +544,36 @@ export function TreasuryManager({
                 </Button>
               )}
             </div>
+            {courierTotal > 0 && (
+              <InfoNote
+                title={
+                  <>
+                    Not a separate bill — it comes out of the{" "}
+                    <Money value={courierTotal} /> above
+                  </>
+                }
+              >
+                <p>
+                  A courier settles everything it is holding in one payout. The charges
+                  on these parcels are taken out of the collections on the others, so
+                  what actually arrives is the difference:{" "}
+                  <b>
+                    {formatMoney(courierTotal)} − {formatMoney(owedToCourierTotal)} ={" "}
+                    {formatMoney(courierNet)}
+                  </b>
+                  . Two cards, one pot.
+                </p>
+                <p>
+                  The <b>Courier balance</b>{" "}page is the one to compare against the
+                  courier&apos;s own app. It works the percentage fee out the way the
+                  courier does — once on the whole payout, rounded down — while these
+                  figures carry a fee worked out per parcel, because profit is a
+                  per-order question. The two land a taka or two apart on a set this
+                  size, and importing the payout writes the difference into the ledger
+                  so nothing is left hanging.
+                </p>
+              </InfoNote>
+            )}
             <InfoNote title="Why a parcel can cost money instead of bringing it in">
               <p>
                 A courier charges for the trip, not for the sale. When it collects nothing
@@ -681,6 +718,17 @@ export function TreasuryManager({
                   above are what will actually reach the treasury, which is why they read
                   lower than the invoices.
                 </p>
+                {owedToCourierTotal > 0 && (
+                  <p>
+                    {formatMoney(courierTotal)} here, less the{" "}
+                    {formatMoney(owedToCourierTotal)} of charges on the parcels that
+                    collected nothing, is <b>{formatMoney(courierNet)}</b>{" "}— the courier
+                    pays one payout covering both. Compare that against the courier&apos;s
+                    own app on the <b>Courier balance</b>{" "}page, which works the fee out
+                    the courier&apos;s way (once on the whole payout) rather than per
+                    parcel, so it can read a taka or two apart from this.
+                  </p>
+                )}
               </InfoNote>
             )}
           </CardHeader>

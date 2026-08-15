@@ -17,7 +17,7 @@ import { TreasuryManager } from "@/components/treasury/treasury-manager";
 import { Pagination, parsePage } from "@/components/ui/pagination";
 import { PageHeader } from "@/components/ui/page-header";
 import { Money } from "@/components/ui/money";
-import { toneForBalance } from "@/lib/money";
+import { formatMoney, round2, toneForBalance } from "@/lib/money";
 import { dhakaRecordStamp } from "@/lib/dhaka-time";
 import { Wallet } from "lucide-react";
 
@@ -122,6 +122,14 @@ export default async function TreasuryPage({
   // taken, whoever is currently holding it.
   const onTheWay = notDeposited.reduce((s, o) => s + o.amount, 0);
   const expected = balance + onTheWay;
+  // The same total, split the way the cards below split it: a courier's
+  // collections net of its charges, and cash a colleague is carrying. One
+  // figure covering both is what makes this line look like a third number
+  // that agrees with neither card.
+  const withCourierNet = notDeposited
+    .filter((o) => o.isCourierCollection || o.amount < 0)
+    .reduce((s, o) => s + o.amount, 0);
+  const withPeople = round2(onTheWay - withCourierNet);
 
   const partnerOptions = partners.map((p) => ({
     id: p.id,
@@ -162,7 +170,14 @@ export default async function TreasuryPage({
             </span>
             {onTheWay > 0 && (
               <>
-                <span>
+                <span
+                  // Where it is, not just how much. "On the way" is one figure
+                  // covering two quite different situations — a courier holding
+                  // a payout, and a colleague holding cash — and the cards below
+                  // split them apart while this line did not, so the number
+                  // matched neither card and read as a third one.
+                  title={`${formatMoney(withCourierNet)} with couriers (their charges already taken off) · ${formatMoney(withPeople)} with the team`}
+                >
                   On the way:{" "}
                   <Money value={onTheWay} className="text-lg font-bold" />
                 </span>

@@ -346,6 +346,20 @@ export function CourierReconciliation({
                     do that when the courier actually pays out. A returned parcel
                     subtracts what the courier charged to bring it back.
                   </div>
+                  {/* Which of the app's two figures to trust against the
+                      courier's own app. The percentage fee is charged once on
+                      the payout and rounded down, so it cannot be split across
+                      parcels exactly; this page applies it the courier's way and
+                      the treasury applies it per parcel, because profit is a
+                      per-order question. On a set this size they land a taka or
+                      two apart, and reading the treasury card against the
+                      courier's app is what makes that look like an error. */}
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    This is the figure to compare with their app. The treasury&apos;s
+                    &ldquo;cash with courier&rdquo; card works the percentage fee out per
+                    parcel rather than once on the payout, so it reads a taka or two
+                    apart from this — importing the payout settles the difference.
+                  </div>
                 </div>
                 <div className="space-y-1">
                   <Label htmlFor={`actual-${a.id}`} className="text-xs text-muted-foreground">
@@ -386,11 +400,19 @@ export function CourierReconciliation({
                         {money(diff)}
                       </div>
                       <div className="text-xs text-muted-foreground">
+                        {/* Named in the order they actually turn up. Every
+                            figure below is derived from the invoice except one
+                            — what somebody typed as collected on a parcel that
+                            came up short, or on a partial delivery — so that is
+                            where a gap of a few taka almost always sits. This
+                            hint used to guess at a mispriced parcel, which is
+                            the rarer of the two and sends the reader to the
+                            rate table instead of to the row. */}
                         {Math.abs(diff) < 1
                           ? "Matches — nothing unexplained."
                           : diff < 0
                             ? "They hold less than expected: a charge you don't have — a rate that isn't what's set up, or a returned parcel whose charge nobody typed in."
-                            : "They hold more than expected: a parcel's cost is set too high here."}
+                            : "They hold more than expected: they collected more on a parcel than was recorded here — check any row where a shortfall or a partial delivery was typed in — or a delivery cost is set higher here than they charged."}
                       </div>
                     </>
                   )}
