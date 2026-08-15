@@ -6,6 +6,9 @@ import { buildSnapshot } from "@/lib/backup";
 
 const KEEP = 10;
 
+/** How long an offline-queue idempotency key is worth keeping. */
+const PROCESSED_MUTATION_DAYS = 14;
+
 // Scheduled JSON backup for every workspace that opted in (BackupSetting.autoJson).
 // Wired to Vercel Cron in vercel.json. Protected by CRON_SECRET.
 export async function GET(req: NextRequest) {
@@ -79,5 +82,16 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ ok: true, ran: results.length, results });
+  // Offline-queue keys, which nothing had ever deleted. They exist to stop a
+  // retried write from being applied twice, so they only need to outlive the
+  // outbox's retry window — after that they are a table that grows for the
+  // life of the deployment and is never read. A fortnight is far longer than
+  // any queued write survives on a phone, and short enough that this stays a
+  // handful of rows.
+  const cutoff = new Date(Date.now() - PROCESSED_MUTATION_DAYS * 86_400_000);
+  const pruned = await prisma.processedMutation.deleteMany({
+    where: { createdAt: { lt: cutoff } },
+  });
+
+  return NextResponse.json({ ok: true, ran: results.length, results, pruned: pruned.count });
 }
