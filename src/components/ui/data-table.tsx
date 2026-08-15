@@ -301,7 +301,25 @@ export function DataTable<T>({
         <>
           {/* Desktop / tablet: table */}
           <div className="hidden md:block">
-            <Table containerClassName={stickyHeader ? "max-h-[75vh] overflow-auto" : undefined}>
+            {/* The height is what makes sideways scrolling reachable, not just
+                possible. A wide table overflows this box and the box scrolls —
+                but its horizontal scrollbar sits along its bottom edge, and at
+                a flat 75vh that edge lands below the fold on any laptop: the
+                box starts ~250px down (page header, toolbar, filter bar), so
+                on a 768px screen the scrollbar was 60px past the bottom of the
+                window. The columns simply looked cut off, with nothing to drag.
+
+                min() keeps 75vh where there is room for it — above ~1090px
+                tall the box is unchanged — and falls back to "whatever is left
+                below the chrome" on shorter screens, so the scrollbar is
+                always on screen when the table is. */}
+            <Table
+              containerClassName={
+                stickyHeader
+                  ? "max-h-[min(75vh,calc(100dvh_-_17rem))] overflow-auto"
+                  : undefined
+              }
+            >
               <TableHeader>
                 <TableRow>
                   {selection && (
