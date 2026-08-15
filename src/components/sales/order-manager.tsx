@@ -9,6 +9,7 @@ import {
   createOrder,
   updateOrderStatus,
   updateOrderHeader,
+  recordPayment,
   updatePaymentStatus,
   refreshCourierStatuses,
   updateCourierTrackingId,
@@ -570,6 +571,11 @@ export function OrderManager({
   // the one status that means nothing without a number attached.
   const [partPaying, setPartPaying] = useState<OrderRow | null>(null);
   const [partPaidAmount, setPartPaidAmount] = useState("");
+  // "add" is a fresh instalment — what the customer just handed over. "correct"
+  // rewrites the running total, for the far rarer case of a figure typed wrong.
+  // Both used to be the same box asking for the total, which meant every
+  // instalment after the first was mental arithmetic done under pressure.
+  const [partMode, setPartMode] = useState<"add" | "correct">("add");
   const [partPaySaving, setPartPaySaving] = useState(false);
   const [items, setItems] = useState<ItemDraft[]>([emptyItem()]);
   const [gifts, setGifts] = useState<GiftDraft[]>([]);
@@ -1189,14 +1195,29 @@ export function OrderManager({
     router.refresh();
   }
 
+  /** Opens the payment dialog on the instalment it is nearly always for. */
+  function openPayment(order: OrderRow) {
+    // A cancelled order has no balance to pay down — what was handed over on
+    // the doorstep of a refused parcel is the cancellation's own figure, and
+    // the dialog would read every one of them as fully paid. Said here rather
+    // than letting the server refuse it after the amount has been typed.
+    if (order.status === "CANCELLED") {
+      return toast.error(
+        "This order is cancelled — record what was collected in the cancellation costs instead.",
+      );
+    }
+    setPartPaidAmount("");
+    setPartMode("add");
+    setPartPaying(order);
+  }
+
   async function onPaymentStatusChange(orderId: string, newStatus: string) {
     // "Some of it" is not an amount, and every due figure needs one. Ask now,
     // while whoever took the money is still standing there.
     if (newStatus === "PARTIAL") {
       const order = orders.find((o) => o.id === orderId);
       if (order) {
-        setPartPaidAmount(order.amountPaid > 0 ? String(order.amountPaid) : "");
-        setPartPaying(order);
+        openPayment(order);
         return;
       }
     }
@@ -1209,16 +1230,19 @@ export function OrderManager({
   async function onConfirmPartial(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!partPaying) return;
+    const typed = parseFloat(partPaidAmount) || 0;
     setPartPaySaving(true);
-    const res = await updatePaymentStatus(
-      slug,
-      partPaying.id,
-      "PARTIAL",
-      parseFloat(partPaidAmount) || 0,
-    );
+    // Two different questions, so two different actions: an instalment is
+    // added to what the order already holds (server-side, so two people taking
+    // money the same afternoon can't overwrite each other), while a correction
+    // replaces the running total outright.
+    const res =
+      partMode === "add"
+        ? await recordPayment(slug, partPaying.id, typed)
+        : await updatePaymentStatus(slug, partPaying.id, "PARTIAL", typed);
     setPartPaySaving(false);
     if (!res.ok) return toast.error(res.error);
-    toast.success("Partial payment recorded");
+    toast.success(partMode === "add" ? "Payment recorded" : "Recorded total corrected");
     setPartPaying(null);
     router.refresh();
   }
@@ -1686,6 +1710,15 @@ export function OrderManager({
                       )}
                       {perms.canEdit && (
                         <>
+                          {/* The instalment path. Before this the only way to
+                              take a second payment was to reopen the payment
+                              dropdown and pick the status it was already on,
+                              which nothing anywhere suggested. */}
+                          {o.status !== "CANCELLED" && o.amountDue > 0 && (
+                            <DropdownMenuItem onClick={() => openPayment(o)}>
+                              Record a payment
+                            </DropdownMenuItem>
+                          )}
                           <DropdownMenuItem onClick={() => openEdit(o)}>
                             Edit details
                           </DropdownMenuItem>
@@ -2669,61 +2702,119 @@ export function OrderManager({
         </DialogContent>
       </Dialog>
 
-      {/* Partial-payment dialog. PARTIAL used to be a status with no figure
-          behind it, so a 3,000 advance on a 5,000 order left the app chasing
-          the whole 5,000 and holding the 3,000 nowhere at all. */}
+      {/* Payment dialog. PARTIAL used to be a status with no figure behind it,
+          so a 3,000 advance on a 5,000 order left the app chasing the whole
+          5,000 and holding the 3,000 nowhere at all. It then asked for the
+          total paid so far, which works exactly once: the second instalment
+          made whoever took the money add it to a figure they had to remember
+          first. This asks what changed hands. */}
       <Dialog open={!!partPaying} onOpenChange={(o) => !o && setPartPaying(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>How much has been paid?</DialogTitle>
+            <DialogTitle>
+              {partMode === "add" ? "Record a payment" : "Correct the recorded total"}
+            </DialogTitle>
           </DialogHeader>
-          {partPaying && (
-            <form key={partPaying.id} onSubmit={onConfirmPartial} className="space-y-4">
-              <p className="text-sm text-muted-foreground">
-                {partPaying.customerName}&apos;s order comes to{" "}
-                <Money value={partPaying.totals.customerTotal} />. Enter what they have
-                handed over so far — the rest stays on the due list.
-              </p>
-              <Field
-                name="amountPaid"
-                label="Paid so far"
-                required
-                hint={`Order total ${formatMoney(partPaying.totals.customerTotal)}`}
-              >
-                <MoneyInput
-                  min="0"
-                  required
-                  autoFocus
-                  value={partPaidAmount}
-                  onChange={(e) => setPartPaidAmount(e.target.value)}
-                />
-              </Field>
-              <div className="space-y-2">
-                <p className="text-xs text-muted-foreground">
-                  Still due{" "}
-                  <Money
-                    value={Math.max(
-                      0,
-                      partPaying.totals.customerTotal - (parseFloat(partPaidAmount) || 0),
-                    )}
-                  />
-                </p>
-              </div>
-              <DialogFooter>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setPartPaying(null)}
-                  disabled={partPaySaving}
-                >
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={partPaySaving}>
-                  {partPaySaving ? "Saving…" : "Record payment"}
-                </Button>
-              </DialogFooter>
-            </form>
-          )}
+          {partPaying &&
+            (() => {
+              const total = partPaying.totals.customerTotal;
+              // Read off the due rather than amountPaid: PAID means the whole
+              // total whatever that column holds, and the server works from
+              // the same rule.
+              const already = round2(Math.max(0, total - partPaying.amountDue));
+              const typed = parseFloat(partPaidAmount) || 0;
+              const nextTotal = partMode === "add" ? round2(already + typed) : round2(typed);
+              const remaining = round2(Math.max(0, total - nextTotal));
+              return (
+                <form key={partPaying.id} onSubmit={onConfirmPartial} className="space-y-4">
+                  {/* The three figures the person on the phone is being asked
+                      about, before they are asked anything. */}
+                  <dl className="space-y-1 rounded-lg bg-muted/40 p-3 text-sm">
+                    <div className="flex justify-between gap-3">
+                      <dt className="text-muted-foreground">
+                        {partPaying.customerName}&apos;s order
+                      </dt>
+                      <dd className="font-medium tabular-nums">
+                        <Money value={total} />
+                      </dd>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <dt className="text-muted-foreground">Paid so far</dt>
+                      <dd className="tabular-nums">
+                        <Money value={already} />
+                      </dd>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <dt className="text-muted-foreground">Still due</dt>
+                      <dd className="font-medium tabular-nums">
+                        <Money value={partPaying.amountDue} />
+                      </dd>
+                    </div>
+                  </dl>
+                  <Field
+                    name="amountPaid"
+                    label={partMode === "add" ? "Amount received now" : "Total paid so far"}
+                    required
+                    hint={
+                      partMode === "add"
+                        ? `At most ${formatMoney(partPaying.amountDue)}`
+                        : "Replaces the figure already recorded — for fixing a typo, not for a new instalment"
+                    }
+                  >
+                    <MoneyInput
+                      min="0"
+                      required
+                      autoFocus
+                      value={partPaidAmount}
+                      onChange={(e) => setPartPaidAmount(e.target.value)}
+                    />
+                  </Field>
+                  {typed > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      {remaining > 0 ? (
+                        <>
+                          Leaves <Money value={nextTotal} /> paid of <Money value={total} /> —{" "}
+                          <Money value={remaining} /> still due.
+                        </>
+                      ) : (
+                        // Settling exactly is the common way an instalment plan
+                        // ends, and it should not need a second trip to the
+                        // status dropdown afterwards.
+                        <>Settles the order in full — it will be marked paid.</>
+                      )}
+                    </p>
+                  )}
+                  {/* Only worth offering once there is a figure to be wrong. */}
+                  {already > 0 && (
+                    <button
+                      type="button"
+                      className="text-xs text-muted-foreground underline underline-offset-2"
+                      onClick={() => {
+                        setPartMode(partMode === "add" ? "correct" : "add");
+                        setPartPaidAmount(partMode === "add" ? String(already) : "");
+                      }}
+                    >
+                      {partMode === "add"
+                        ? "The recorded total is wrong — correct it instead"
+                        : "← Back to recording a payment"}
+                    </button>
+                  )}
+                  <DialogFooter>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setPartPaying(null)}
+                      disabled={partPaySaving}
+                    >
+                      Cancel
+                    </Button>
+                    <Button type="submit" disabled={partPaySaving}>
+                      {partPaySaving ? "Saving…" : partMode === "add" ? "Record payment" : "Save"}
+                    </Button>
+                  </DialogFooter>
+                </form>
+              );
+            })()}
         </DialogContent>
       </Dialog>
 

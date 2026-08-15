@@ -219,6 +219,58 @@ export function amountOutstanding(
   return round2(Math.max(0, totals.customerTotal - amountCollected(order, totals)));
 }
 
+/** Where an instalment leaves the order, or why it can't be taken. */
+export type PaymentApplication =
+  | { ok: false; error: string }
+  | {
+      ok: true;
+      /** Everything collected once this instalment is included. */
+      collected: number;
+      /** True when it clears the balance — the order becomes PAID. */
+      settled: boolean;
+      /** What still hasn't been paid afterwards. */
+      remaining: number;
+    };
+
+/**
+ * Add an instalment to what an order has already collected.
+ *
+ * Pure, and separate from the action that writes it, because this is the part
+ * that has edges: rounding around an exact settlement, an overpayment, and a
+ * balance that is already clear. Money arithmetic in this app lives in lib and
+ * is tested; the action is the plumbing around it.
+ *
+ * Settling the balance exactly returns `settled`, meaning PAID rather than a
+ * PARTIAL that happens to equal its own total — PAID is what every downstream
+ * reader checks, and `amountCollected` deliberately stops consulting the
+ * running figure once it is set.
+ */
+export function applyPayment(total: number, already: number, received: number): PaymentApplication {
+  if (!Number.isFinite(received) || received <= 0) {
+    return { ok: false, error: "Enter how much the customer has just paid" };
+  }
+  const due = round2(total - already);
+  if (due <= 0) {
+    return { ok: false, error: "This order is already settled in full" };
+  }
+  const amount = round2(received);
+  // Refused rather than clamped: an overpayment is either a typo or money the
+  // shop now owes back, and silently swallowing the difference hides both.
+  if (amount > due) {
+    return {
+      ok: false,
+      error: `Only ${due.toFixed(2)} is still due on this order — enter that or less.`,
+    };
+  }
+  const collected = round2(already + amount);
+  return {
+    ok: true,
+    collected,
+    settled: collected >= total,
+    remaining: round2(Math.max(0, total - collected)),
+  };
+}
+
 /**
  * How much of an order's money the business actually ends up holding.
  *

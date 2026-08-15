@@ -13,6 +13,8 @@ import {
 import { ConcurrentWrite, runSerializable } from "@/lib/tx";
 import { variantFullName } from "@/lib/variants";
 import {
+  amountCollected,
+  applyPayment,
   blockedByDepositedCash,
   codBaseFor,
   codCollectable,
@@ -1099,6 +1101,98 @@ export async function updatePaymentStatus(
 
   revalidatePath(`/${slug}/sales/orders`);
   revalidatePath(`/${slug}/couriers`);
+  revalidatePath(`/${slug}/dashboard`);
+  revalidatePath(`/${slug}/treasury`);
+  return { ok: true };
+}
+
+/**
+ * Take another instalment: add what just came in to what was already paid.
+ *
+ * `amountPaid` is a running total, and updatePaymentStatus above sets it
+ * outright. That is the wrong end to type at once a first instalment exists —
+ * a customer paying 2,000 against a 3,500 balance means somebody has to work
+ * out 3,500 and enter that, and getting the arithmetic wrong writes a due
+ * figure nobody can trace back. Here the caller says what changed hands and
+ * the total is worked out from what the order already holds, which is also the
+ * only version that stays right when two people take money the same afternoon.
+ *
+ * Settling the balance exactly marks the order PAID rather than leaving it a
+ * PARTIAL that happens to equal its total — PAID is what every downstream
+ * reader checks, and `amountPaid` is deliberately ignored once it is set.
+ */
+export async function recordPayment(
+  slug: string,
+  orderId: string,
+  amount: number,
+): Promise<ActionResult> {
+  const gate = await requireAccess(slug, "sales", "edit");
+  if (!gate.ok) return gate;
+  const workspaceId = gate.access.workspaceId;
+
+  const order = await prisma.order.findFirst({
+    where: { id: orderId, workspaceId },
+    include: {
+      items: { include: { returns: true } },
+      customer: { select: { name: true } },
+    },
+  });
+  if (!order) return { ok: false, error: "Order not found" };
+
+  // A cancelled order sold nothing, so there is no balance to pay down — what
+  // the customer handed over on a refused parcel is the cancellation's own
+  // figure, and it is edited there.
+  if (order.status === "CANCELLED") {
+    return {
+      ok: false,
+      error:
+        "This order is cancelled — there's nothing left to collect. Record what was taken on the doorstep in the cancellation costs instead.",
+    };
+  }
+
+  const totals = computeOrderTotals(order);
+  const total = totals.customerTotal;
+  const applied = applyPayment(total, amountCollected(order, totals), amount);
+  if (!applied.ok) return applied;
+
+  const { collected, settled, remaining } = applied;
+  // PAID means the whole customer total whatever this column says, so it is
+  // cleared on the way through — the same thing updatePaymentStatus does.
+  const paid = settled ? 0 : collected;
+  const nextStatus: PaymentStatus = settled ? "PAID" : "PARTIAL";
+  const received = round2(amount);
+
+  await prisma.$transaction(async (tx) => {
+    await tx.order.update({
+      where: { id: orderId },
+      data: { paymentStatus: nextStatus, amountPaid: paid },
+    });
+    // More money collected means a bigger deposit, when this order's cash is
+    // already banked. Only ever upwards from here, so none of the guards
+    // updatePaymentStatus needs against shrinking a confirmed deposit apply.
+    await syncOrderCashEntry(tx, workspaceId, orderId);
+  });
+
+  await recordActivity(gate.access, {
+    action: "UPDATE",
+    entity: "Order",
+    entityId: orderId,
+    entityLabel: orderLabel(orderId, order.customer?.name),
+    // The instalment, not just the new total: "৳2,000 received" is the fact
+    // somebody will look for later, and the running total on its own hides it.
+    summary: settled
+      ? `৳${received} received — settled in full (৳${total})`
+      : `৳${received} received — ৳${collected} of ৳${total} paid, ৳${remaining} still due`,
+    changes: diffFields(
+      { paymentStatus: order.paymentStatus, amountPaid: order.amountPaid },
+      { paymentStatus: nextStatus, amountPaid: paid },
+      ["paymentStatus", "amountPaid"],
+    ),
+  });
+
+  revalidatePath(`/${slug}/sales/orders`);
+  revalidatePath(`/${slug}/couriers`);
+  revalidatePath(`/${slug}/customers`);
   revalidatePath(`/${slug}/dashboard`);
   revalidatePath(`/${slug}/treasury`);
   return { ok: true };

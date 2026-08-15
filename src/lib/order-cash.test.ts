@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  applyPayment,
   blockedByDepositedCash,
   cashEntryNote,
   cashEntrySource,
@@ -12,6 +13,7 @@ import {
   deliveryCostCharged,
   depositAmount,
 } from "@/lib/order-cash";
+import { round2 } from "@/lib/money";
 
 describe("blockedByDepositedCash", () => {
   it("lets an order with no banked cash through", () => {
@@ -476,5 +478,55 @@ describe("codBaseFor", () => {
 
   it("treats a missing shortfall as none", () => {
     expect(codBaseFor({ status: "DELIVERED" }, { invoicedTotal: 1100 })).toBe(1100);
+  });
+});
+
+describe("applyPayment", () => {
+  it("adds an instalment to what was already collected", () => {
+    const res = applyPayment(5000, 2000, 1500);
+    expect(res).toEqual({ ok: true, collected: 3500, settled: false, remaining: 1500 });
+  });
+
+  it("takes a first payment on an order nothing has been paid towards", () => {
+    const res = applyPayment(5000, 0, 2000);
+    expect(res).toEqual({ ok: true, collected: 2000, settled: false, remaining: 3000 });
+  });
+
+  // The point of the instalment path: the last one settles the order outright
+  // rather than leaving a PARTIAL that happens to equal its own total, which
+  // every downstream reader would still treat as owing.
+  it("settles the order when the instalment clears the balance exactly", () => {
+    const res = applyPayment(5000, 3500, 1500);
+    expect(res).toEqual({ ok: true, collected: 5000, settled: true, remaining: 0 });
+  });
+
+  it("refuses more than is still due rather than swallowing the difference", () => {
+    const res = applyPayment(5000, 3500, 2000);
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error).toContain("1500.00");
+  });
+
+  it("refuses a payment on an order that is already settled", () => {
+    const res = applyPayment(5000, 5000, 100);
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error).toContain("already settled");
+  });
+
+  it("refuses zero, negatives and junk", () => {
+    expect(applyPayment(5000, 0, 0).ok).toBe(false);
+    expect(applyPayment(5000, 0, -100).ok).toBe(false);
+    expect(applyPayment(5000, 0, NaN).ok).toBe(false);
+  });
+
+  // Thirds of a price divide badly, and an order left owing 0.004 is an order
+  // that never comes off the due list.
+  it("settles on the last instalment of a total that doesn't divide evenly", () => {
+    const third = round2(1000 / 3); // 333.33
+    const first = applyPayment(1000, 0, third);
+    expect(first.ok && first.collected).toBe(333.33);
+    const second = applyPayment(1000, 333.33, third);
+    expect(second.ok && second.collected).toBe(666.66);
+    const last = applyPayment(1000, 666.66, 333.34);
+    expect(last).toEqual({ ok: true, collected: 1000, settled: true, remaining: 0 });
   });
 });
