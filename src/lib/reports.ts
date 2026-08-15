@@ -4,7 +4,7 @@ import { allocateOrderLines } from "@/lib/product-report";
 import { amountCollected } from "@/lib/order-cash";
 import { splitByShare } from "@/lib/profit-share";
 import { dhakaDayEnd, dhakaDayKey, dhakaDayStart, dhakaDaysAgo, dhakaToday } from "@/lib/dhaka-time";
-import { amortizeAll } from "@/lib/amortize";
+import { operatingExpenses } from "@/lib/finance";
 
 const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
 
@@ -235,65 +235,19 @@ export async function buildReport(
   // say what was left rather than what was taken. Ad spend was already here;
   // the other two were not, and partner shares were calculated from a profit
   // figure that had paid for neither.
-  const dateFilter = range ? { date: { gte: range.from, lte: range.to } } : {};
-  const [adSpendAgg, internalPurchases, miscAgg, writeOffs, partners] = await Promise.all([
-    prisma.boostDailySpend.aggregate({ _sum: { amount: true }, where: { workspaceId, ...dateFilter } }),
-    // Not date-filtered: a purchase from March can still put part of itself
-    // into a May report if it was spread. The range is applied by the
-    // amortizer instead, which knows how much of each cost belongs here.
-    prisma.internalPurchase.findMany({
-      where: { workspaceId },
-      select: { cost: true, quantity: true, date: true, spreadMonths: true },
-    }),
-    prisma.partnerTxn.aggregate({
-      _sum: { amount: true },
-      where: { workspaceId, type: "EXPENSE", ...dateFilter },
-    }),
-    // Damaged and lost stock: bought with real money, never sold, and until
-    // now never counted as a loss anywhere.
-    prisma.stockAdjustment.findMany({
-      where: { workspaceId, type: { in: ["DAMAGED", "LOST"] }, ...dateFilter },
-      select: {
-        delta: true,
-        productVariant: {
-          select: {
-            unitCost: true,
-            purchases: { orderBy: { date: "desc" }, take: 1, select: { unitCost: true } },
-          },
-        },
-      },
-    }),
+  //
+  // Through operatingExpenses, which the lifetime rollup and the dashboard
+  // tile also call. This page had the whole list and the dashboard had one
+  // quarter of it, and neither could see the other to disagree with it.
+  const [expenses, partners] = await Promise.all([
+    operatingExpenses(workspaceId, range),
     prisma.partner.findMany({
       where: { workspaceId },
       include: { user: { select: { name: true, email: true } } },
     }),
   ]);
-  const adSpend = round2(Number(adSpendAgg._sum.amount ?? 0));
-  const internal = amortizeAll(
-    internalPurchases.map((ip) => ({
-      date: ip.date,
-      amount: Number(ip.cost) * ip.quantity,
-      spreadMonths: ip.spreadMonths,
-    })),
-    range,
-  );
-  const internalPurchaseSpend = internal.recognized;
-  const miscExpense = round2(Number(miscAgg._sum.amount ?? 0));
-  // Last purchase price, then the catalogue cost, then nothing — the same
-  // chain a sale's cost snapshot follows.
-  const stockLoss = round2(
-    writeOffs.reduce((s, a) => {
-      const v = a.productVariant;
-      const unit = v.purchases[0]
-        ? Number(v.purchases[0].unitCost)
-        : v.unitCost != null
-          ? Number(v.unitCost)
-          : 0;
-      return s + Math.abs(Math.min(0, a.delta)) * unit;
-    }, 0),
-  );
-  const operatingExpenses = round2(adSpend + internalPurchaseSpend + miscExpense + stockLoss);
-  const netProfit = round2(profit - operatingExpenses);
+  const { adSpend, internalPurchaseSpend, miscExpense, stockLoss } = expenses;
+  const netProfit = round2(profit - expenses.total);
 
   // splitByShare, not a raw percentage — the same function a distribution pays
   // out with, so this table and the payout can't give different answers.
@@ -320,8 +274,8 @@ export async function buildReport(
       internalPurchaseSpend,
       miscExpense,
       stockLoss,
-      prepaidExpenses: internal.prepaid,
-      operatingExpenses,
+      prepaidExpenses: expenses.prepaidExpenses,
+      operatingExpenses: expenses.total,
       netProfit,
       profitAfterAds: round2(profit - adSpend),
       cancelledOrders: cancelled.length,

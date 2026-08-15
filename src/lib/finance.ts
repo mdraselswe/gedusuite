@@ -675,6 +675,105 @@ function writeOffUnitCost(a: {
   return a.productVariant.unitCost != null ? Number(a.productVariant.unitCost) : 0;
 }
 
+export type OperatingExpenses = {
+  /** Advertising — every BoostDailySpend in the range, whoever funded it. */
+  adSpend: number;
+  /**
+   * Internal purchases charged to the range. One with `spreadMonths` set
+   * contributes only the part that has elapsed inside it; the rest is
+   * `prepaidExpenses`.
+   */
+  internalPurchaseSpend: number;
+  /** Manual partner EXPENSE entries — anything with no dedicated record. */
+  miscExpense: number;
+  /** Stock written off as damaged or lost, valued at what it cost to buy. */
+  stockLoss: number;
+  /**
+   * Spread costs paid for but not yet charged to any period — a year of
+   * hosting with eight months left to run. Beside the total, never inside it.
+   */
+  prepaidExpenses: number;
+  /** adSpend + internalPurchaseSpend + miscExpense + stockLoss. */
+  total: number;
+};
+
+/**
+ * What it costs to run the shop over a range — one function, three callers.
+ *
+ * The reports page, the lifetime profit rollup and the dashboard tile all have
+ * to subtract the same four things from trading profit, and each of them used
+ * to do it with its own copy of the list. That is how the dashboard came to
+ * show a month at ৳11,018 of profit while the same month, on the reports page,
+ * had spent ৳8,165 on ads and ৳3,914 on internal purchases and was ৳1,061 down.
+ * Both were adding up honestly; only one of them had the whole list.
+ *
+ * `range` null means the lifetime figure. Internal purchases are deliberately
+ * not filtered in the query — a March purchase spread over a year still puts
+ * part of itself into a May report — so the range is applied by the amortizer,
+ * which knows how much of each cost belongs where.
+ */
+export async function operatingExpenses(
+  workspaceId: string,
+  range: { from: Date; to: Date } | null,
+): Promise<OperatingExpenses> {
+  const dateFilter = range ? { date: { gte: range.from, lte: range.to } } : {};
+  const [adSpendAgg, internalPurchases, miscAgg, writeOffs] = await Promise.all([
+    prisma.boostDailySpend.aggregate({ _sum: { amount: true }, where: { workspaceId, ...dateFilter } }),
+    prisma.internalPurchase.findMany({
+      where: { workspaceId },
+      select: { cost: true, quantity: true, date: true, spreadMonths: true },
+    }),
+    prisma.partnerTxn.aggregate({
+      _sum: { amount: true },
+      where: { workspaceId, type: "EXPENSE", ...dateFilter },
+    }),
+    // Stock that left without being sold. It was bought with real money and it
+    // is never coming back, but nothing recognised it as a loss: profit only
+    // ever sees cost when something sells, so a broken box simply vanished
+    // from the shelf and from the accounts at the same time.
+    prisma.stockAdjustment.findMany({
+      where: { workspaceId, type: { in: ["DAMAGED", "LOST"] }, ...dateFilter },
+      select: {
+        delta: true,
+        productVariant: {
+          select: {
+            unitCost: true,
+            // Same cost chain a sale uses: what it last cost to buy, then the
+            // catalogue price, then nothing. Valuing a write-off only by the
+            // catalogue cost would report zero loss for every variant that was
+            // bought but never priced — which is most of them, since the
+            // purchase form is where the real cost gets typed.
+            purchases: { orderBy: { date: "desc" }, take: 1, select: { unitCost: true } },
+          },
+        },
+      },
+    }),
+  ]);
+
+  const adSpend = round2(Number(adSpendAgg._sum.amount ?? 0));
+  const internal = amortizeAll(
+    internalPurchases.map((ip) => ({
+      date: ip.date,
+      amount: Number(ip.cost) * ip.quantity,
+      spreadMonths: ip.spreadMonths,
+    })),
+    range,
+  );
+  const internalPurchaseSpend = internal.recognized;
+  const miscExpense = round2(Number(miscAgg._sum.amount ?? 0));
+  const stockLoss = round2(
+    writeOffs.reduce((s, a) => s + Math.abs(Math.min(0, a.delta)) * writeOffUnitCost(a), 0),
+  );
+  return {
+    adSpend,
+    internalPurchaseSpend,
+    miscExpense,
+    stockLoss,
+    prepaidExpenses: internal.prepaid,
+    total: round2(adSpend + internalPurchaseSpend + miscExpense + stockLoss),
+  };
+}
+
 export type BusinessProfit = {
   /** Order profit, returns-aware, less what cancelled orders cost. */
   tradingProfit: number;
@@ -739,41 +838,14 @@ export type BusinessProfit = {
  * taking the total on trust.
  */
 export async function totalBusinessProfit(workspaceId: string): Promise<BusinessProfit> {
-  const [orders, adSpendAgg, internalPurchases, miscAgg, writeOffs, distributedAgg] = await Promise.all([
+  const [orders, expenses, distributedAgg] = await Promise.all([
     prisma.order.findMany({
       where: { workspaceId },
       include: { items: { include: { returns: true } } },
     }),
-    prisma.boostDailySpend.aggregate({ where: { workspaceId }, _sum: { amount: true } }),
-    prisma.internalPurchase.findMany({
-      where: { workspaceId },
-      select: { cost: true, quantity: true, date: true, spreadMonths: true },
-    }),
-    prisma.partnerTxn.aggregate({
-      where: { workspaceId, type: "EXPENSE" },
-      _sum: { amount: true },
-    }),
-    // Stock that left without being sold. It was bought with real money and it
-    // is never coming back, but nothing recognised it as a loss: profit only
-    // ever sees cost when something sells, so a broken box simply vanished
-    // from the shelf and from the accounts at the same time.
-    prisma.stockAdjustment.findMany({
-      where: { workspaceId, type: { in: ["DAMAGED", "LOST"] } },
-      select: {
-        delta: true,
-        productVariant: {
-          select: {
-            unitCost: true,
-            // Same cost chain a sale uses: what it last cost to buy, then the
-            // catalogue price, then nothing. Valuing a write-off only by the
-            // catalogue cost would report zero loss for every variant that was
-            // bought but never priced — which is most of them, since the
-            // purchase form is where the real cost gets typed.
-            purchases: { orderBy: { date: "desc" }, take: 1, select: { unitCost: true } },
-          },
-        },
-      },
-    }),
+    // The same four costs the reports page and the dashboard subtract, from
+    // the same function — lifetime here, a range there.
+    operatingExpenses(workspaceId, null),
     // What has already been handed out. Every share figure in the app is
     // "profit minus this" — without it the same profit is offered again every
     // time somebody looks.
@@ -784,32 +856,17 @@ export async function totalBusinessProfit(workspaceId: string): Promise<Business
   ]);
 
   const tradingProfit = orders.reduce((s, o) => s + orderNetProfit(o), 0);
-  const adSpend = Number(adSpendAgg._sum.amount ?? 0);
-  // A spread purchase contributes only its elapsed share; the remainder comes
-  // back as `prepaid` rather than disappearing.
-  const internal = amortizeAll(
-    internalPurchases.map((ip) => ({
-      date: ip.date,
-      amount: Number(ip.cost) * ip.quantity,
-      spreadMonths: ip.spreadMonths,
-    })),
-    null,
-  );
-  const internalPurchaseSpend = internal.recognized;
-  const miscExpense = Number(miscAgg._sum.amount ?? 0);
-  const stockLoss = writeOffs.reduce((s, a) => s + Math.abs(Math.min(0, a.delta)) * writeOffUnitCost(a), 0);
-  const operatingExpenses = adSpend + internalPurchaseSpend + miscExpense + stockLoss;
-  const netProfit = round2(tradingProfit - operatingExpenses);
+  const netProfit = round2(tradingProfit - expenses.total);
   const distributed = round2(Number(distributedAgg._sum.totalAmount ?? 0));
 
   return {
     tradingProfit: round2(tradingProfit),
-    adSpend: round2(adSpend),
-    internalPurchaseSpend: round2(internalPurchaseSpend),
-    miscExpense: round2(miscExpense),
-    stockLoss: round2(stockLoss),
-    prepaidExpenses: internal.prepaid,
-    operatingExpenses: round2(operatingExpenses),
+    adSpend: expenses.adSpend,
+    internalPurchaseSpend: expenses.internalPurchaseSpend,
+    miscExpense: expenses.miscExpense,
+    stockLoss: expenses.stockLoss,
+    prepaidExpenses: expenses.prepaidExpenses,
+    operatingExpenses: expenses.total,
     netProfit,
     distributed,
     distributableProfit: round2(netProfit - distributed),

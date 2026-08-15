@@ -4,9 +4,14 @@ import { workspaceAccess } from "@/lib/authz";
 import { can } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
 import { computeInventoryAlerts } from "@/lib/inventory";
-import { overdueOrders, totalBusinessProfit, treasuryBalance } from "@/lib/finance";
+import {
+  operatingExpenses,
+  overdueOrders,
+  totalBusinessProfit,
+  treasuryBalance,
+} from "@/lib/finance";
 import { splitByShare } from "@/lib/profit-share";
-import { dhakaDayStart, dhakaMonthStart } from "@/lib/dhaka-time";
+import { dhakaDayEnd, dhakaDayStart, dhakaMonthStart, dhakaToday } from "@/lib/dhaka-time";
 import { computeOrderTotals, orderNetProfit } from "@/lib/orders";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PartnerShareTable } from "@/components/dashboard/partner-share-table";
@@ -14,7 +19,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { buttonVariants } from "@/components/ui/button";
 import { StatGrid, StatTile } from "@/components/ui/stat-tile";
 import { Money } from "@/components/ui/money";
-import { toneForBalance } from "@/lib/money";
+import { formatMoney, toneForBalance } from "@/lib/money";
 import {
   LayoutDashboard,
   Users,
@@ -58,17 +63,21 @@ export default async function DashboardPage({
   // The month starts at midnight in Dhaka, not in UTC — six hours earlier, and
   // enough to push the first night's orders into the previous month.
   const monthStart = dhakaDayStart(dhakaMonthStart());
-  const [memberCount, alerts, overdue, profit, treasury, adSpendAgg, monthOrders, partners] =
+  // End of today in Dhaka, not this instant: a cost dated "today" carries no
+  // time of day, and a range ending at 14:07 would leave it out of the month
+  // it plainly belongs to.
+  const monthToDateEnd = dhakaDayEnd(dhakaToday());
+  const [memberCount, alerts, overdue, profit, treasury, monthExpenses, monthOrders, partners] =
     await Promise.all([
       prisma.membership.count({ where: { workspaceId } }),
       computeInventoryAlerts(workspaceId),
       overdueOrders(workspaceId),
       totalBusinessProfit(workspaceId),
       treasuryBalance(workspaceId),
-      prisma.boostDailySpend.aggregate({
-        _sum: { amount: true },
-        where: { workspaceId, date: { gte: monthStart } },
-      }),
+      // The whole cost of running the shop this month, not just the ads. The
+      // ad-spend tile reads its figure out of the same object, so the two
+      // tiles cannot describe different months.
+      operatingExpenses(workspaceId, { from: monthStart, to: monthToDateEnd }),
       canViewReports
         ? prisma.order.findMany({
             // Cancelled orders included on purpose: they sell nothing but
@@ -87,22 +96,30 @@ export default async function DashboardPage({
           })
         : Promise.resolve([]),
     ]);
-  const monthAdSpend = Number(adSpendAgg._sum.amount ?? 0);
+  const monthAdSpend = monthExpenses.adSpend;
 
   const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
   let monthRevenue = 0;
-  let monthProfit = 0;
+  let monthTradingProfit = 0;
   for (const o of monthOrders) {
     if (o.status === "CANCELLED") {
-      monthProfit += orderNetProfit(o);
+      monthTradingProfit += orderNetProfit(o);
       continue;
     }
     const totals = computeOrderTotals(o);
     monthRevenue += totals.netRevenue;
-    monthProfit += totals.netProfit;
+    monthTradingProfit += totals.netProfit;
   }
   monthRevenue = round2(monthRevenue);
-  monthProfit = round2(monthProfit);
+  monthTradingProfit = round2(monthTradingProfit);
+  // What the month actually made. The tile used to show the line above it —
+  // trading profit, before a taka of the advertising, the rent or the polybags
+  // had been paid for — sitting next to an ad-spend tile it had not subtracted.
+  // Read together they promised a month that earned ৳11,018 and separately
+  // spent ৳8,165, when the month those two figures came from was ৳1,061 down.
+  // This is the same subtraction the reports page calls netProfit, and it is
+  // the figure partner shares are actually paid on.
+  const monthProfit = round2(monthTradingProfit - monthExpenses.total);
 
   const lowStock = alerts.filter((a) => a.type === "LOW_STOCK");
   const expiring = alerts.filter((a) => a.type === "EXPIRY");
@@ -218,6 +235,10 @@ export default async function DashboardPage({
             color="teal"
             label="Profit this month"
             value={monthProfit}
+            // The two layers, so nobody has to guess which one the tile is
+            // showing — and so a month that traded well but spent more than it
+            // made says both things at once.
+            sub={`${formatMoney(monthTradingProfit)} trading − ${formatMoney(monthExpenses.total)} running costs`}
             tone={toneForBalance(monthProfit)}
             href={`/${slug}/reports`}
           />
