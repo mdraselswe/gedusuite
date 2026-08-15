@@ -1,6 +1,7 @@
 import { google } from "googleapis";
 import type { Snapshot } from "@/lib/backup";
 import { variantFullName } from "@/lib/variants";
+import { variantCost } from "@/lib/inventory";
 import { dhakaInstant } from "@/lib/dhaka-time";
 
 /**
@@ -289,7 +290,17 @@ function enrichSnapshotTables(
     const vid = p.productVariantId as string;
     if (!lastPurchaseCost.has(vid)) lastPurchaseCost.set(vid, Number(p.unitCost ?? 0));
   }
-  const unitCostOf = (vid: string) => lastPurchaseCost.get(vid) ?? variantCostById.get(vid) ?? 0;
+  // Through the shared chain, like every other surface that asks what a piece
+  // cost — the fifth copy of the rule, and the one furthest from anybody who
+  // would notice it drifting. The shapes differ (these are snapshot rows, not
+  // Prisma models), so what is shared is the rule, not the query.
+  const unitCostOf = (vid: string) => {
+    const last = lastPurchaseCost.get(vid);
+    return variantCost({
+      unitCost: variantCostById.get(vid) ?? null,
+      purchases: last == null ? [] : [{ unitCost: last }],
+    });
+  };
 
   return {
     ...t,

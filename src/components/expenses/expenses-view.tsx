@@ -395,6 +395,18 @@ export function ExpensesView({
                       value={c.amount}
                     />
                   ))}
+                  {/* The categories above cover everything that was bought,
+                      credit included; the total is what actually left. Without
+                      this line between them the column stops adding up to its
+                      own total, which is the one thing a breakdown must do. */}
+                  {shown.onCredit > 0 && (
+                    <FigureRow
+                      label="Bought on credit — not paid yet"
+                      value={-shown.onCredit}
+                      tone="muted"
+                      sub
+                    />
+                  )}
                   <FigureRow
                     label={excluded.size > 0 ? "Total shown" : "Total spent"}
                     value={shown.total}
@@ -479,6 +491,15 @@ export function ExpensesView({
                       <Money value={picked.total} />
                     </span>
                   </div>
+                  {/* Same reason as the total above: the per-category figures
+                      beneath include anything ticked that was bought on terms,
+                      and the headline doesn't. */}
+                  {picked.onCredit > 0 && (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Plus <Money value={picked.onCredit} /> on credit, in the categories
+                      below but not in that figure
+                    </p>
+                  )}
                   <div className="mt-2 grid gap-x-6 gap-y-1 sm:grid-cols-2">
                     <FigureList className="text-xs">
                       {picked.byCategory.map((c) => (
