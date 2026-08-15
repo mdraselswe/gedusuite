@@ -182,8 +182,14 @@ type GiftDraft = {
   costEdited: boolean;
 };
 
-// Toggleable columns on the orders table (Columns menu). Profit starts on;
-// the rest start hidden to keep the table lean.
+// Toggleable columns on the orders table (Columns menu). All start hidden —
+// the table has to fit a laptop screen without scrolling sideways, and each of
+// these is a question asked occasionally rather than read down the list.
+//
+// Profit used to start on. It is the widest optional column and the one least
+// often needed while working the list (the reports page is where margins get
+// read), so it pays for itself least — and it is the figure you least want on
+// screen when the laptop is turned towards a customer or a courier.
 //
 // Every optional column belongs here, including ones only some workspaces can
 // use (see availability below). Marking a column `hideable` on the DataTable
@@ -698,7 +704,7 @@ export function OrderManager({
   // back — and every parcel would start with three clicks nobody asked for.
   // Shops that book by hand see the list exactly as they did before.
   const [visibleCols, setVisibleCols] = useState<Set<string>>(() =>
-    new Set(couriers.some((c) => c.apiConnected) ? ["profit", "courier"] : ["profit"]),
+    new Set(couriers.some((c) => c.apiConnected) ? ["courier"] : []),
   );
   const searchDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -1651,38 +1657,46 @@ export function OrderManager({
               key: "actions",
               header: "",
               cardFullWidth: true,
+              // Everything behind one button. Invoice and Breakdown used to sit
+              // out here as inline links — two nowrap labels on every row, on
+              // the widest table in the app, for two documents opened once per
+              // order at most. The menu already existed next to them.
               cell: (o: OrderRow) => (
-                <div className="flex flex-nowrap items-center gap-3">
-                  <Link
-                    href={`/${slug}/sales/orders/${o.id}/invoice`}
-                    className="inline-flex items-center whitespace-nowrap text-sm underline underline-offset-4"
-                  >
-                    Invoice
-                  </Link>
-                  {perms.canViewProfit && (
-                    <Link
-                      href={`/${slug}/sales/orders/${o.id}/breakdown`}
-                      className="inline-flex items-center whitespace-nowrap text-sm underline underline-offset-4"
+                <div className="flex flex-nowrap items-center justify-end">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger
+                      render={<Button variant="ghost" size="icon-sm" aria-label="More actions" title="More actions" />}
                     >
-                      Breakdown
-                    </Link>
-                  )}
-                  {perms.canEdit && (
-                    <DropdownMenu>
-                      <DropdownMenuTrigger
-                        render={<Button variant="ghost" size="icon-sm" aria-label="More actions" title="More actions" />}
+                      <MoreVertical className="size-4" />
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      {/* Real links, so middle-click and "open in new tab"
+                          still work the way they did as plain anchors. */}
+                      <DropdownMenuItem
+                        render={<Link href={`/${slug}/sales/orders/${o.id}/invoice`} />}
                       >
-                        <MoreVertical className="size-4" />
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => openEdit(o)}>Edit details</DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => openReturn(o)}>Return</DropdownMenuItem>
-                        <DropdownMenuItem variant="destructive" onClick={() => onDelete(o.id)}>
-                          Delete
+                        Invoice
+                      </DropdownMenuItem>
+                      {perms.canViewProfit && (
+                        <DropdownMenuItem
+                          render={<Link href={`/${slug}/sales/orders/${o.id}/breakdown`} />}
+                        >
+                          Breakdown
                         </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  )}
+                      )}
+                      {perms.canEdit && (
+                        <>
+                          <DropdownMenuItem onClick={() => openEdit(o)}>
+                            Edit details
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => openReturn(o)}>Return</DropdownMenuItem>
+                          <DropdownMenuItem variant="destructive" onClick={() => onDelete(o.id)}>
+                            Delete
+                          </DropdownMenuItem>
+                        </>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
               ),
             },
