@@ -131,7 +131,13 @@ export function AppShell({
         </div>
       </aside>
 
-      <div className="flex flex-1 flex-col md:pl-64">
+      {/* min-w-0: this is a flex item, so its automatic minimum size is its
+          content's min-content width — one wide thing on one page and the
+          whole document scrolls sideways instead of that thing scrolling
+          inside its own box. The top bar is `sticky`, which only pins
+          vertically, so it slides off with everything else and the sideways
+          scroll looks like a broken header rather than a wide table. */}
+      <div className="flex min-w-0 flex-1 flex-col md:pl-64">
         {/* Top bar: full nav trigger on mobile, just the bell on desktop */}
         <header className="sticky top-0 z-20 flex items-center justify-between gap-2 border-b bg-background px-4 py-3 md:justify-end print:hidden">
           <div className="flex items-center gap-1 md:hidden">
