@@ -316,7 +316,11 @@ export function CourierReconciliation({
                     onClick={() => onImport(a)}
                     disabled={importing !== null}
                   >
-                    {importing === a.id ? "Importing…" : "Import payouts"}
+                    {/* Named for what it does to the books rather than for the
+                        mechanism. "Import payouts" describes the API call; the
+                        person pressing it has just seen money arrive and wants
+                        the treasury to say so. */}
+                    {importing === a.id ? "Fetching…" : "Get what they paid"}
                   </Button>
                 )}
                 <Link
@@ -326,6 +330,19 @@ export function CourierReconciliation({
                   open orders
                 </Link>
               </div>
+              {/* When to press it, and what it saves you from. Without this the
+                  only visible way to bank a courier's cash was to tick the
+                  orders off by hand on the treasury page, which banks the app's
+                  own per-parcel figures and leaves the payout's rounding
+                  unaccounted for. */}
+              {canEdit && a.apiConnected && (
+                <p className="text-xs text-muted-foreground">
+                  Press <b>Get what they paid</b> once {a.name}&apos;s money is in your
+                  account. It reads what they actually paid, banks those parcels, and
+                  records any difference — so the treasury matches your bank to the taka.
+                  Nothing to undo if you press it early: it just says there is nothing new.
+                </p>
+              )}
 
               <div className="grid gap-4 sm:grid-cols-3">
                 <div>

@@ -217,6 +217,13 @@ export function TreasuryManager({
   // two cards as separate figures is what makes this page look like it
   // disagrees with the courier's own app.
   const courierNet = round2(courierTotal - owedToCourierTotal);
+  // Whether the courier holding this money can be asked what it paid. Where it
+  // can, ticking these rows off by hand is the worse of the two routes — it
+  // banks the app's own per-parcel figures and leaves the payout's rounding
+  // unaccounted for, while the import books the exact amount and writes the
+  // difference. The card said nothing about that, so the hand route was the
+  // only one visible from here.
+  const courierSelfPays = withCourier.some((o) => o.settlesAtPayout);
   const membersTotal = withMembers.reduce((s, o) => s + o.amount, 0);
   // Grouped by who is holding it, because that is who hands it over. One
   // "mark all" across the card would confirm money from people who haven't
@@ -690,7 +697,9 @@ export function TreasuryManager({
                   onClick={() =>
                     onBankAll("courier", withCourier, {
                       title: `Mark ${withCourier.length} orders as remitted?`,
-                      body: "Confirm this only once the courier's payout has actually arrived.",
+                      body: courierSelfPays
+                        ? "Confirm this only once the courier's payout has actually arrived — and if it can be asked what it paid, \"Get what they paid\" on the Courier balance page is the better route: it books the exact amount and records the difference. This banks the app's own per-parcel figures instead."
+                        : "Confirm this only once the courier's payout has actually arrived.",
                       confirm: "Mark all remitted",
                       done: "remitted",
                     })
@@ -703,6 +712,15 @@ export function TreasuryManager({
                 </Button>
               )}
             </div>
+            {courierSelfPays && (
+              <p className="text-xs text-muted-foreground">
+                These clear themselves: press <b>Get what they paid</b> on the{" "}
+                <b>Courier balance</b>{" "}page once the money arrives, and it banks them at
+                the amount the courier actually paid, difference and all. Marking them
+                here by hand banks the app&apos;s own per-parcel figures instead, which
+                lands a taka or two apart.
+              </p>
+            )}
             {courierCharges > 0 && (
               <InfoNote
                 title={
