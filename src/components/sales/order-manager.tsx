@@ -1106,6 +1106,25 @@ export function OrderManager({
     ? Math.round((courierQuote.total - (parseFloat(deliveryCharge) || 0)) * 100) / 100
     : 0;
 
+  // A zone priced in bands charges by weight, and an unweighed parcel is quoted
+  // at the TOP band on purpose — under-quoting a parcel is the mistake that
+  // hides, because it makes an order look more profitable than it was. But it
+  // is still a guess, and nothing on the screen said so: 86 products with no
+  // weight between them meant every light Dhaka parcel was costed at 65 when
+  // Steadfast charges 55, and the ten taka only surfaced as an unexplained gap
+  // against a payout weeks later. Says which band it could drop to, so the
+  // person filling the form knows there is a number worth entering.
+  const unweighedBand = useMemo(() => {
+    if (deliveryType !== "COURIER" || !selectedCourier) return null;
+    if (parseFloat(weightKg) || suggestedWeightKg) return null;
+    const zone = selectedCourier.zones.find((z) => z.id === courierZoneId);
+    if (!zone || zone.bands.length < 2) return null;
+    const sorted = [...zone.bands].sort((a, b) => a.uptoKg - b.uptoKg);
+    const lightest = sorted[0];
+    // Nothing to say when the light band costs the same as the heavy one.
+    return lightest.rate < sorted[sorted.length - 1].rate ? lightest : null;
+  }, [deliveryType, selectedCourier, courierZoneId, weightKg, suggestedWeightKg]);
+
   const breakEven = useMemo(() => {
     if (!courierQuote || !selectedCourier) return null;
     const zone = selectedCourier.zones.find((z) => z.id === courierZoneId);
@@ -1214,6 +1233,14 @@ export function OrderManager({
     fd.set("paymentMethod", paymentMethod);
     fd.set("isGiveaway", giveaway ? "1" : "");
     fd.set("paymentStatus", paymentStatus);
+    // The weight the quote above was worked out on, not the empty box it was
+    // read from. Leaving the field blank showed "~0.2kg from the items' own
+    // weights" and a 55 delivery cost on screen, then saved no weight at all —
+    // and a parcel with no weight is priced at the zone's TOP band, so the
+    // order stored 65. Every light Dhaka parcel was costed ten taka high, and
+    // the preview that would have given it away was the one screen showing the
+    // right number.
+    if (!weightKg && suggestedWeightKg !== null) fd.set("weightKg", String(suggestedWeightKg));
     fd.set("items", JSON.stringify(cleanItems));
     fd.set("gifts", JSON.stringify(cleanGifts));
     const res = await createOrder(slug, fd);
@@ -2512,6 +2539,14 @@ export function OrderManager({
                                   </>
                                 ) : (
                                   " Covered by what you're charging."
+                                )}
+                                {unweighedBand && (
+                                  <>
+                                    {" "}
+                                    No weight entered, so this is the heaviest band — under{" "}
+                                    {unweighedBand.uptoKg}kg it is{" "}
+                                    <Money value={unweighedBand.rate} />.
+                                  </>
                                 )}
                               </p>
                             </div>
