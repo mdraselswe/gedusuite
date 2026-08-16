@@ -1006,6 +1006,24 @@ export async function updateOrderStatus(
     codAmount: codCollectable(order.paymentMethod, collectable),
   });
 
+  // Money collected on a refused parcel IS money the customer paid, and the
+  // cancel dialog is the only place it gets typed. Writing it to
+  // `cancelledCollected` alone left the order still reading UNPAID with 130
+  // taka of the customer's money against it — every money figure downstream was
+  // right (they all consult `cancelledCollected` once an order is cancelled)
+  // and the badge on the list said the opposite. Recording a partial payment
+  // BEFORE cancelling produced the correct pair, so the same order looked
+  // different depending on which order the two steps happened in.
+  //
+  // PAID is left alone: a prepaid order that gets cancelled has been paid in
+  // full, and what happens to that money is a refund, not a payment status.
+  const collectedOnCancel =
+    status === "CANCELLED" ? (costs.cancelledCollected ?? Number(order.cancelledCollected)) : 0;
+  const settlement =
+    collectedOnCancel > 0 && order.paymentStatus !== "PAID"
+      ? { paymentStatus: "PARTIAL" as const, amountPaid: collectedOnCancel }
+      : {};
+
   // Moving from non-consuming → consuming: verify stock is available. Checked
   // twice on purpose — here for a fast, friendly refusal before anything is
   // written, and again inside the transaction below where it actually binds.
@@ -1057,6 +1075,7 @@ export async function updateOrderStatus(
         data: {
           status: status as OrderStatus,
           ...costs,
+          ...settlement,
           codFeeCost,
           returnLeg,
           // Stamped only when the leg actually moves, so "sent back on the
