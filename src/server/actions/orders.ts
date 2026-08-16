@@ -61,6 +61,10 @@ const HEADER_AUDIT_FIELDS = [
   "shipAddress",
   "weightKg",
   "cancelledCollected",
+  // Editable from the same dialog, and worth a history line for the same
+  // reason the money fields are: it decides whether a parcel's pieces are
+  // sellable, and somebody will want to know who said so.
+  "returnLeg",
   "paymentMethod",
   "packagingCost",
   "giftCost",
@@ -629,6 +633,18 @@ const HeaderSchema = z.object({
     (v) => (v === "" || v == null ? undefined : v),
     z.coerce.number().nonnegative().max(99_999_999).optional(),
   ),
+  /**
+   * The way back into the return queue for a cancellation that was recorded
+   * without it — the box unticked by mistake, or an order cancelled before
+   * ReturnLeg existed at all.
+   *
+   * Two fields for one answer, because an unticked checkbox posts nothing at
+   * all: without the marker, "the goods are back" and "this form never asked"
+   * arrive identically, and every header edit on every other order would
+   * silently release a parcel that is still in a van.
+   */
+  goodsInTransitAsked: checkboxField.default(false),
+  goodsInTransit: checkboxField.default(false),
 });
 
 export async function updateOrderHeader(
@@ -646,8 +662,17 @@ export async function updateOrderHeader(
       id: true,
       cashInTreasury: true,
       status: true,
-      items: { select: { unitPrice: true, quantity: true, discount: true } },
-      gifts: { select: { quantity: true, unitCost: true } },
+      items: {
+        select: {
+          unitPrice: true,
+          quantity: true,
+          discount: true,
+          // Only needed when the return leg is being turned on, which takes
+          // these units off the shelf and so has to be able to check them.
+          productVariantId: true,
+        },
+      },
+      gifts: { select: { quantity: true, unitCost: true, productVariantId: true } },
       // Not edited here, but the courier's fee is quoted net of it — without
       // it a header save re-quoted on the full invoice and quietly undid the
       // correction recordCollectedAmount had made.
@@ -681,6 +706,8 @@ export async function updateOrderHeader(
     courierZoneId: formData.get("courierZoneId") ?? undefined,
     weightKg: formData.get("weightKg") ?? undefined,
     cancelledCollected: formData.get("cancelledCollected") ?? undefined,
+    goodsInTransitAsked: formData.get("goodsInTransitAsked"),
+    goodsInTransit: formData.get("goodsInTransit"),
   });
   if (!parsed.success) {
     return failed(parsed.error);
@@ -750,6 +777,50 @@ export async function updateOrderHeader(
     codAmount: codCollectable(d.paymentMethod, collectable),
   });
 
+  /**
+   * Where the goods end up once this save lands.
+   *
+   * Ignored unless the dialog asked, and it only asks on a cancelled order
+   * whose leg is still open — RECEIVED and LOST are settled by an action that
+   * wrote stock adjustments, and letting a header edit reopen them would leave
+   * those adjustments describing a parcel that is no longer written off.
+   */
+  const legEditable =
+    order.status === "CANCELLED" && (order.returnLeg === "NONE" || order.returnLeg === "IN_TRANSIT");
+  const returnLeg: ReturnLeg =
+    d.goodsInTransitAsked && legEditable
+      ? d.goodsInTransit
+        ? "IN_TRANSIT"
+        : "NONE"
+      : order.returnLeg;
+  const legChanged = returnLeg !== order.returnLeg;
+
+  // Turning the leg ON takes these pieces off the shelf, so it can drive stock
+  // negative exactly as confirming an order can. Checked here rather than in a
+  // serializable block: this is a correction somebody makes by hand on one
+  // order, not a path two people race down for the same last piece.
+  if (legChanged && returnLeg === "IN_TRANSIT") {
+    const needed = new Map<string, number>();
+    for (const it of order.items) {
+      needed.set(it.productVariantId, (needed.get(it.productVariantId) ?? 0) + it.quantity);
+    }
+    for (const g of order.gifts) {
+      if (!g.productVariantId) continue;
+      needed.set(g.productVariantId, (needed.get(g.productVariantId) ?? 0) + g.quantity);
+    }
+    const stock = await variantStockMap(workspaceId, [...needed.keys()]);
+    for (const [vid, qty] of needed) {
+      if ((stock.get(vid) ?? 0) < qty) {
+        return {
+          ok: false,
+          error:
+            "There isn't enough stock to hold this parcel out — some of it has already been sold. " +
+            "Correct the stock first, then mark the goods as still with the courier.",
+        };
+      }
+    }
+  }
+
   await prisma.$transaction(async (tx) => {
     await tx.order.update({
       where: { id: orderId },
@@ -767,6 +838,12 @@ export async function updateOrderHeader(
         codFeeCost: courierQuote.codFeeCost,
         ...(d.cancelledCollected !== undefined
           ? { cancelledCollected: d.cancelledCollected }
+          : {}),
+        ...(legChanged
+          ? {
+              returnLeg,
+              returnLegAt: returnLeg === "NONE" ? null : new Date(),
+            }
           : {}),
         ...shipSnapshot(d, customer),
         paymentMethod: d.paymentMethod,
@@ -799,6 +876,13 @@ export async function updateOrderHeader(
       summary: "Order details edited",
       changes,
     });
+  }
+
+  // The return leg is the only thing this dialog edits that moves stock —
+  // everything else on it is money.
+  if (legChanged) {
+    await refreshInventoryAlerts(workspaceId);
+    revalidatePath(`/${slug}/products`);
   }
 
   revalidatePath(`/${slug}/sales/orders`);

@@ -625,6 +625,8 @@ export function OrderManager({
   // server (see goodsDiscount), so this is a decision, not an arithmetic task.
   const [giveaway, setGiveaway] = useState(false);
   const [editGiveaway, setEditGiveaway] = useState(false);
+  /** Cancelled orders only: whether the goods are still travelling back. */
+  const [editInTransit, setEditInTransit] = useState(false);
   const [loading, setLoading] = useState(false);
   // The order awaiting a "what did this cancellation cost?" answer.
   const [cancelling, setCancelling] = useState<OrderRow | null>(null);
@@ -1374,6 +1376,7 @@ export function OrderManager({
   function openEdit(o: OrderRow) {
     setEditPackaging(String(o.packagingCost));
     setEditGiveaway(o.isGiveaway);
+    setEditInTransit(o.returnLeg === "IN_TRANSIT");
     setEditOrder(o);
     setEditCustomer(o.customerId ? { value: o.customerId, label: o.customerName } : null);
     // The snapshot where there is one, the customer record where there isn't —
@@ -1402,6 +1405,10 @@ export function OrderManager({
     fd.set("paymentMethod", editPaymentMethod);
     fd.set("heldByMembershipId", editHeldById === NONE ? "" : editHeldById);
     fd.set("isGiveaway", editGiveaway ? "1" : "");
+    // Set from state rather than left to the checkbox: an unticked box posts
+    // nothing, and here "nothing" has to mean "the goods are back", not "the
+    // form didn't ask". The hidden goodsInTransitAsked marker draws that line.
+    fd.set("goodsInTransit", editInTransit ? "1" : "");
     const res = await updateOrderHeader(slug, editOrder.id, fd);
     setEditSaving(false);
     if (!res.ok) return toast.error(res.error);
@@ -3269,6 +3276,45 @@ export function OrderManager({
                   />
                 </Field>
               )}
+
+              {/* The way back in for a cancellation recorded without it — the
+                  box missed on the day, or an order cancelled before any of
+                  this existed. Offered only while the leg is still open: once
+                  the goods have been booked in or written off, that was an
+                  action with stock adjustments behind it, and a header edit
+                  has no business undoing them. */}
+              {editOrder.status === "CANCELLED" &&
+                (editOrder.returnLeg === "NONE" || editOrder.returnLeg === "IN_TRANSIT" ? (
+                  <>
+                    {/* Marks that the form asked at all: an unticked checkbox
+                        posts nothing, so without this every other order's
+                        header edit would read as "the goods are back". */}
+                    <input type="hidden" name="goodsInTransitAsked" value="1" />
+                    <label className="flex items-start gap-2 rounded-md border p-3 text-sm">
+                      <Checkbox
+                        checked={editInTransit}
+                        onCheckedChange={(v) => setEditInTransit(v === true)}
+                        className="mt-0.5"
+                      />
+                      <span>
+                        The goods are still with the courier
+                        <span className="block text-xs text-muted-foreground">
+                          Ticked, this parcel joins the &quot;coming back&quot; list and its
+                          pieces stay out of stock until you mark them received. Untick it
+                          once they are on the shelf.
+                        </span>
+                      </span>
+                    </label>
+                  </>
+                ) : (
+                  <p className="rounded-md border p-3 text-sm text-muted-foreground">
+                    {editOrder.returnLeg === "RECEIVED"
+                      ? "These goods were booked back in"
+                      : "This parcel was written off as never returned"}
+                    {editOrder.returnLegOn ? ` on ${editOrder.returnLegOn}` : ""}. Anything
+                    that needs correcting now is a stock adjustment.
+                  </p>
+                ))}
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
                   <Label>Payment method</Label>
