@@ -1064,6 +1064,19 @@ export type HeldCash = {
  * — every UNPAID/PARTIAL order tagged with a holder, not just the ones old
  * enough to count as "overdue". Answers "who's holding how much right now"
  * before it becomes a 7-day-overdue problem.
+ *
+ * Only orders somebody collects for by hand. `heldBy` on a courier order means
+ * who is looking after it, not whose pocket the money is in — the courier
+ * collects, always — and counting those said one member was holding 9,880 when
+ * he had 450. The rest was nine parcels nobody had taken a taka for: five in a
+ * Steadfast van and four still packed on the table, one of which the customer
+ * had not so much as seen. Asked to hand it over he would have been 9,430
+ * short of a figure this page invented, and a card that can do that on the
+ * screen where cash is counted is worse than no card.
+ *
+ * The test is who collects, not how it ships — the same one `codCollectable`
+ * applies — so a courier parcel the customer prepaid to a member still counts,
+ * because that money really did go into somebody's hand.
  */
 export async function cashHeldByMember(workspaceId: string): Promise<HeldCash[]> {
   const orders = await prisma.order.findMany({
@@ -1072,6 +1085,7 @@ export async function cashHeldByMember(workspaceId: string): Promise<HeldCash[]>
       status: { not: "CANCELLED" },
       paymentStatus: { in: ["UNPAID", "PARTIAL"] },
       heldByMembershipId: { not: null },
+      paymentMethod: { not: "COURIER_COLLECTION" },
     },
     include: {
       items: { include: { returns: true } },
