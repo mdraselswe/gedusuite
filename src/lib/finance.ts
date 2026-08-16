@@ -389,6 +389,18 @@ export type BusinessCapitalSummary = {
   inventoryValue: number;
   /** Pieces on the shelf behind that figure. */
   inventoryUnits: number;
+  /**
+   * Stock a courier is carrying back from a refused parcel: bought and paid
+   * for, owned, and not on the shelf until it arrives.
+   *
+   * Reported beside the shelf figure rather than inside it. Both are true —
+   * you cannot sell it, and you have not lost it — and a busy week of
+   * cancellations would otherwise read as capital that vanished and came back
+   * days later with no entry either way.
+   */
+  inventoryInTransitValue: number;
+  /** Pieces behind that figure. */
+  inventoryInTransitUnits: number;
   /** Cash in the shared pot right now — sales takings and partner deposits alike. */
   treasuryBalance: number;
   /**
@@ -397,8 +409,9 @@ export type BusinessCapitalSummary = {
    */
   inventoryFromCorrections: number;
   /**
-   * treasuryBalance + inventoryValue − supplierDue: what the business actually
-   * holds, cash and goods together, less what it owes for them.
+   * treasuryBalance + inventoryValue + goods coming back − supplierDue: what
+   * the business actually holds, cash and goods together, less what it owes
+   * for them.
    *
    * An asset question, deliberately, where everything above it is a capital
    * one. This used to be totalRemaining + inventoryValue, which mixed the two
@@ -430,7 +443,14 @@ export type CapitalInput = {
     paidFromTreasury: boolean;
     onCredit: boolean;
   }[];
-  inventory: { value: number; units: number; fromCorrections: number };
+  inventory: {
+    value: number;
+    units: number;
+    fromCorrections: number;
+    /** Goods coming back from a courier — owned, not on the shelf. */
+    inTransitValue?: number;
+    inTransitUnits?: number;
+  };
   treasuryBalance: number;
 };
 
@@ -514,12 +534,22 @@ export function summariseCapital(input: CapitalInput): BusinessCapitalSummary {
     totalRemaining: round2(totalRemaining),
     inventoryValue: input.inventory.value,
     inventoryUnits: input.inventory.units,
+    inventoryInTransitValue: round2(input.inventory.inTransitValue ?? 0),
+    inventoryInTransitUnits: input.inventory.inTransitUnits ?? 0,
     inventoryFromCorrections: input.inventory.fromCorrections,
     treasuryBalance: round2(input.treasuryBalance),
     // Cash and goods less the bills against them. Nothing from the capital
     // arithmetic above goes in: a partner deposit is already counted once as
     // treasury cash, and adding "unspent capital" on top would count it twice.
-    businessHoldings: round2(input.treasuryBalance + input.inventory.value - supplierDue),
+    // Goods on their way back are in here too: the shop paid for them and
+    // still owns them, and leaving them out would make cancelling an order
+    // destroy value that is sitting in a van.
+    businessHoldings: round2(
+      input.treasuryBalance +
+        input.inventory.value +
+        (input.inventory.inTransitValue ?? 0) -
+        supplierDue,
+    ),
   };
 }
 

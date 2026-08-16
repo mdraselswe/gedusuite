@@ -10,6 +10,8 @@ import { isCourierStatus, NO_COURIER_STATUS } from "@/lib/courier-status";
 import { dhakaDayEnd, dhakaDayStart, dhakaRecordStamp } from "@/lib/dhaka-time";
 import { amountOutstanding } from "@/lib/order-cash";
 import { OrderManager } from "@/components/sales/order-manager";
+import { PendingReturns } from "@/components/sales/pending-returns";
+import { STOCK_CONSUMING_STATUSES } from "@/lib/inventory";
 import { variantFullName } from "@/lib/variants";
 import { Pagination, parsePage } from "@/components/ui/pagination";
 import { PageHeader } from "@/components/ui/page-header";
@@ -17,7 +19,17 @@ import { Receipt } from "lucide-react";
 
 const PAGE_SIZE = 50;
 
-const ORDER_STATUSES = ["PENDING", "CONFIRMED", "PACKED", "SHIPPED", "DELIVERED", "CANCELLED"] as const;
+/**
+ * Whole days between then and now. Used only to say how long a parcel has been
+ * on its way back, where "9d waiting" is the whole point and the hour it was
+ * cancelled at is not.
+ */
+function daysSince(d: Date | null): number {
+  if (!d) return 0;
+  return Math.max(0, Math.floor((Date.now() - d.getTime()) / 86_400_000));
+}
+
+const ORDER_STATUSES =["PENDING", "CONFIRMED", "PACKED", "SHIPPED", "DELIVERED", "CANCELLED"] as const;
 const PAY_STATUSES = ["PAID", "UNPAID", "PARTIAL"] as const;
 const DELIVERY_TYPES = ["SELF", "COURIER"] as const;
 
@@ -150,8 +162,17 @@ export default async function OrdersPage({
       : {}),
   };
 
-  const [productCount, members, campaigns, courierRows, orderCount, totalOrderCount, orders] =
-    await Promise.all([
+  const [
+    productCount,
+    members,
+    campaigns,
+    courierRows,
+    orderCount,
+    totalOrderCount,
+    orders,
+    pendingParcels,
+    pendingReturns,
+  ] = await Promise.all([
     prisma.productVariant.count({ where: { product: { workspaceId } } }),
     prisma.membership.findMany({
       where: { workspaceId, role: { in: ["OWNER", "PARTNER"] } },
@@ -197,6 +218,62 @@ export default async function OrdersPage({
           },
         },
         gifts: { select: { label: true, quantity: true } },
+      },
+    }),
+    // Parcels a courier is carrying back. Off the filters and off the
+    // pagination on purpose: this is a short work queue, not a view of the
+    // table, and it has to be visible on the page whatever anyone is
+    // searching for. Oldest first — the overdue one is the one to chase.
+    prisma.order.findMany({
+      where: { workspaceId, status: "CANCELLED", returnLeg: "IN_TRANSIT" },
+      orderBy: { returnLegAt: "asc" },
+      take: 50,
+      select: {
+        id: true,
+        date: true,
+        returnLegAt: true,
+        courierTrackingId: true,
+        customer: { select: { name: true } },
+        courier: { select: { name: true } },
+        items: {
+          select: {
+            id: true,
+            quantity: true,
+            productVariant: {
+              select: { attributes: true, product: { select: { name: true } } },
+            },
+          },
+        },
+        // Only the ones cut from stock. A free-text gift has no variant, so
+        // there is nothing for it to come back into.
+        gifts: {
+          where: { productVariantId: { not: null } },
+          select: { id: true, label: true, quantity: true },
+        },
+      },
+    }),
+    // Customer returns agreed but not yet in the shop's hands.
+    prisma.return.findMany({
+      where: {
+        workspaceId,
+        receivedAt: null,
+        orderItem: { order: { status: { in: [...STOCK_CONSUMING_STATUSES] } } },
+      },
+      orderBy: { date: "asc" },
+      take: 50,
+      select: {
+        id: true,
+        date: true,
+        quantity: true,
+        orderItem: {
+          select: {
+            orderId: true,
+            order: { select: { customer: { select: { name: true } } } },
+            productVariant: {
+              select: { attributes: true, product: { select: { name: true } } },
+            },
+          },
+        },
       },
     }),
   ]);
@@ -313,9 +390,55 @@ export default async function OrdersPage({
     };
   });
 
+  // The same short id the activity log names an order by, so a line there and
+  // a row here are recognisably about the same parcel.
+  const shortId = (id: string) => `#${id.slice(-8).toUpperCase()}`;
+
+  const parcelRows = pendingParcels.map((o) => ({
+    orderId: o.id,
+    label: shortId(o.id),
+    customerName: o.customer?.name ?? "Walk-in",
+    courierName: o.courier?.name ?? null,
+    trackingId: o.courierTrackingId,
+    // Falls back to the order's own date for anything cancelled before the
+    // stamp existed — better a slightly generous age than none.
+    waitingDays: daysSince(o.returnLegAt ?? o.date),
+    lines: [
+      ...o.items.map((it) => ({
+        kind: "ITEM" as const,
+        id: it.id,
+        label: variantFullName(it.productVariant.product.name, it.productVariant.attributes),
+        quantity: it.quantity,
+      })),
+      ...o.gifts.map((g) => ({
+        kind: "GIFT" as const,
+        id: g.id,
+        label: g.label,
+        quantity: g.quantity,
+      })),
+    ],
+  }));
+
+  const returnRows = pendingReturns.map((r) => ({
+    returnId: r.id,
+    label: variantFullName(
+      r.orderItem.productVariant.product.name,
+      r.orderItem.productVariant.attributes,
+    ),
+    orderLabel: `${shortId(r.orderItem.orderId)} · ${r.orderItem.order.customer?.name ?? "Walk-in"}`,
+    quantity: r.quantity,
+    waitingDays: daysSince(r.date),
+  }));
+
   return (
     <div className="space-y-6">
       <PageHeader icon={<Receipt />} color="emerald" title={(await serverT())("salesOrders")} count={orderCount} />
+      <PendingReturns
+        slug={slug}
+        parcels={parcelRows}
+        returns={returnRows}
+        canEdit={perms.canEdit}
+      />
       <OrderManager
         slug={slug}
         hasProducts={productCount > 0}

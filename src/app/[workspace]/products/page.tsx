@@ -3,7 +3,7 @@ import { workspaceAccess } from "@/lib/authz";
 import { serverT } from "@/lib/session";
 import { can } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
-import { variantStockMap } from "@/lib/inventory";
+import { inTransitReturnMap, variantStockMap } from "@/lib/inventory";
 import { variantFullName, variantAttributes } from "@/lib/variants";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ProductManager } from "@/components/products/product-manager";
@@ -37,7 +37,8 @@ export default async function ProductsPage({
     canEdit: can(access.role, "products", "edit", access.permissions),
   };
 
-  const [products, suppliers, stock, adjustmentCount, adjustments, categories] = await Promise.all([
+  const [products, suppliers, stock, inTransit, adjustmentCount, adjustments, categories] =
+    await Promise.all([
     prisma.product.findMany({
       where: { workspaceId: access.workspaceId },
       include: { variants: true },
@@ -48,6 +49,10 @@ export default async function ProductsPage({
       orderBy: { name: "asc" },
     }),
     variantStockMap(access.workspaceId),
+    // Not sellable and not lost: pieces a courier is bringing back. Shown
+    // beside the stock figure so a 0 that has four coming on Thursday doesn't
+    // send somebody to the supplier.
+    inTransitReturnMap(access.workspaceId),
     prisma.stockAdjustment.count({ where: { workspaceId: access.workspaceId } }),
     prisma.stockAdjustment.findMany({
       where: { workspaceId: access.workspaceId },
@@ -88,6 +93,7 @@ export default async function ProductsPage({
       unitCost: v.unitCost != null ? Number(v.unitCost) : null,
       lowStockThreshold: v.lowStockThreshold,
       stock: stock.get(v.id) ?? 0,
+      inTransit: inTransit.get(v.id) ?? 0,
     })),
   }));
 

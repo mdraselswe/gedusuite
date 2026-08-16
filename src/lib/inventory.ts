@@ -31,7 +31,32 @@ export const STOCK_CONSUMING_STATUSES = [
 ] as const;
 
 /**
- * Current stock per variant = purchased − sold(consuming orders) + returned.
+ * An order whose units are not on the shelf right now.
+ *
+ * Two different reasons, one consequence. A consuming order has them because
+ * it sold them. A cancelled order has them because they are in the back of a
+ * courier's van somewhere between the customer's door and the return hub —
+ * the sale is off, the money is settled, and the pieces are still days away.
+ *
+ * Cancelling used to mean both at once, and the second half was wrong for as
+ * long as the return leg took: the app offered stock nobody had, and a parcel
+ * the courier lost stayed on the shelf forever because nothing ever said it
+ * had not arrived. Everything that asks "how many can I sell" goes through
+ * here, so both cases answer the same way.
+ */
+export function offShelfOrderWhere(workspaceId?: string) {
+  return {
+    ...(workspaceId ? { workspaceId } : {}),
+    OR: [
+      { status: { in: [...STOCK_CONSUMING_STATUSES] } },
+      { status: "CANCELLED" as const, returnLeg: "IN_TRANSIT" as const },
+    ],
+  };
+}
+
+/**
+ * Current stock per variant = purchased − off the shelf + returned (once the
+ * returned goods are actually here) + adjustments.
  * Stock is always derived, never stored, so it can't drift out of sync.
  */
 export async function variantStockMap(
@@ -56,16 +81,17 @@ export async function variantStockMap(
     client.orderItem.groupBy({
       by: ["productVariantId"],
       where: {
-        order: { workspaceId, status: { in: [...STOCK_CONSUMING_STATUSES] } },
+        order: offShelfOrderWhere(workspaceId),
         ...idFilter,
       },
       _sum: { quantity: true },
     }),
-    // Product-linked gifts leave with the order just like sold items.
+    // Product-linked gifts leave with the order just like sold items — and
+    // come back in the same parcel when it is refused.
     client.orderGift.groupBy({
       by: ["productVariantId"],
       where: {
-        order: { workspaceId, status: { in: [...STOCK_CONSUMING_STATUSES] } },
+        order: offShelfOrderWhere(workspaceId),
         productVariantId: variantIds ? { in: variantIds } : { not: null },
       },
       _sum: { quantity: true },
@@ -74,8 +100,13 @@ export async function variantStockMap(
       // Only count returns whose order actually consumed stock. If the order was
       // cancelled, its stock is already restored via the sold total, so counting
       // the return too would add phantom stock.
+      //
+      // And only once the goods are actually here. A return recorded the day
+      // the customer posts it is the same lie a cancellation was: agreed on
+      // the phone, on the shelf a week early.
       where: {
         workspaceId,
+        receivedAt: { not: null },
         orderItem: {
           order: { status: { in: [...STOCK_CONSUMING_STATUSES] } },
           ...(variantIds ? { productVariantId: { in: variantIds } } : {}),
@@ -107,6 +138,61 @@ export async function variantStockMap(
   for (const r of adjustments) {
     map.set(r.productVariantId, (map.get(r.productVariantId) ?? 0) + (r._sum.delta ?? 0));
   }
+  return map;
+}
+
+/**
+ * Pieces per variant that are on their way back to the shop but not here yet:
+ * cancelled parcels the courier is carrying, plus customer returns that have
+ * been agreed and not yet arrived.
+ *
+ * Deliberately separate from `variantStockMap` rather than folded into it.
+ * These pieces are not sellable — that is the whole point of holding them out
+ * — but they are coming, and somebody looking at "0 in stock" needs to know
+ * that four of them land on Thursday before they reorder from the supplier.
+ */
+export async function inTransitReturnMap(
+  workspaceId: string,
+  variantIds?: string[],
+): Promise<Map<string, number>> {
+  const idFilter = variantIds ? { productVariantId: { in: variantIds } } : {};
+  const [cancelled, gifts, returns] = await Promise.all([
+    prisma.orderItem.groupBy({
+      by: ["productVariantId"],
+      where: {
+        order: { workspaceId, status: "CANCELLED", returnLeg: "IN_TRANSIT" },
+        ...idFilter,
+      },
+      _sum: { quantity: true },
+    }),
+    prisma.orderGift.groupBy({
+      by: ["productVariantId"],
+      where: {
+        order: { workspaceId, status: "CANCELLED", returnLeg: "IN_TRANSIT" },
+        productVariantId: variantIds ? { in: variantIds } : { not: null },
+      },
+      _sum: { quantity: true },
+    }),
+    prisma.return.findMany({
+      where: {
+        workspaceId,
+        receivedAt: null,
+        orderItem: {
+          order: { status: { in: [...STOCK_CONSUMING_STATUSES] } },
+          ...(variantIds ? { productVariantId: { in: variantIds } } : {}),
+        },
+      },
+      select: { quantity: true, orderItem: { select: { productVariantId: true } } },
+    }),
+  ]);
+
+  const map = new Map<string, number>();
+  const add = (vid: string, n: number) => map.set(vid, (map.get(vid) ?? 0) + n);
+  for (const r of cancelled) add(r.productVariantId, r._sum.quantity ?? 0);
+  for (const r of gifts) {
+    if (r.productVariantId) add(r.productVariantId, r._sum.quantity ?? 0);
+  }
+  for (const r of returns) add(r.orderItem.productVariantId, r.quantity);
   return map;
 }
 
@@ -175,6 +261,17 @@ export type InventoryValue = {
    * to a receipt should say so rather than blend in.
    */
   fromCorrections: number;
+  /** Pieces travelling back to the shop — see inTransitReturnMap. */
+  inTransitUnits: number;
+  /**
+   * What those pieces cost, at the same price the shelf is valued at.
+   *
+   * Held apart from `value` rather than left out of it. They are off the shelf
+   * and can't be sold, so they have no business in a stock figure — but the
+   * shop still owns them, and dropping them silently would make a week's worth
+   * of cancellations read as capital that evaporated and then came back.
+   */
+  inTransitValue: number;
 };
 
 /**
@@ -192,8 +289,9 @@ export type InventoryValue = {
  * paperwork is behind, and pretending it's a liability doesn't help anyone.
  */
 export async function inventoryValue(workspaceId: string): Promise<InventoryValue> {
-  const [stock, variants, corrections] = await Promise.all([
+  const [stock, inTransit, variants, corrections] = await Promise.all([
     variantStockMap(workspaceId),
+    inTransitReturnMap(workspaceId),
     prisma.productVariant.findMany({
       where: { product: { workspaceId } },
       select: {
@@ -222,17 +320,31 @@ export async function inventoryValue(workspaceId: string): Promise<InventoryValu
   let units = 0;
   let value = 0;
   let fromCorrections = 0;
+  let inTransitUnits = 0;
+  let inTransitValue = 0;
   for (const v of variants) {
+    const unitCost = variantCost(v);
+    // Not folded into `onHand`: these are the shop's, but they are in a van.
+    const coming = inTransit.get(v.id) ?? 0;
+    if (coming > 0) {
+      inTransitUnits += coming;
+      inTransitValue += coming * unitCost;
+    }
     const onHand = Math.max(0, stock.get(v.id) ?? 0);
     if (onHand === 0) continue;
-    const unitCost = variantCost(v);
     units += onHand;
     value += onHand * unitCost;
     // Capped at what's actually on the shelf: pieces added by hand and since
     // sold aren't sitting in the value any more.
     fromCorrections += Math.min(onHand, addedByHand.get(v.id) ?? 0) * unitCost;
   }
-  return { units, value: round2(value), fromCorrections: round2(fromCorrections) };
+  return {
+    units,
+    value: round2(value),
+    fromCorrections: round2(fromCorrections),
+    inTransitUnits,
+    inTransitValue: round2(inTransitValue),
+  };
 }
 
 export type InventoryAlert = {

@@ -57,6 +57,8 @@ type Variant = {
   unitCost: number | null;
   lowStockThreshold: number | null;
   stock: number;
+  /** Pieces on their way back from a courier — owned, not sellable yet. */
+  inTransit: number;
 };
 type Product = {
   id: string;
@@ -594,6 +596,14 @@ export function ProductManager({
                           <span className={low ? "font-semibold text-destructive" : ""}>
                             · {formatStock(v.stock, p.unitsPerPack)} in stock
                           </span>
+                          {/* Deliberately outside the stock figure: it can't be
+                              sold today, and a shop that reorders on "0 left"
+                              still wants to know four are on a van. */}
+                          {v.inTransit > 0 && (
+                            <span className="text-muted-foreground">
+                              · +{v.inTransit} coming back
+                            </span>
+                          )}
                           {perms.canEdit && (
                             <button
                               type="button"

@@ -25,11 +25,12 @@ import { computeOrderTotals, goodsDiscount } from "@/lib/orders";
 import { isOrderSource } from "@/lib/order-source";
 import { quoteCourier } from "@/lib/courier";
 import { syncCourierStatuses } from "@/lib/courier-status-sync";
-import type { OrderStatus, PaymentStatus } from "@prisma/client";
+import type { OrderStatus, PaymentStatus, Prisma, ReturnLeg } from "@prisma/client";
 import { checkboxField, failed, type ActionFailure } from "@/lib/form";
 import { diffFields, newActivityGroup, recordActivity } from "@/lib/activity";
 import { shipSnapshot } from "@/lib/order-recipient";
 import { dhakaDateField } from "@/lib/date-field";
+import { returnShortfalls } from "@/lib/returns";
 import { round2 } from "@/lib/money";
 
 /**
@@ -80,6 +81,17 @@ export type ActionResult =
   | ActionFailure;
 
 const CONSUMING: readonly string[] = STOCK_CONSUMING_STATUSES;
+
+/**
+ * Whether this order is holding its units off the shelf — the same rule
+ * `variantStockMap` derives stock by, so the two cannot disagree about whether
+ * confirming an order needs stock it has already taken.
+ */
+function isOffShelf(o: { status: string; returnLeg: ReturnLeg }): boolean {
+  return (
+    CONSUMING.includes(o.status) || (o.status === "CANCELLED" && o.returnLeg === "IN_TRANSIT")
+  );
+}
 
 
 const ItemSchema = z.object({
@@ -808,6 +820,17 @@ const CancelCostSchema = z.object({
   deliveryCost: z.coerce.number().nonnegative().max(99_999_999).optional(),
   /** What the customer paid anyway — a partial delivery, usually the shipping. */
   cancelledCollected: z.coerce.number().nonnegative().max(99_999_999).optional(),
+  /**
+   * The goods are with the courier and haven't come back yet, so they stay off
+   * the shelf until somebody says they've arrived (see ReturnLeg).
+   *
+   * Asked rather than inferred. The status says the parcel was shipped; it
+   * doesn't say whether the rider already handed it back at the door, and the
+   * two lead to opposite answers about what is sellable this afternoon.
+   */
+  // A real boolean, not z.coerce.boolean(): the dialog hands this over as one,
+  // and coercion would read the string "false" as true.
+  goodsInTransit: z.boolean().optional(),
 });
 export type CancelCosts = z.input<typeof CancelCostSchema>;
 
@@ -844,13 +867,35 @@ export async function updateOrderStatus(
     deliveryCost?: number;
     cancelledCollected?: number;
   } = {};
+  // Where the goods are, which is a different question from where the money
+  // is. Only a cancellation has an answer other than "with us".
+  let goodsInTransit = false;
   if (status === "CANCELLED" && cancelCosts) {
     const parsed = CancelCostSchema.safeParse(cancelCosts);
     if (!parsed.success) {
       return failed(parsed.error);
     }
-    costs = parsed.data;
+    const { goodsInTransit: inTransit, ...money } = parsed.data;
+    costs = money;
+    goodsInTransit = inTransit ?? false;
   }
+  /**
+   * The return leg this status change leaves behind.
+   *
+   * Anything that is not a cancellation ends it: un-cancelling an order means
+   * the parcel is this order's again, not a return waiting to be received.
+   * Re-cancelling an order that is ALREADY out for return keeps the leg where
+   * it is — re-typing the courier's charge must not quietly put stock back.
+   */
+  const returnLeg: ReturnLeg =
+    status !== "CANCELLED"
+      ? "NONE"
+      : order.status === "CANCELLED"
+        ? order.returnLeg
+        : goodsInTransit
+          ? "IN_TRANSIT"
+          : "NONE";
+  const legChanged = returnLeg !== order.returnLeg;
 
   // Cancelling changes what the courier has to hand over, so it changes the
   // percentage it keeps: a refused parcel yields only whatever was paid on the
@@ -880,8 +925,13 @@ export async function updateOrderStatus(
   // Moving from non-consuming → consuming: verify stock is available. Checked
   // twice on purpose — here for a fast, friendly refusal before anything is
   // written, and again inside the transaction below where it actually binds.
-  const wasConsuming = CONSUMING.includes(order.status);
-  const willConsume = CONSUMING.includes(status);
+  //
+  // "Off the shelf" rather than "consuming", because a cancelled parcel still
+  // travelling back is already holding its units out of stock. Reviving one
+  // needs no stock at all — it never went back — and asking for it refused to
+  // un-cancel any order whose own pieces were the last ones left.
+  const wasConsuming = isOffShelf(order);
+  const willConsume = CONSUMING.includes(status) || returnLeg === "IN_TRANSIT";
   const needed = new Map<string, number>();
   if (!wasConsuming && willConsume) {
     for (const it of order.items) {
@@ -920,7 +970,15 @@ export async function updateOrderStatus(
       }
       await tx.order.update({
         where: { id: orderId },
-        data: { status: status as OrderStatus, ...costs, codFeeCost },
+        data: {
+          status: status as OrderStatus,
+          ...costs,
+          codFeeCost,
+          returnLeg,
+          // Stamped only when the leg actually moves, so "sent back on the
+          // 14th" survives somebody re-opening the dialog to fix a charge.
+          ...(legChanged ? { returnLegAt: returnLeg === "NONE" ? null : new Date() } : {}),
+        },
       });
       // Cancelling sells nothing, so a deposited order's treasury entry drops
       // to whatever the customer paid anyway — or goes entirely.
@@ -948,6 +1006,9 @@ export async function updateOrderStatus(
             : null,
           costs.deliveryCost !== undefined ? `৳${costs.deliveryCost} courier charge` : null,
           costs.giftCost ? `৳${costs.giftCost} gift` : null,
+          // Worth its own words: it is the difference between the goods being
+          // back on the shelf tonight and them being somewhere in a van.
+          returnLeg === "IN_TRANSIT" ? "goods still with the courier" : null,
         ]
           .filter(Boolean)
           .join(", ")
@@ -963,6 +1024,7 @@ export async function updateOrderStatus(
         : `Status set to ${status.toLowerCase()}`,
     changes: {
       status: { from: order.status, to: status },
+      ...(legChanged ? { returnLeg: { from: order.returnLeg, to: returnLeg } } : {}),
       ...(costs.deliveryCost !== undefined
         ? { deliveryCost: { from: Number(order.deliveryCost ?? 0), to: costs.deliveryCost } }
         : {}),
@@ -985,6 +1047,223 @@ export async function updateOrderStatus(
   // channel's cancel rate, both of which the reports and campaign pages show.
   revalidatePath(`/${slug}/reports`);
   revalidatePath(`/${slug}/boosting`);
+  return { ok: true };
+}
+
+const RETURN_LEG_SETTLED = "This order has no parcel on its way back.";
+
+/**
+ * Take the parcel out of IN_TRANSIT, in one conditional write, and say whether
+ * this call is the one that got it.
+ *
+ * The guard has to be part of the write rather than a read before it. Two
+ * people with the same card open — or one person and a double-tapped button —
+ * both pass a read-then-write check, and the loser writes a second full set of
+ * write-off adjustments against a parcel that has already been booked in.
+ * Nothing about that is visible afterwards except stock that is short.
+ */
+async function claimReturnLeg(
+  tx: Prisma.TransactionClient,
+  orderId: string,
+  workspaceId: string,
+  leg: "RECEIVED" | "LOST",
+): Promise<boolean> {
+  const claimed = await tx.order.updateMany({
+    where: { id: orderId, workspaceId, status: "CANCELLED", returnLeg: "IN_TRANSIT" },
+    data: { returnLeg: leg, returnLegAt: new Date() },
+  });
+  return claimed.count > 0;
+}
+
+/**
+ * One line of a parcel that has come back: how many of it are fit to sell
+ * again. `kind` says which list the id belongs to — a product-linked gift
+ * travelled in the same box and comes back in it.
+ */
+const ReceivedLineSchema = z.object({
+  kind: z.enum(["ITEM", "GIFT"]),
+  id: z.string().min(1),
+  good: z.coerce.number().int().nonnegative(),
+});
+
+const ReceiveSchema = z.object({
+  lines: z.array(ReceivedLineSchema).min(1),
+  /**
+   * What happened to whatever didn't come back fit to sell. One answer for the
+   * whole parcel rather than one per line: a parcel comes back soaked or comes
+   * back light, and asking twelve times what happened to a box of hair clips
+   * is how a form stops being filled in honestly.
+   */
+  shortfall: z.enum(["DAMAGED", "LOST"]).default("DAMAGED"),
+  note: z.string().trim().max(300).optional().or(z.literal("")),
+});
+export type ReceiveReturnInput = z.input<typeof ReceiveSchema>;
+
+/**
+ * The parcel is back. Put the goods on the shelf and write off whatever
+ * didn't survive the trip.
+ *
+ * The restoring is not done here — it happens by itself, because RECEIVED
+ * takes the order out of `offShelfOrderWhere` and the derived stock rises by
+ * the whole parcel. This only has to remove the part that came back broken or
+ * short, which is why the two writes share a transaction: between them the
+ * shelf would briefly claim pieces that are in the bin.
+ */
+export async function receiveReturnedGoods(
+  slug: string,
+  orderId: string,
+  input: ReceiveReturnInput,
+): Promise<ActionResult> {
+  const gate = await requireAccess(slug, "sales", "edit");
+  if (!gate.ok) return gate;
+  const workspaceId = gate.access.workspaceId;
+
+  const parsed = ReceiveSchema.safeParse(input);
+  if (!parsed.success) return failed(parsed.error);
+  const d = parsed.data;
+
+  const order = await prisma.order.findFirst({
+    where: { id: orderId, workspaceId },
+    include: {
+      items: { select: { id: true, productVariantId: true, quantity: true } },
+      gifts: { select: { id: true, productVariantId: true, quantity: true } },
+      customer: { select: { name: true } },
+    },
+  });
+  if (!order) return { ok: false, error: "Order not found" };
+  // Checked here for a friendly refusal, and claimed again inside the
+  // transaction where it actually binds — see claimReturnLeg.
+  if (order.status !== "CANCELLED" || order.returnLeg !== "IN_TRANSIT") {
+    return { ok: false, error: RETURN_LEG_SETTLED };
+  }
+
+  const shortfalls = returnShortfalls(order, d.lines);
+  if (!shortfalls.ok) return shortfalls;
+
+  const reason =
+    (d.shortfall === "LOST" ? "Missing from a returned parcel" : "Damaged on the way back") +
+    ` — order ${orderLabel(orderId, order.customer?.name)}` +
+    (d.note?.trim() ? `: ${d.note.trim()}` : "");
+
+  const settled = await prisma.$transaction(async (tx) => {
+    if (!(await claimReturnLeg(tx, orderId, workspaceId, "RECEIVED"))) return false;
+    if (shortfalls.rows.length > 0) {
+      await tx.stockAdjustment.createMany({
+        data: shortfalls.rows.map((r) => ({
+          workspaceId,
+          productVariantId: r.productVariantId,
+          type: d.shortfall,
+          delta: -r.quantity,
+          reason,
+          date: new Date(),
+          dateHasTime: true,
+        })),
+      });
+    }
+    return true;
+  });
+  if (!settled) return { ok: false, error: RETURN_LEG_SETTLED };
+
+  await refreshInventoryAlerts(workspaceId);
+
+  const short = shortfalls.rows.reduce((s, r) => s + r.quantity, 0);
+  await recordActivity(gate.access, {
+    action: "UPDATE",
+    entity: "Order",
+    entityId: orderId,
+    entityLabel: orderLabel(orderId, order.customer?.name),
+    summary:
+      `Returned goods received — ${shortfalls.total - short} of ${shortfalls.total} pcs back on the shelf` +
+      (short > 0 ? `, ${short} written off as ${d.shortfall.toLowerCase()}` : ""),
+    changes: { returnLeg: { from: "IN_TRANSIT", to: "RECEIVED" } },
+  });
+
+  revalidatePath(`/${slug}/sales/orders`);
+  revalidatePath(`/${slug}/products`);
+  revalidatePath(`/${slug}/partners`);
+  revalidatePath(`/${slug}/dashboard`);
+  return { ok: true };
+}
+
+/**
+ * The parcel never came back.
+ *
+ * Written off rather than left pending forever, and written off as a real
+ * adjustment rather than by holding the units out of stock: a courier that
+ * loses a parcel costs the shop what the goods cost, and that belongs in the
+ * stock-adjustment list with a date on it, where the shelf can be reconciled
+ * against it. Holding them out silently would have left the shop looking for
+ * pieces it had already lost.
+ */
+export async function writeOffReturnedGoods(
+  slug: string,
+  orderId: string,
+  note?: string,
+): Promise<ActionResult> {
+  const gate = await requireAccess(slug, "sales", "edit");
+  if (!gate.ok) return gate;
+  const workspaceId = gate.access.workspaceId;
+
+  const order = await prisma.order.findFirst({
+    where: { id: orderId, workspaceId },
+    include: {
+      items: { select: { id: true, productVariantId: true, quantity: true } },
+      gifts: { select: { id: true, productVariantId: true, quantity: true } },
+      customer: { select: { name: true } },
+    },
+  });
+  if (!order) return { ok: false, error: "Order not found" };
+  if (order.status !== "CANCELLED" || order.returnLeg !== "IN_TRANSIT") {
+    return { ok: false, error: RETURN_LEG_SETTLED };
+  }
+
+  // Nothing came back, so every line's whole quantity is the shortfall.
+  const all = returnShortfalls(order, [
+    ...order.items.map((i) => ({ kind: "ITEM" as const, id: i.id, good: 0 })),
+    ...order.gifts
+      .filter((g) => g.productVariantId)
+      .map((g) => ({ kind: "GIFT" as const, id: g.id, good: 0 })),
+  ]);
+  if (!all.ok) return all;
+
+  const reason =
+    `Never returned by the courier — order ${orderLabel(orderId, order.customer?.name)}` +
+    (note?.trim() ? `: ${note.trim()}` : "");
+
+  const settled = await prisma.$transaction(async (tx) => {
+    if (!(await claimReturnLeg(tx, orderId, workspaceId, "LOST"))) return false;
+    if (all.rows.length > 0) {
+      await tx.stockAdjustment.createMany({
+        data: all.rows.map((r) => ({
+          workspaceId,
+          productVariantId: r.productVariantId,
+          type: "LOST" as const,
+          delta: -r.quantity,
+          reason,
+          date: new Date(),
+          dateHasTime: true,
+        })),
+      });
+    }
+    return true;
+  });
+  if (!settled) return { ok: false, error: RETURN_LEG_SETTLED };
+
+  await refreshInventoryAlerts(workspaceId);
+
+  await recordActivity(gate.access, {
+    action: "UPDATE",
+    entity: "Order",
+    entityId: orderId,
+    entityLabel: orderLabel(orderId, order.customer?.name),
+    summary: `Returned parcel written off — ${all.total} pcs never came back`,
+    changes: { returnLeg: { from: "IN_TRANSIT", to: "LOST" } },
+  });
+
+  revalidatePath(`/${slug}/sales/orders`);
+  revalidatePath(`/${slug}/products`);
+  revalidatePath(`/${slug}/partners`);
+  revalidatePath(`/${slug}/dashboard`);
   return { ok: true };
 }
 
@@ -1360,6 +1639,14 @@ const ReturnSchema = z.object({
   quantity: z.coerce.number().int().positive(),
   refundAmount: z.coerce.number().nonnegative().default(0),
   reason: z.string().trim().max(300).optional().or(z.literal("")),
+  /**
+   * The customer has sent the goods and they haven't arrived yet.
+   *
+   * Off by default: most returns are written down with the box already open on
+   * the counter, and that is the behaviour every return before this had. Ticked,
+   * the refund and the invoice still move today — only the shelf waits.
+   */
+  goodsInTransit: checkboxField.default(false),
 });
 
 export async function createReturn(
@@ -1375,6 +1662,7 @@ export async function createReturn(
     quantity: formData.get("quantity"),
     refundAmount: formData.get("refundAmount") ?? 0,
     reason: formData.get("reason") ?? undefined,
+    goodsInTransit: formData.get("goodsInTransit"),
   });
   if (!parsed.success) {
     return failed(parsed.error);
@@ -1426,6 +1714,8 @@ export async function createReturn(
         quantity: d.quantity,
         refundAmount: d.refundAmount,
         reason: d.reason?.trim() || null,
+        // Null until the box is actually here — see Return.receivedAt.
+        receivedAt: d.goodsInTransit ? null : new Date(),
       },
     });
     // A returned unit lowers what the customer owed, so the cash confirmed
@@ -1435,7 +1725,8 @@ export async function createReturn(
     await syncOrderCashEntry(tx, workspaceId, item.orderId);
   });
 
-  // Returned goods go back on the shelf, which can clear a low-stock alert.
+  // Returned goods go back on the shelf, which can clear a low-stock alert —
+  // unless they're still in the post, and then nothing has moved yet.
   await refreshInventoryAlerts(workspaceId);
 
   // Filed against the ORDER, not the return row: somebody asking "why is this
@@ -1449,12 +1740,73 @@ export async function createReturn(
     summary:
       `Return recorded — ${d.quantity} × ` +
       `${variantFullName(item.productVariant.product.name, item.productVariant.attributes)}` +
-      (d.refundAmount > 0 ? `, ৳${round2(d.refundAmount)} refunded` : ", no refund"),
+      (d.refundAmount > 0 ? `, ৳${round2(d.refundAmount)} refunded` : ", no refund") +
+      (d.goodsInTransit ? " — goods not here yet" : ""),
   });
 
   revalidatePath(`/${slug}/sales/orders`);
   revalidatePath(`/${slug}/treasury`);
   revalidatePath(`/${slug}/couriers`);
+  revalidatePath(`/${slug}/dashboard`);
+  return { ok: true };
+}
+
+/**
+ * The returned goods have arrived. The only thing this moves is the shelf —
+ * the refund and the invoice settled when the return was agreed.
+ *
+ * No condition question here, unlike a cancelled parcel's receive step: a
+ * customer return is one line, and a piece that came back broken is a stock
+ * adjustment the shop makes on its own terms rather than a number squeezed
+ * into this dialog.
+ */
+export async function markReturnReceived(slug: string, returnId: string): Promise<ActionResult> {
+  const gate = await requireAccess(slug, "sales", "edit");
+  if (!gate.ok) return gate;
+  const workspaceId = gate.access.workspaceId;
+
+  const row = await prisma.return.findFirst({
+    where: { id: returnId, workspaceId },
+    select: {
+      id: true,
+      quantity: true,
+      receivedAt: true,
+      orderItem: {
+        select: {
+          orderId: true,
+          order: { select: { customer: { select: { name: true } } } },
+          productVariant: {
+            select: { attributes: true, product: { select: { name: true } } },
+          },
+        },
+      },
+    },
+  });
+  if (!row) return { ok: false, error: "Return not found" };
+  // Already booked in — say so rather than re-stamping a date somebody may
+  // have gone looking for. Conditional on receivedAt for the same reason the
+  // parcel version is: a second click must not move a date it already set.
+  const claimed = await prisma.return.updateMany({
+    where: { id: returnId, workspaceId, receivedAt: null },
+    data: { receivedAt: new Date() },
+  });
+  if (claimed.count === 0) return { ok: false, error: "These goods are already booked in." };
+  await refreshInventoryAlerts(workspaceId);
+
+  const label = variantFullName(
+    row.orderItem.productVariant.product.name,
+    row.orderItem.productVariant.attributes,
+  );
+  await recordActivity(gate.access, {
+    action: "UPDATE",
+    entity: "Order",
+    entityId: row.orderItem.orderId,
+    entityLabel: orderLabel(row.orderItem.orderId, row.orderItem.order.customer?.name),
+    summary: `Returned goods received — ${row.quantity} × ${label} back on the shelf`,
+  });
+
+  revalidatePath(`/${slug}/sales/orders`);
+  revalidatePath(`/${slug}/products`);
   revalidatePath(`/${slug}/dashboard`);
   return { ok: true };
 }

@@ -249,6 +249,16 @@ export default async function PartnersPage({
                   {capital.inventoryUnits} pcs)
                 </>
               )}
+              {/* Named separately from the shelf: it is stock the shop owns
+                  and cannot sell yet, and a week of cancellations would
+                  otherwise look like value that came and went. */}
+              {capital.inventoryInTransitValue > 0 && (
+                <>
+                  {" "}
+                  · <Money value={capital.inventoryInTransitValue} /> coming back (
+                  {capital.inventoryInTransitUnits} pcs)
+                </>
+              )}
               {capital.supplierDue > 0 && (
                 <>
                   {" "}

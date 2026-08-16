@@ -331,6 +331,36 @@ enum OrderStatus {
 }
 
 /**
+ * Where a cancelled order's goods have got to on the way back.
+ *
+ * Cancelling settles the money the same day; the goods take a week. A refused
+ * parcel sits in the courier's return hub for days, and until this existed the
+ * app put those pieces back on the shelf the moment the order was cancelled —
+ * so they could be sold again while nobody had them, the low-stock alert
+ * cleared itself and no reorder went in, and a parcel the courier simply lost
+ * stayed on the books forever as stock that was never there.
+ *
+ * Deliberately not a sixth OrderStatus. A cancelled order is cancelled — it
+ * earns nothing, and every report is right to treat it that way. This says
+ * only where the pieces are, and nothing else reads it.
+ */
+enum ReturnLeg {
+  /// No goods are coming back: cancelled before it was packed, or handed over
+  /// in person and taken straight back. The default, and what every order that
+  /// predates this column is.
+  NONE
+  /// With the courier, travelling back. Still counted OUT of stock.
+  IN_TRANSIT
+  /// Physically back in the shop. Stock restored; anything that came back
+  /// broken or short is a StockAdjustment of its own.
+  RECEIVED
+  /// Never arrived. The pieces return to stock and a LOST adjustment takes
+  /// them straight back out, so the loss has a cost and a date against it
+  /// instead of quietly inflating the shelf.
+  LOST
+}
+
+/**
  * What a courier's percentage fee is charged on.
  * The single field that makes one courier's rules portable to the next.
  * Steadfast takes its 1% of what it actually hands over (COD minus its own
@@ -625,6 +655,16 @@ model Order {
   collectionShortfall Decimal       @default(0) @db.Decimal(12, 2)
   /** Why the money went missing, in the words of whoever found out. */
   collectionNote      String?
+  /**
+   * Where this cancelled order's goods are — see ReturnLeg.
+   *
+   * Only ever anything but NONE on a CANCELLED order, and set by the person
+   * cancelling it, because nothing else can know: the courier's own status
+   * says the parcel was refused, not whether it has been carried back yet.
+   */
+  returnLeg           ReturnLeg     @default(NONE)
+  /** When the leg last moved — sent back, arrived, or written off. */
+  returnLegAt         DateTime?
   courierTrackingId   String? // the courier's own order/consignment number (deliveryType=COURIER); shown on the invoice instead of the internal id
   /**
    * The courier's own tracking code, as distinct from the consignment id:
@@ -739,6 +779,9 @@ model Order {
   @@index([workspaceId, date])
   @@index([customerId])
   @@index([status])
+  // The pending-return list, and the stock derivation's "still travelling
+  // back" term — both ask for one workspace's IN_TRANSIT rows and nothing else.
+  @@index([workspaceId, returnLeg])
   @@index([boostCampaignId])
 }
 
@@ -780,14 +823,29 @@ model OrderGift {
 }
 
 model Return {
-  id           String   @id @default(cuid())
+  id           String    @id @default(cuid())
   workspaceId  String
   orderItemId  String
   quantity     Int
   reason       String?
-  refundAmount Decimal  @default(0) @db.Decimal(12, 2)
-  date         DateTime @default(now())
-  createdAt    DateTime @default(now())
+  refundAmount Decimal   @default(0) @db.Decimal(12, 2)
+  date         DateTime  @default(now())
+  /**
+   * When the returned pieces physically arrived back. Null = the customer has
+   * sent them and they are still in the post.
+   *
+   * The same gap a cancelled parcel has (see ReturnLeg), for the same reason:
+   * a return recorded the day the customer posts it used to put the goods on
+   * the shelf a week before anybody could pack them. Only stock reads this —
+   * the refund and the invoice move when the return is agreed, not when the
+   * box turns up, so the money side never waits on it.
+   *
+   * Backfilled to createdAt for every row that predates the column: those
+   * returns were recorded on arrival, and leaving them null would have taken
+   * stock away that has been on the shelf for months.
+   */
+  receivedAt   DateTime?
+  createdAt    DateTime  @default(now())
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   orderItem OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)

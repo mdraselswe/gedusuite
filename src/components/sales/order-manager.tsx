@@ -76,6 +76,7 @@ import { Money } from "@/components/ui/money";
 import { Stamp } from "@/components/ui/stamp";
 import { toDhakaInputValue, type DhakaStamp } from "@/lib/dhaka-time";
 import { formatMoney, round2 } from "@/lib/money";
+import { goodsLikelyWithCourier } from "@/lib/returns";
 import { Field } from "@/components/ui/field";
 import { MoneyInput } from "@/components/ui/money-input";
 
@@ -135,6 +136,7 @@ type OrderRow = DhakaStamp & {
 };
 /** A cleared delivery block. Module scope: both dialogs read it. */
 const EMPTY_SHIP = { name: "", phone: "", address: "" };
+
 
 type Perms = { canAdd: boolean; canEdit: boolean; canViewProfit: boolean };
 /** A courier's rules plus its zones — everything quoteCourier needs. */
@@ -566,6 +568,10 @@ export function OrderManager({
   // Both dialogs used defaultValue before. The warning has to react as you
   // type, so the value is state now — seeded whenever the dialog opens.
   const [cancelPackaging, setCancelPackaging] = useState("0");
+  // Whether the goods are still with the courier. Seeded from the order when
+  // the dialog opens (see goodsLikelyWithCourier) and then whatever the person
+  // says — they know whether the rider handed the parcel back at the door.
+  const [cancelInTransit, setCancelInTransit] = useState(false);
   const [cancelSaving, setCancelSaving] = useState(false);
   // The order awaiting a "how much of it have they paid?" answer. PARTIAL is
   // the one status that means nothing without a number attached.
@@ -601,6 +607,8 @@ export function OrderManager({
   const [returnOpen, setReturnOpen] = useState(false);
   const [returnOrder, setReturnOrder] = useState<OrderRow | null>(null);
   const [returnItemId, setReturnItemId] = useState("");
+  /** The customer has posted it and it isn't here yet — see Return.receivedAt. */
+  const [returnInTransit, setReturnInTransit] = useState(false);
 
   // ── Edit details dialog state ──
   const [editOpen, setEditOpen] = useState(false);
@@ -1167,6 +1175,7 @@ export function OrderManager({
       const order = orders.find((o) => o.id === orderId);
       if (order && order.status !== "CANCELLED") {
         setCancelPackaging(String(order.packagingCost));
+        setCancelInTransit(goodsLikelyWithCourier(order));
         setCancelling(order);
         return;
       }
@@ -1187,6 +1196,7 @@ export function OrderManager({
       giftCost: String(fd.get("giftCost") ?? "0"),
       deliveryCost: String(fd.get("deliveryCost") ?? "0"),
       cancelledCollected: String(fd.get("cancelledCollected") ?? "0"),
+      goodsInTransit: cancelInTransit,
     });
     setCancelSaving(false);
     if (!res.ok) return toast.error(res.error);
@@ -1265,6 +1275,9 @@ export function OrderManager({
     const firstReturnable = o.items.find((it) => it.remaining > 0);
     setReturnOrder(o);
     setReturnItemId(firstReturnable?.id ?? "");
+    // Off by default: most returns are written down with the box open on the
+    // counter, and that is what every return before this column assumed.
+    setReturnInTransit(false);
     setReturnOpen(true);
   }
 
@@ -1273,6 +1286,7 @@ export function OrderManager({
     if (!returnItemId) return toast.error("Select an item to return");
     const fd = new FormData(e.currentTarget);
     fd.set("orderItemId", returnItemId);
+    if (returnInTransit) fd.set("goodsInTransit", "1");
     const res = await createReturn(slug, fd);
     if (!res.ok) return toast.error(res.error);
     toast.success("Return recorded");
@@ -2647,10 +2661,32 @@ export function OrderManager({
           {cancelling && (
             <form key={cancelling.id} onSubmit={onConfirmCancel} className="space-y-4">
               <p className="text-sm text-muted-foreground">
-                {cancelling.customerName}&apos;s order goes back into stock and stops
-                counting as a sale. Anything it already cost is recorded below and
-                comes off profit — leave a field at 0 if it never happened.
+                {cancelling.customerName}&apos;s order stops counting as a sale, and the
+                goods go back into stock once they are actually back. Anything it
+                already cost is recorded below and comes off profit — leave a field at 0
+                if it never happened.
               </p>
+
+              {/* The one question the money fields can't answer. A refused
+                  parcel spends days in the courier's return hub, and putting
+                  its pieces back on the shelf tonight is how the shop sells
+                  something nobody has. */}
+              <label className="flex items-start gap-2 rounded-md border p-3 text-sm">
+                <Checkbox
+                  checked={cancelInTransit}
+                  onCheckedChange={(v) => setCancelInTransit(v === true)}
+                  className="mt-0.5"
+                />
+                <span>
+                  The goods are still with the courier
+                  <span className="block text-xs text-muted-foreground">
+                    They stay out of stock until you mark the parcel received, so nobody
+                    can sell them while they&apos;re in transit. Untick it if the goods
+                    are already back on the shelf — never packed, or handed straight back
+                    at the door.
+                  </span>
+                </span>
+              </label>
 
               {/* Only a PAID order that reached the treasury needs this: the
                   money is sitting in the box against a sale that no longer
@@ -2895,6 +2931,23 @@ export function OrderManager({
               <Field name="reason" label="Reason">
                 <Input id="r-reason" name="reason" />
               </Field>
+              {/* Same gap a cancelled parcel has: agreed on the phone today,
+                  in the post for a week. The refund moves now either way — only
+                  the shelf waits. */}
+              <label className="flex items-start gap-2 text-sm">
+                <Checkbox
+                  checked={returnInTransit}
+                  onCheckedChange={(v) => setReturnInTransit(v === true)}
+                  className="mt-0.5"
+                />
+                <span>
+                  They&apos;ve sent it but it hasn&apos;t arrived
+                  <span className="block text-xs text-muted-foreground">
+                    Keeps the pieces out of stock until you mark them received. Leave it
+                    unticked if the goods are already back.
+                  </span>
+                </span>
+              </label>
               <DialogFooter>
                 <Button type="submit">Record return</Button>
               </DialogFooter>
