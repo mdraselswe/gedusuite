@@ -386,6 +386,12 @@ export default async function OrdersPage({
       courierZoneId: o.courierZoneId,
       weightKg: o.weightKg !== null ? Number(o.weightKg) : null,
       cancelledCollected: Number(o.cancelledCollected),
+      // A PAID order that collected less than its invoice looks identical to
+      // one that collected all of it on this list, and the difference is real
+      // money. It was only ever visible on the courier balance page, which is
+      // where a shortfall gets typed — but not where anybody looks up an order.
+      collectionShortfall: totals.collectionShortfall,
+      collectionNote: o.collectionNote,
       packagingCost: Number(o.packagingCost),
       giftCost: Number(o.giftCost),
       discount: Number(o.discount),

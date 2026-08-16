@@ -130,6 +130,10 @@ type OrderRow = DhakaStamp & {
   courierZoneId: string | null;
   weightKg: number | null;
   cancelledCollected: number;
+  /** What the courier's ledger came up short of the invoice. 0 on almost every order. */
+  collectionShortfall: number;
+  /** Why it came up short, as typed on the courier balance page. */
+  collectionNote: string | null;
   packagingCost: number;
   giftCost: number;
   discount: number;
@@ -1744,6 +1748,24 @@ export function OrderManager({
                   {o.paymentStatus === "PARTIAL" && o.status !== "CANCELLED" && (
                     <span className="whitespace-nowrap text-xs text-muted-foreground">
                       <Money value={o.amountPaid} /> paid · <Money value={o.amountDue} /> due
+                    </span>
+                  )}
+                  {/* PAID on an order the customer underpaid is the truth and
+                      reads like a lie: nothing is still owed, because the gap
+                      was written off, and a row saying only "PAID" hides that
+                      it ever happened. The status answers "is anything still
+                      to collect"; this answers "did it all arrive", and the
+                      two are different questions on exactly these orders. */}
+                  {o.collectionShortfall > 0 && (
+                    <span
+                      className="whitespace-nowrap text-xs text-destructive"
+                      title={
+                        o.collectionNote ??
+                        "The courier's ledger came up short of the invoice — recorded on the courier balance page"
+                      }
+                    >
+                      <Money value={o.collectionShortfall} /> short of{" "}
+                      <Money value={o.totals.customerTotal} />
                     </span>
                   )}
                   {o.totals.returnedUnits > 0 && (
