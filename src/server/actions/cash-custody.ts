@@ -8,8 +8,10 @@ import {
   bankedSoFar,
   cashEntryNote,
   cashEntrySource,
+  codBaseFor,
   collectionRecorded,
   courierChargeNote,
+  deliveryCostCharged,
   depositAmount,
   stillToBank,
 } from "@/lib/order-cash";
@@ -338,7 +340,32 @@ export type PayoutImportResult =
       alreadyKnown: number;
       /** Consignments the courier paid for that no order here matches. */
       unmatched: string[];
-      payouts: { externalId: string; total: number; parcels: number; difference: number }[];
+      /**
+       * Parcels the courier settled for something other than this app expected.
+       * Reported, never applied: recording one moves an order's profit and its
+       * cash, and the payout is not the place to do that to a dozen orders at
+       * once. The COD cell on the balance page is.
+       */
+      collectionGaps: {
+        trackingId: string;
+        customerName: string;
+        expected: number;
+        collected: number;
+        /** collected − expected. Negative means less arrived than was billed. */
+        gap: number;
+      }[];
+      payouts: {
+        externalId: string;
+        total: number;
+        parcels: number;
+        difference: number;
+        /** What this app's rates make the payout's delivery bills come to. */
+        deliveryBilled: number;
+        /** What the courier actually billed for them. */
+        dueBills: number;
+        /** deliveryBilled − dueBills. Non-zero means a zone or weight is wrong. */
+        deliveryGap: number;
+      }[];
     }
   | ActionFailure;
 
@@ -402,7 +429,29 @@ export async function importCourierPayouts(
     .sort((a, b) => (a.paid_at ?? a.created_at ?? "").localeCompare(b.paid_at ?? b.created_at ?? ""));
 
   const unmatched: string[] = [];
-  const imported: { externalId: string; total: number; parcels: number; difference: number }[] = [];
+  /** Parcels the courier settled for something other than this app expected. */
+  const collectionGaps: {
+    trackingId: string;
+    customerName: string;
+    /** What this app thought the courier collected. */
+    expected: number;
+    /** What the payout says it collected. */
+    collected: number;
+    /** collected − expected. Negative means the shop got less than it billed. */
+    gap: number;
+  }[] = [];
+  const imported: {
+    externalId: string;
+    total: number;
+    parcels: number;
+    difference: number;
+    /** Sum of this app's delivery costs for the payout's parcels. */
+    deliveryBilled: number;
+    /** What the courier actually billed for delivery across them. */
+    dueBills: number;
+    /** deliveryBilled − dueBills. Non-zero means a rate rule is wrong. */
+    deliveryGap: number;
+  }[] = [];
 
   for (const summary of pending) {
     const detail = await getPayment(creds, summary.payment_id);
@@ -416,6 +465,45 @@ export async function importCourierPayouts(
     });
     const found = new Set(orders.map((o) => o.courierTrackingId));
     for (const id of consignmentIds) if (!found.has(id)) unmatched.push(id);
+
+    /**
+     * What the courier says it collected, parcel by parcel, against what this
+     * app thinks it collected.
+     *
+     * The payout is the only place Steadfast reports a per-parcel figure, and
+     * it reports the one that matters: what came back off the doorstep, not
+     * what was booked. A parcel booked at 960 that a rider settled for 940
+     * shows 940 here — which is how a twenty-taka gap between this app and
+     * Steadfast's balance went unexplained until somebody read it off a phone
+     * screen, one parcel at a time.
+     *
+     * Reported, not written. Recording a shortfall moves an order's profit and
+     * what its cash comes to, and doing that to a dozen orders at once inside
+     * an import — on the strength of a field whose meaning is inferred rather
+     * than documented — is not a thing to do quietly. The person is pointed at
+     * the row instead, and the COD cell on this page is already the place to
+     * answer it.
+     *
+     * Cancelled parcels are skipped: a partial delivery keeps its collected
+     * figure in `cancelledCollected`, typed with the cancellation, and reading
+     * this as a shortfall on top of it would count the same gap twice.
+     */
+    const byTracking = new Map(orders.map((o) => [o.courierTrackingId, o]));
+    for (const c of detail.data.consignments) {
+      const order = byTracking.get(String(c.consignment_id));
+      if (!order || order.status === "CANCELLED") continue;
+      const totals = computeOrderTotals(order);
+      const expected = codBaseFor(order, totals);
+      const gap = round2(Number(c.cod_amount) - expected);
+      if (Math.abs(gap) < 0.01) continue;
+      collectionGaps.push({
+        trackingId: String(c.consignment_id),
+        customerName: order.customer?.name ?? "Walk-in",
+        expected,
+        collected: round2(Number(c.cod_amount)),
+        gap,
+      });
+    }
 
     // Bank the ones that aren't banked yet, exactly as clicking each row would.
     for (const order of orders) {
@@ -435,6 +523,28 @@ export async function importCourierPayouts(
       banked.reduce((sum, o) => sum + depositAmount(o, computeOrderTotals(o)).net, 0),
     );
     const difference = round2(Number(detail.data.total) - ordersTotal);
+
+    /**
+     * What the courier billed for carrying these parcels, against what this
+     * app expected it to.
+     *
+     * Only ever the total: Steadfast reports `due_bills` for the payout and
+     * has no endpoint that gives a parcel's own charge, so this can say how
+     * far out the rate table is but never which parcel put it there. Still
+     * worth saying — it is the difference between "the rates are right" and
+     * "twenty taka came from somewhere", and the rate table is a thing that
+     * can actually be corrected.
+     *
+     * It was 20 out on the payout that prompted this, from two parcels: a
+     * Savar one billed at the outside-Dhaka rate because the app had no
+     * sub-urban zone, and an unweighed one billed at its zone's top band. Both
+     * were fixable rules; both were invisible, because the gap went into the
+     * difference entry below and that entry gets read as rounding.
+     */
+    const deliveryBilled = round2(
+      orders.reduce((s, o) => s + deliveryCostCharged(o, computeOrderTotals(o)), 0),
+    );
+    const deliveryGap = round2(deliveryBilled - Number(detail.data.due_bills));
 
     const group = newActivityGroup();
     const paidAt = detail.data.paid_at
@@ -479,7 +589,14 @@ export async function importCourierPayouts(
             note:
               `${courier.name} paid ৳${detail.data.total} on ${detail.data.payment_id}; ` +
               `the ${banked.length} order(s) in it come to ৳${ordersTotal}. The fee is charged ` +
-              `on the payout as a whole and rounded, so the two never land on the same paisa.`,
+              `on the payout as a whole and rounded, so the two never land on the same paisa.` +
+              // Named here too, because this note is what somebody reads when
+              // they ask where the difference came from — and "rounding" on
+              // its own is a lie the moment a rate rule is wrong.
+              (Math.abs(deliveryGap) >= 0.01
+                ? ` ৳${Math.abs(deliveryGap)} of it is delivery charges: this app billed ` +
+                  `৳${deliveryBilled} against the courier's ৳${detail.data.due_bills}.`
+                : ""),
             date: paidAt ?? new Date(),
           },
         });
@@ -503,6 +620,9 @@ export async function importCourierPayouts(
       total: Number(detail.data.total),
       parcels: orders.length,
       difference,
+      deliveryBilled,
+      dueBills: Number(detail.data.due_bills),
+      deliveryGap,
     });
   }
 
@@ -512,6 +632,7 @@ export async function importCourierPayouts(
     imported: imported.length,
     alreadyKnown: seen.size,
     unmatched,
+    collectionGaps,
     payouts: imported,
   };
 }

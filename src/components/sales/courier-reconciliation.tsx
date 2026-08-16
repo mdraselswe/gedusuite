@@ -98,7 +98,33 @@ export function CourierReconciliation({
             (Math.abs(p.difference) >= 0.01 ? `, ৳${p.difference} difference recorded` : ""),
           { duration: 10000 },
         );
+        // The delivery half of that difference, when there is one. A payout
+        // whose difference is only the rounded percentage fee is a payout
+        // where the rate table is right, and those two cases look identical
+        // in one number — which is how 20 taka of wrong rates sat inside a
+        // "difference" line that everybody read as rounding.
+        if (Math.abs(p.deliveryGap) >= 0.01) {
+          toast.warning(
+            `${p.externalId}: delivery charges are ৳${Math.abs(p.deliveryGap)} ` +
+              `${p.deliveryGap > 0 ? "higher" : "lower"} here than the courier billed — ` +
+              `৳${p.deliveryBilled} against ৳${p.dueBills}. Check the zone and weight on these parcels.`,
+            { duration: 20000 },
+          );
+        }
       }
+    }
+    // A parcel the courier settled for a different amount than this app
+    // expected. Named one by one rather than summed: the fix is per parcel —
+    // the COD cell on this page — and a total tells nobody which row to open.
+    for (const g of res.collectionGaps) {
+      toast.warning(
+        `${g.customerName} (${g.trackingId}): courier collected ৳${g.collected}, ` +
+          `this app expected ৳${g.expected}` +
+          (g.gap < 0
+            ? ` — ৳${Math.abs(g.gap)} short. Click its COD figure and enter ${g.collected}.`
+            : ` — ৳${g.gap} more than the invoice. Check the order.`),
+        { duration: 20000 },
+      );
     }
     // Named rather than swallowed: a parcel the courier paid for that this app
     // has never heard of is the one thing an import cannot reconcile by itself.
