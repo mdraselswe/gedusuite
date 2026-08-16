@@ -94,6 +94,19 @@ export function PendingReturns({
 
   if (parcels.length === 0 && returns.length === 0) return null;
 
+  /**
+   * How many of a line won't be going back on the shelf.
+   *
+   * A cleared box counts as nothing having come back, because that is what
+   * submitting it does — it previewed as "nothing written off" and then wrote
+   * the whole line off.
+   */
+  const shortOf = (l: PendingLine) => {
+    const typed = parseInt(good[`${l.kind}:${l.id}`] ?? "", 10);
+    return Math.max(0, l.quantity - (Number.isFinite(typed) ? typed : 0));
+  };
+  const shortTotal = receiving?.lines.reduce((s, l) => s + shortOf(l), 0) ?? 0;
+
   function openReceive(p: PendingParcel) {
     // Everything came back whole until somebody says otherwise: that is the
     // ordinary case, and a dialog that starts at zero makes the ordinary case
@@ -268,8 +281,7 @@ export function PendingReturns({
               <div className="space-y-2">
                 {receiving.lines.map((l) => {
                   const key = `${l.kind}:${l.id}`;
-                  const typed = parseInt(good[key] ?? "", 10);
-                  const short = Number.isFinite(typed) ? l.quantity - typed : 0;
+                  const short = shortOf(l);
                   return (
                     <div key={key} className="flex items-center gap-3">
                       <div className="min-w-0 flex-1">
@@ -299,29 +311,40 @@ export function PendingReturns({
                 })}
               </div>
 
-              <div className="space-y-2">
-                <Label>What happened to the rest</Label>
-                <Select
-                  value={shortfall}
-                  onValueChange={(v) => setShortfall((v as "DAMAGED" | "LOST") ?? "DAMAGED")}
-                  items={[
-                    { value: "DAMAGED", label: "Came back damaged" },
-                    { value: "LOST", label: "Missing from the parcel" },
-                  ]}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="DAMAGED">Came back damaged</SelectItem>
-                    <SelectItem value="LOST">Missing from the parcel</SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  Only used if something is short. It becomes a stock adjustment with
-                  this order named on it.
-                </p>
-              </div>
+              {/* Only once something is actually short. On a parcel that came
+                  back whole this question has no answer, and asking it anyway
+                  made the ordinary case look like it needed a decision — a
+                  dropdown sitting there pre-set to "Came back damaged" on a
+                  parcel where nothing was. */}
+              {shortTotal > 0 && (
+                <div className="space-y-2">
+                  <Label>
+                    What happened to the {shortTotal} pc{shortTotal === 1 ? "" : "s"} not
+                    coming back?
+                  </Label>
+                  <Select
+                    value={shortfall}
+                    onValueChange={(v) => setShortfall((v as "DAMAGED" | "LOST") ?? "DAMAGED")}
+                    items={[
+                      { value: "DAMAGED", label: "Came back damaged" },
+                      { value: "LOST", label: "Missing from the parcel" },
+                    ]}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="DAMAGED">Came back damaged</SelectItem>
+                      <SelectItem value="LOST">Missing from the parcel</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Becomes a stock adjustment with this order named on it, so the two
+                    can be told apart later — a courier that damages parcels and one
+                    that loses pieces are different complaints.
+                  </p>
+                </div>
+              )}
 
               <div className="space-y-2">
                 <Label htmlFor="pr-note">Note</Label>
