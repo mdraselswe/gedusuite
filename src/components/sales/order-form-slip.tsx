@@ -187,9 +187,15 @@ function FilledBody({ order }: { order: SlipOrder }) {
       <Value className="mt-[1mm] text-[20px] font-bold tracking-wide tabular-nums">
         {order.phone}
       </Value>
+      {/* Six lines, and the space for all six reserved whether they're used or
+          not. A Dhaka address with a floor and a landmark on it runs past four
+          lines and was being cut mid-word; reserving the height as well as
+          raising the cap keeps the amount box in the same place on every slip,
+          so a stack of them still reads at a glance. 7.5em = 6 lines at this
+          size's leading. */}
       <Value
-        className="mt-[1.5mm] text-[16px] whitespace-pre-wrap"
-        clampLines={4}
+        className="mt-[1.5mm] min-h-[7.5em] text-[16px] whitespace-pre-wrap"
+        clampLines={6}
       >
         {order.address}
       </Value>
