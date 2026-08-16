@@ -74,6 +74,10 @@ export async function syncCourierStatuses(opts: {
       courierTrackingId: true,
       courierStatus: true,
       status: true,
+      // Read so delivery can settle the payment too — see the update below.
+      paymentMethod: true,
+      paymentStatus: true,
+      cashInTreasury: true,
       workspaceId: true,
       customer: { select: { name: true } },
       courier: { select: { name: true } },
@@ -111,12 +115,44 @@ export async function syncCourierStatuses(opts: {
     // person's call: both turn on money the courier never reports, what the
     // return trip cost and what was handed over at the door.
     const applies = status === "delivered" && order.status !== "DELIVERED";
+
+    /**
+     * Delivered means paid, on a parcel the courier collects for.
+     *
+     * "Delivered" is not an opinion about the goods — for a COD parcel it is
+     * the courier saying it took the money at the door. A parcel that came
+     * back with only the shipping is `partial_delivered`, which this sync
+     * deliberately leaves to a person, so the two cases can't be confused.
+     *
+     * Left as UNPAID, the order sat in a blind spot between two pages that
+     * were both right: the courier balance ignores payment status, so it
+     * showed the 2,505 Steadfast was holding, while the treasury's "with the
+     * courier" reads paidNotDeposited — which wants PAID or PARTIAL — and
+     * showed 4.95 of it. Same money, two screens, and the only thing between
+     * them was somebody remembering to change a dropdown.
+     *
+     * It also stops a delivered parcel being chased: an UNPAID one counts
+     * towards what customers owe and towards the cash its holder is carrying,
+     * and the customer paid and the holder is a courier.
+     *
+     * Narrow on purpose. Only what the courier collects for, only from UNPAID
+     * (never overriding a typed PARTIAL), and never on an order whose cash is
+     * already banked — that one would need its treasury entry recomputed, and
+     * a background job is the wrong place to be moving money.
+     */
+    const settles =
+      applies &&
+      order.paymentMethod === "COURIER_COLLECTION" &&
+      order.paymentStatus === "UNPAID" &&
+      !order.cashInTreasury;
+
     await prisma.order.update({
       where: { id: order.id },
       data: {
         courierStatus: status,
         courierStatusAt: new Date(),
         ...(applies ? { status: "DELIVERED" as const } : {}),
+        ...(settles ? { paymentStatus: "PAID" as const } : {}),
       },
     });
     if (applies) delivered += 1;
@@ -126,9 +162,11 @@ export async function syncCourierStatuses(opts: {
       entity: "Order",
       entityId: order.id,
       entityLabel: order.customer?.name ?? order.courierTrackingId,
-      summary: applies
-        ? "Courier says: delivered — order marked delivered"
-        : `Courier says: ${status}`,
+      summary: settles
+        ? "Courier says: delivered — order marked delivered and paid"
+        : applies
+          ? "Courier says: delivered — order marked delivered"
+          : `Courier says: ${status}`,
     });
   }
 
