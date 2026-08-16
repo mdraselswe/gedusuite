@@ -120,9 +120,19 @@ describe("expectedCourierBalance", () => {
     expect(balance).toBe(15963);
   });
 
+  it("rounds the fee up when it lands on a half taka", () => {
+    // SFC-31364675: 18,760 collected, 2,410 of delivery bills. 1% of the
+    // 16,350 left is exactly 163.50 and Steadfast charged 164 — flooring it
+    // predicted 16,187 against a payout of 16,186, which is the sort of
+    // one-taka gap somebody spends an evening looking for.
+    expect(
+      expectedCourierBalance([{ codAmount: 18760, deliveryCost: 2410 }], onePercentNet),
+    ).toBe(16186);
+  });
+
   it("matches the balance its app is showing right now", () => {
     // 11,920 collected on the parcels it still holds, 1,200 of delivery bills
-    // — 1% of 10,720 floored is 107, and the app says 10,613.
+    // — 1% of 10,720 is 107.20, and the app says 10,613.
     expect(
       expectedCourierBalance([{ codAmount: 11920, deliveryCost: 1200 }], onePercentNet),
     ).toBe(10613);
