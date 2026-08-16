@@ -76,7 +76,7 @@ import { Money } from "@/components/ui/money";
 import { Stamp } from "@/components/ui/stamp";
 import { toDhakaInputValue, type DhakaStamp } from "@/lib/dhaka-time";
 import { formatMoney, round2 } from "@/lib/money";
-import { goodsLikelyWithCourier } from "@/lib/returns";
+import { goodsLikelyWithCourier, OVERDUE_RETURN_DAYS } from "@/lib/returns";
 import { Field } from "@/components/ui/field";
 import { MoneyInput } from "@/components/ui/money-input";
 
@@ -102,6 +102,12 @@ type OrderRow = DhakaStamp & {
   shipPhone: string | null;
   shipAddress: string | null;
   status: string;
+  /** Where a cancelled order's goods are: NONE | IN_TRANSIT | RECEIVED | LOST. */
+  returnLeg: string;
+  /** When the leg last moved, already formatted. Null before it ever moved. */
+  returnLegOn: string | null;
+  /** Days since then — how overdue a parcel still in transit is. */
+  returnLegDays: number;
   deliveryType: string;
   courierTrackingId: string | null;
   /** What the courier last said about the parcel — not the order's own status. */
@@ -136,6 +142,63 @@ type OrderRow = DhakaStamp & {
 };
 /** A cleared delivery block. Module scope: both dialogs read it. */
 const EMPTY_SHIP = { name: "", phone: "", address: "" };
+
+/**
+ * Where a cancelled order's goods are, said in the row.
+ *
+ * Cancelled used to mean one thing and now covers three: the pieces are back
+ * on the shelf, or in a van somewhere, or gone for good. Without this the list
+ * shows the same red "CANCELLED" for all three, and the only way to tell them
+ * apart is to open the order's history one at a time.
+ *
+ * Nothing is drawn for NONE — the ordinary cancellation, where the goods never
+ * left — because a badge on every cancelled row saying "nothing happened" is
+ * noise on the busiest list in the app.
+ */
+function ReturnLegBadge({ order }: { order: OrderRow }) {
+  if (order.status !== "CANCELLED" || order.returnLeg === "NONE") return null;
+  if (order.returnLeg === "IN_TRANSIT") {
+    const overdue = order.returnLegDays >= OVERDUE_RETURN_DAYS;
+    return (
+      <Badge
+        variant="outline"
+        className={cn(
+          "font-normal",
+          overdue
+            ? "border-destructive/60 text-destructive"
+            : "border-amber-500/60 text-amber-700 dark:text-amber-400",
+        )}
+        title={
+          overdue
+            ? "Overdue — worth asking the courier where this parcel is"
+            : "With the courier. These pieces stay out of stock until you mark them received."
+        }
+      >
+        Coming back · {order.returnLegDays}d
+      </Badge>
+    );
+  }
+  if (order.returnLeg === "RECEIVED") {
+    return (
+      <Badge
+        variant="outline"
+        className="border-emerald-500/60 font-normal text-emerald-700 dark:text-emerald-400"
+        title="The goods are back in the shop and on the shelf"
+      >
+        Back{order.returnLegOn ? ` ${order.returnLegOn}` : ""}
+      </Badge>
+    );
+  }
+  return (
+    <Badge
+      variant="outline"
+      className="border-destructive/60 font-normal text-destructive"
+      title="Written off — the courier never brought this parcel back"
+    >
+      Never came{order.returnLegOn ? ` · ${order.returnLegOn}` : ""}
+    </Badge>
+  );
+}
 
 
 type Perms = { canAdd: boolean; canEdit: boolean; canViewProfit: boolean };
@@ -787,6 +850,19 @@ export function OrderManager({
       kind: "select",
       options: [{ value: "__yes__", label: "Given away free" }],
     },
+    // The one question the status filter can't answer: of everything cancelled,
+    // which parcels are actually back in the shop. Cancelled is one status and
+    // three quite different situations.
+    {
+      key: "goods",
+      label: "Cancelled goods",
+      kind: "select",
+      options: [
+        { value: "IN_TRANSIT", label: "Coming back" },
+        { value: "RECEIVED", label: "Received back" },
+        { value: "LOST", label: "Never came back" },
+      ],
+    },
     { key: "date", label: "Order date", kind: "dateRange" },
   ];
   const BAR_TO_URL: Record<string, string> = {
@@ -795,6 +871,7 @@ export function OrderManager({
     courier: "courier",
     held: "held",
     free: "free",
+    goods: "goods",
     "date:from": "from",
     "date:to": "to",
   };
@@ -1538,25 +1615,32 @@ export function OrderManager({
             {
               key: "status",
               header: "Status",
-              cell: (o) =>
-                perms.canEdit ? (
-                  <Select value={o.status} onValueChange={(v) => v && onStatusChange(o.id, v)}>
-                    <SelectTrigger className={cn("h-8 w-36", STATUS_TONE[o.status])}>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {STATUSES.map((s) => (
-                        <SelectItem key={s} value={s}>
-                          {s}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <Badge variant="secondary" className={cn(STATUS_TONE[o.status])}>
-                    {o.status}
-                  </Badge>
-                ),
+              cell: (o) => (
+                // Two lines on a cancelled parcel: the sale's state, and the
+                // goods'. They answer different questions and stopped agreeing
+                // the day cancelling stopped meaning "back on the shelf".
+                <div className="flex flex-col items-start gap-1">
+                  {perms.canEdit ? (
+                    <Select value={o.status} onValueChange={(v) => v && onStatusChange(o.id, v)}>
+                      <SelectTrigger className={cn("h-8 w-36", STATUS_TONE[o.status])}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {STATUSES.map((s) => (
+                          <SelectItem key={s} value={s}>
+                            {s}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <Badge variant="secondary" className={cn(STATUS_TONE[o.status])}>
+                      {o.status}
+                    </Badge>
+                  )}
+                  <ReturnLegBadge order={o} />
+                </div>
+              ),
             },
             {
               key: "payment",

@@ -7,7 +7,7 @@ import { computeOrderTotals, orderNetProfit } from "@/lib/orders";
 import { orderRecipient } from "@/lib/order-recipient";
 import { phoneSearchTerms } from "@/lib/phone";
 import { isCourierStatus, NO_COURIER_STATUS } from "@/lib/courier-status";
-import { dhakaDayEnd, dhakaDayStart, dhakaRecordStamp } from "@/lib/dhaka-time";
+import { dhakaDayEnd, dhakaDayStart, dhakaRecordStamp, formatDhakaDate } from "@/lib/dhaka-time";
 import { amountOutstanding } from "@/lib/order-cash";
 import { OrderManager } from "@/components/sales/order-manager";
 import { PendingReturns } from "@/components/sales/pending-returns";
@@ -32,6 +32,10 @@ function daysSince(d: Date | null): number {
 const ORDER_STATUSES =["PENDING", "CONFIRMED", "PACKED", "SHIPPED", "DELIVERED", "CANCELLED"] as const;
 const PAY_STATUSES = ["PAID", "UNPAID", "PARTIAL"] as const;
 const DELIVERY_TYPES = ["SELF", "COURIER"] as const;
+// NONE is left out on purpose: "cancelled and the goods never left" is not a
+// state anybody goes looking for, and offering it would only crowd the three
+// that matter.
+const RETURN_LEGS = ["IN_TRANSIT", "RECEIVED", "LOST"] as const;
 
 export default async function OrdersPage({
   params,
@@ -52,6 +56,8 @@ export default async function OrdersPage({
     /** What the courier last said — its own status, not the order's. */
     courier?: string;
     free?: string;
+    /** Where a cancelled order's goods are — see ReturnLeg. */
+    goods?: string;
     /** Set by the call list's "+ Order" button. */
     fromLead?: string;
   }>;
@@ -80,6 +86,10 @@ export default async function OrdersPage({
       sp.courier === NO_COURIER_STATUS || isCourierStatus(sp.courier) ? (sp.courier as string) : "",
     // "__yes__" only: there is no reason to filter for orders that AREN'T gifts.
     free: sp.free === "__yes__" ? sp.free : "",
+    // Where a cancelled order's goods got to. Answers the question the status
+    // column can't: of everything cancelled this month, which parcels are
+    // actually back in the shop?
+    goods: RETURN_LEGS.includes(sp.goods as never) ? (sp.goods as string) : "",
   };
   // Both ends are Dhaka days, not UTC ones. Orders carry a real time of day
   // now, so a UTC window would drop an order taken before 6 AM Dhaka out of its
@@ -132,6 +142,12 @@ export default async function OrdersPage({
       ? { deliveryType: listFilters.delivery as (typeof DELIVERY_TYPES)[number] }
       : {}),
     ...(listFilters.free ? { isGiveaway: true } : {}),
+    // No status clause alongside it: anything but NONE only ever sits on a
+    // cancelled order, so filtering the leg filters the status by itself —
+    // and writing `status` twice would silently override the user's own pick.
+    ...(listFilters.goods
+      ? { returnLeg: listFilters.goods as (typeof RETURN_LEGS)[number] }
+      : {}),
     ...(listFilters.courier
       ? {
           courierStatus:
@@ -345,6 +361,12 @@ export default async function OrdersPage({
       shipPhone: o.shipPhone,
       shipAddress: o.shipAddress,
       status: o.status,
+      // Where this cancelled order's goods are, and since when. The status
+      // column says the sale is off; only this says whether the pieces are
+      // back in the shop, in a van, or gone.
+      returnLeg: o.returnLeg,
+      returnLegOn: o.returnLegAt ? formatDhakaDate(o.returnLegAt) : null,
+      returnLegDays: daysSince(o.returnLegAt ?? o.date),
       deliveryType: o.deliveryType,
       courierTrackingId: o.courierTrackingId,
       courierStatus: o.courierStatus,

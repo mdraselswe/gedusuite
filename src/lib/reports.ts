@@ -54,6 +54,36 @@ export type SourceTotal = {
   cancelRate: number | null;
 };
 
+/**
+ * Where the goods went on the cancellations in range — counted by parcel, not
+ * by piece, because that is the unit a courier is answerable for.
+ *
+ * `sentBack` deliberately excludes cancellations whose goods never left (never
+ * packed, or handed back at the door): there was no return leg to succeed or
+ * fail at, and counting them would flatter the rate.
+ */
+export type ReturnLegSummary = {
+  /** Cancelled parcels that had a return leg at all. */
+  sentBack: number;
+  /** Still travelling — no verdict yet either way. */
+  stillOut: number;
+  /** Booked back in. */
+  received: number;
+  /** Written off: the courier never brought it back. */
+  lost: number;
+  /**
+   * What the goods on those lost parcels cost, from the same cost snapshot the
+   * profit math uses.
+   *
+   * Reported, not subtracted. Writing a parcel off already created the LOST
+   * stock adjustments that `stockLoss` is built from, so taking it off profit
+   * here would charge the shop twice for one loss.
+   */
+  lostCost: number;
+  /** lost ÷ (received + lost). Null until something has settled either way. */
+  lossRate: number | null;
+};
+
 export type Report = {
   kpis: {
     revenue: number;
@@ -76,6 +106,16 @@ export type Report = {
     cancelledOrders: number;
     cancelledCost: number;
   };
+  /**
+   * How the goods on those cancelled orders got home — the courier's side of a
+   * cancellation, which the money figures above say nothing about.
+   *
+   * A cancellation costs the return charge whether or not the parcel turns up.
+   * Whether it turns up is a different question, and one nobody could ask
+   * before: a parcel that was never brought back simply stayed on the shelf as
+   * stock that had not been there for months.
+   */
+  returns: ReturnLegSummary;
   series: { date: string; sales: number; profit: number }[];
   products: ProductPerf[]; // all products, sorted by qty desc
   // `percent` is what the partner's record says; `effectivePercent` is what
@@ -190,10 +230,31 @@ export async function buildReport(
   // profit and in its channel's row, but never in revenue, the order count or
   // the product tables — nothing was sold and the stock went back.
   let cancelledCost = 0;
+  const legs: ReturnLegSummary = {
+    sentBack: 0,
+    stillOut: 0,
+    received: 0,
+    lost: 0,
+    lostCost: 0,
+    lossRate: null,
+  };
   for (const o of cancelled) {
     const cost = cancelledOrderCost(o).total;
     cancelledCost += cost;
     profit -= cost;
+
+    // NONE means the goods never left, so there is no leg to report on.
+    if (o.returnLeg !== "NONE") {
+      legs.sentBack += 1;
+      if (o.returnLeg === "IN_TRANSIT") legs.stillOut += 1;
+      if (o.returnLeg === "RECEIVED") legs.received += 1;
+      if (o.returnLeg === "LOST") {
+        legs.lost += 1;
+        // The cost snapshot on the line, not today's price — this is what the
+        // shop paid for the pieces that never came home.
+        legs.lostCost += o.items.reduce((s, it) => s + Number(it.unitCost) * it.quantity, 0);
+      }
+    }
 
     const day = dhakaDayKey(o.date);
     const s = seriesMap.get(day) ?? { sales: 0, profit: 0 };
@@ -207,6 +268,11 @@ export async function buildReport(
     src.profit -= cost;
     sourceMap.set(srcKey, src);
   }
+  // Out of the parcels that have an answer. A hundred still in transit say
+  // nothing about how often this courier loses one.
+  const settledLegs = legs.received + legs.lost;
+  legs.lostCost = round2(legs.lostCost);
+  legs.lossRate = settledLegs > 0 ? legs.lost / settledLegs : null;
 
   // Include products with zero sales in range so slow-movers surface.
   const allProducts = await prisma.product.findMany({
@@ -281,6 +347,7 @@ export async function buildReport(
       cancelledOrders: cancelled.length,
       cancelledCost: round2(cancelledCost),
     },
+    returns: legs,
     series,
     products,
     partnerShares,

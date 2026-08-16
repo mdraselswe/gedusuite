@@ -99,6 +99,11 @@ export function ReportView({
       ["Avg order value", report.kpis.avgOrder],
       ["Cancelled orders", report.kpis.cancelledOrders],
       ["Cancelled cost", report.kpis.cancelledCost],
+      ["Parcels sent back", report.returns.sentBack],
+      ["Parcels received back", report.returns.received],
+      ["Parcels still with the courier", report.returns.stillOut],
+      ["Parcels never returned", report.returns.lost],
+      ["Value never returned", report.returns.lostCost],
     ]);
     XLSX.utils.book_append_sheet(wb, summary, "Summary");
     XLSX.utils.book_append_sheet(
@@ -203,6 +208,17 @@ export function ReportView({
         ["Avg order value", report.kpis.avgOrder.toFixed(2)],
         ["Cancelled orders", String(report.kpis.cancelledOrders)],
         ["Cancelled cost", report.kpis.cancelledCost.toFixed(2)],
+        // Only worth a row once a parcel has actually been sent back — on a
+        // range with none, four zeroes say nothing and take four lines.
+        ...(report.returns.sentBack > 0
+          ? [
+              ["Parcels sent back", String(report.returns.sentBack)],
+              ["Parcels received back", String(report.returns.received)],
+              ["Parcels still with the courier", String(report.returns.stillOut)],
+              ["Parcels never returned", String(report.returns.lost)],
+              ["Value never returned", report.returns.lostCost.toFixed(2)],
+            ]
+          : []),
       ],
     });
     autoTable(doc, {
@@ -286,6 +302,46 @@ export function ReportView({
         Packaging, gifts and courier return charges on parcels that came back — already
         subtracted from order profit above. Nothing was sold, so revenue and the order
         count leave them out.
+      </p>
+    </InfoNote>
+  );
+
+  // The other half of a cancellation, and the half no money figure answers:
+  // the charge is paid whether or not the parcel ever turns up. A courier that
+  // keeps one parcel in ten is a cost that used to be invisible — the goods
+  // simply stayed on the shelf as stock nobody could find.
+  const returnLegs = report.returns.sentBack > 0 && (
+    <InfoNote
+      title={
+        <>
+          {report.returns.received} of {report.returns.sentBack} returned parcel(s) came
+          back
+          {report.returns.lost > 0 && (
+            <>
+              {" "}
+              · {report.returns.lost} never did (
+              <Money value={report.returns.lostCost} tone="negative" />)
+            </>
+          )}
+        </>
+      }
+    >
+      <p>
+        Cancelled parcels that had to travel back from the courier.
+        {report.returns.stillOut > 0 && (
+          <> {report.returns.stillOut} still in transit — no verdict on those yet.</>
+        )}
+        {report.returns.lossRate !== null && (
+          <>
+            {" "}
+            Of the ones settled either way, {(report.returns.lossRate * 100).toFixed(0)}%
+            never came back.
+          </>
+        )}
+      </p>
+      <p>
+        What the lost goods cost is already inside &quot;damaged / lost stock&quot; above —
+        shown here to say which courier trips it came from, not to be subtracted twice.
       </p>
     </InfoNote>
   );
@@ -377,6 +433,7 @@ export function ReportView({
       </div>
 
       {cancelled}
+      {returnLegs}
       {expenses}
 
       <Card>
