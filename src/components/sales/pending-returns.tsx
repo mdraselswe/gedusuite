@@ -274,11 +274,23 @@ export function PendingReturns({
           </DialogHeader>
           {receiving && (
             <div className="space-y-4">
+              {/* "Came back" and "can be sold again" are not the same number,
+                  and the whole dialog turns on the difference: a piece that
+                  arrives broken is in your hands and is not stock. Said in
+                  full here, and again as a label on the box itself, because
+                  read quickly "3 went out" invites typing 3 for three pieces
+                  that turned up — one of them in bits. */}
               <p className="text-sm text-muted-foreground">
-                How many of each came back fit to sell? Anything short of what went out
-                is written off, so the shelf matches the box.
+                How many of each can go back on the shelf? A piece that came back broken
+                doesn&apos;t count — lower the number and say what happened to it.
               </p>
               <div className="space-y-2">
+                {/* Once, over the column, rather than on every row: a parcel of
+                    six lines does not need the same two words six times. */}
+                <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                  <span className="min-w-0 flex-1">What went out</span>
+                  <span className="w-24 shrink-0">Fit to sell</span>
+                </div>
                 {receiving.lines.map((l) => {
                   const key = `${l.kind}:${l.id}`;
                   const short = shortOf(l);
@@ -297,10 +309,11 @@ export function PendingReturns({
                         </div>
                       </div>
                       <Input
+                        aria-label={`${l.label} — how many are fit to sell`}
                         type="number"
                         min="0"
                         max={l.quantity}
-                        className="w-24"
+                        className="w-24 shrink-0"
                         value={good[key] ?? ""}
                         onChange={(e) =>
                           setGood((g) => ({ ...g, [key]: e.target.value }))
