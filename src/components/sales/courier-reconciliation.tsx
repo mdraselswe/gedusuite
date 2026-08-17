@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Truck } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "@/lib/live-router";
-import { recordCollectedAmount } from "@/server/actions/orders";
+import { recordCollectedAmount, recordDeliveryCost } from "@/server/actions/orders";
 import { importCourierPayouts } from "@/server/actions/cash-custody";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -37,6 +37,8 @@ type Parcel = DhakaStamp & {
   invoiced: number;
   shortfall: number;
   shortfallNote: string | null;
+  /** What the customer paid for delivery — the figure the cost has to beat. */
+  deliveryCharge: number;
   deliveryCost: number;
   codFee: number;
   net: number;
@@ -81,6 +83,9 @@ export function CourierReconciliation({
   const [adjusting, setAdjusting] = useState<Parcel | null>(null);
   const [collected, setCollected] = useState("");
   const [note, setNote] = useState("");
+  // The parcel whose delivery bill is being corrected, if any.
+  const [charging, setCharging] = useState<Parcel | null>(null);
+  const [charged, setCharged] = useState("");
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState<string | null>(null);
 
@@ -154,6 +159,25 @@ export function CourierReconciliation({
     if (!res.ok) return toast.error(res.error);
     toast.success("Saved — the balance, the treasury and this order's profit all follow it");
     setAdjusting(null);
+    router.refresh();
+  }
+
+  function openCharge(p: Parcel) {
+    setCharging(p);
+    // Prefilled with what this app quoted, because most of the time the two
+    // agree and the job is confirming that, not retyping it.
+    setCharged(String(p.deliveryCost));
+  }
+
+  async function saveCharge(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!charging) return;
+    setSaving(true);
+    const res = await recordDeliveryCost(slug, charging.id, Number(charged));
+    setSaving(false);
+    if (!res.ok) return toast.error(res.error);
+    toast.success("Saved — this is now the charge, whatever the rate table quotes");
+    setCharging(null);
     router.refresh();
   }
 
@@ -285,7 +309,26 @@ export function CourierReconciliation({
       header: "Delivery",
       align: "right",
       hideable: true,
-      cell: (p) => money(p.deliveryCost),
+      // Click-to-correct, like the COD cell beside it and for the same reason.
+      // What this shows is a quote made before the parcel was weighed; the
+      // courier prices from its own scale on arrival and its API never reports
+      // that — a payout gives the delivery bills as one total for the batch and
+      // nothing per parcel. So the real figure lives on one screen in the
+      // courier's app, and this is the column somebody is looking at while
+      // reading it across.
+      cell: (p) =>
+        canEdit ? (
+          <button
+            type="button"
+            onClick={() => openCharge(p)}
+            className="w-full text-right underline-offset-4 hover:underline"
+            title="The courier charged a different amount for this parcel"
+          >
+            {money(p.deliveryCost)}
+          </button>
+        ) : (
+          money(p.deliveryCost)
+        ),
     },
     {
       key: "codFee",
@@ -540,6 +583,62 @@ export function CourierReconciliation({
                     onChange={(e) => setNote(e.target.value)}
                     placeholder="e.g. rider took 60 as a tip, COD entered wrong"
                   />
+                </div>
+              </div>
+            )}
+            <DialogFooter>
+              <Button type="submit" disabled={saving}>
+                {saving ? "Saving…" : "Save"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* The other half of the same job. A parcel's cost is quoted from a rate
+          table before anyone has weighed it, and the courier prices it from its
+          own scale — so this is where the quote gets replaced by the bill. */}
+      <Dialog open={!!charging} onOpenChange={(o) => !o && setCharging(null)}>
+        <DialogContent>
+          <form onSubmit={saveCharge}>
+            <DialogHeader>
+              <DialogTitle>What did the courier charge?</DialogTitle>
+            </DialogHeader>
+            {charging && (
+              <div className="grid gap-3 py-4">
+                <p className="text-sm text-muted-foreground">
+                  {charging.customerName}
+                  {charging.trackingId && ` · ${charging.trackingId}`} · quoted{" "}
+                  <span className="font-medium text-foreground">{money(charging.deliveryCost)}</span>
+                </p>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="charged">Charged, as the courier&apos;s app shows it</Label>
+                  <Input
+                    id="charged"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    inputMode="decimal"
+                    autoFocus
+                    value={charged}
+                    onChange={(e) => setCharged(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    This becomes the charge on the order — the rate table won&apos;t quote over
+                    it again. The COD fee follows it, and so do this order&apos;s profit and
+                    what the courier owes you.
+                  </p>
+                  {/* The one thing typing this figure cannot fix. Delivery was
+                      priced to the customer before the parcel was weighed, so a
+                      bill that comes in above it is a loss already taken — the
+                      only use for knowing is the next parcel like this one. */}
+                  {Number(charged) > charging.deliveryCharge && (
+                    <p className="text-xs text-amber-700 dark:text-amber-400">
+                      You charged the customer {money(charging.deliveryCharge)} for delivery, so
+                      this parcel loses {money(Number(charged) - charging.deliveryCharge)} on the
+                      trip. Worth charging more on the next one like it.
+                    </p>
+                  )}
                 </div>
               </div>
             )}

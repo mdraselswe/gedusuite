@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   breakEvenDeliveryCharge,
+  codFeeOn,
   expectedCourierBalance,
   quoteCourier,
   quoteReturnCharge,
@@ -50,6 +51,34 @@ describe("quoteCourier", () => {
 
   it("charges no fee on a prepaid parcel — there is nothing to collect", () => {
     expect(quoteCourier(steadfast, { zoneRate: 115, weightKg: null, codAmount: 0 }).codFee).toBe(0);
+  });
+});
+
+describe("codFeeOn", () => {
+  const net = { codFeePercent: 1, codFeeBase: "NET" as const };
+  const gross = { codFeePercent: 1, codFeeBase: "GROSS" as const };
+
+  it("takes NET off what is left once the delivery charge is out", () => {
+    expect(codFeeOn(net, 960, 115)).toBe(8.45);
+  });
+
+  it("takes GROSS off the whole collection", () => {
+    expect(codFeeOn(gross, 960, 115)).toBe(9.6);
+  });
+
+  it("follows the charge it is given, not the one a rate table would quote", () => {
+    // The reason this is its own function. A parcel quoted at 135 and billed
+    // at 155 keeps a fee worked out from the 135 unless the corrected figure
+    // is what the fee is taken from — small, and drifting the same way every
+    // time somebody fixes a charge by hand.
+    expect(codFeeOn(net, 1840, 65)).toBe(17.75);
+    expect(codFeeOn(net, 1840, 75)).toBe(17.65);
+  });
+
+  it("charges nothing on a parcel whose delivery outran what it collected", () => {
+    // A giveaway: the courier carried it and collected nothing, so there is no
+    // percentage of anything — and certainly not a negative one.
+    expect(codFeeOn(net, 0, 65)).toBe(0);
   });
 });
 

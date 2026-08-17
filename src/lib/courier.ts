@@ -98,19 +98,35 @@ function weightCharge(
   return round2(Math.ceil(over) * rules.extraKgRate);
 }
 
+/**
+ * The percentage the courier keeps, on a delivery charge that is already
+ * known.
+ *
+ * GROSS takes it off the whole COD; NET off what's left once the courier's own
+ * delivery charge is out. On a 960 parcel at 1% that is 9.60 against 8.45 —
+ * the reason this is a setting and not a constant.
+ *
+ * Separate from `quoteCourier` because the charge is not always the one the
+ * rate table would quote. A parcel whose real bill has been read off the
+ * courier's app and typed in is the authority on itself, and the fee has to
+ * follow that number rather than the estimate it replaced — otherwise a cost
+ * corrected from 135 to 155 keeps a fee worked out from the 135.
+ */
+export function codFeeOn(
+  rules: Pick<CourierRules, "codFeePercent" | "codFeeBase">,
+  codAmount: number,
+  deliveryCharge: number,
+): number {
+  const base =
+    rules.codFeeBase === "GROSS" ? codAmount : Math.max(0, codAmount - deliveryCharge);
+  return round2((base * rules.codFeePercent) / 100);
+}
+
 export function quoteCourier(rules: CourierRules, input: CourierQuoteInput): CourierQuote {
   const { rate, includedKg } = zoneRateFor(input, rules.baseWeightKg);
   const extra = weightCharge(rules, input.weightKg, includedKg);
   const deliveryCharge = round2(rate + extra);
-
-  // GROSS takes the percentage off the whole COD; NET off what's left once
-  // the courier's own delivery charge is out. On a 960 parcel at 1% that is
-  // 9.60 against 8.45 — the reason this is a setting and not a constant.
-  const base =
-    rules.codFeeBase === "GROSS"
-      ? input.codAmount
-      : Math.max(0, input.codAmount - deliveryCharge);
-  const codFee = round2((base * rules.codFeePercent) / 100);
+  const codFee = codFeeOn(rules, input.codAmount, deliveryCharge);
 
   return {
     // The band's rate when the zone has bands, not the zone's flat one — this

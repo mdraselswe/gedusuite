@@ -23,7 +23,7 @@ import {
 } from "@/lib/order-cash";
 import { computeOrderTotals, goodsDiscount } from "@/lib/orders";
 import { isOrderSource } from "@/lib/order-source";
-import { quoteCourier } from "@/lib/courier";
+import { codFeeOn, quoteCourier } from "@/lib/courier";
 import { syncCourierStatuses } from "@/lib/courier-status-sync";
 import type { OrderStatus, PaymentStatus, Prisma, ReturnLeg } from "@prisma/client";
 import { checkboxField, failed, type ActionFailure } from "@/lib/form";
@@ -228,11 +228,27 @@ async function quoteForOrder(
     },
   );
 
+  // A typed cost wins over the rate table — somebody read the courier's own
+  // bill — and the fee has to be worked out from the number that won. Taking
+  // it from the quote instead left a parcel corrected from 135 to 155 paying a
+  // percentage of the 135 it no longer cost: small, and drifting the same way
+  // every time somebody fixes a charge by hand.
+  const deliveryCost = input.deliveryCost ?? quote.deliveryCharge;
   return {
     courierId: zone.courierId,
     courierZoneId: zone.id,
-    deliveryCost: input.deliveryCost ?? quote.deliveryCharge,
-    codFeeCost: quote.codFee,
+    deliveryCost,
+    codFeeCost:
+      deliveryCost === quote.deliveryCharge
+        ? quote.codFee
+        : codFeeOn(
+            {
+              codFeePercent: Number(zone.courier.codFeePercent),
+              codFeeBase: zone.courier.codFeeBase,
+            },
+            input.codAmount,
+            deliveryCost,
+          ),
   };
 }
 
@@ -1680,6 +1696,95 @@ export async function recordCollectedAmount(
       { collectionShortfall: order.collectionShortfall, codFeeCost: order.codFeeCost },
       { collectionShortfall: shortfall, codFeeCost: quote.codFeeCost },
       ["collectionShortfall", "codFeeCost"],
+    ),
+  });
+
+  revalidatePath(`/${slug}/sales/orders`);
+  revalidatePath(`/${slug}/couriers`);
+  revalidatePath(`/${slug}/treasury`);
+  revalidatePath(`/${slug}/dashboard`);
+  return { ok: true };
+}
+
+/**
+ * Record what the courier actually charged to carry this parcel.
+ *
+ * The rate table quotes a cost before the parcel has been weighed, which is
+ * the best anyone can do at that moment and is not what the courier bills.
+ * Steadfast weighs it on arrival and prices from that, and its API never says
+ * so — `status_by_cid` returns a delivery status and nothing else, and a
+ * payout gives the delivery bills only as one total for the whole batch. So
+ * the real figure exists on one screen in the courier's own app, and the only
+ * way it reaches this app is somebody reading it across.
+ *
+ * That makes this the authority on the order, not the rate table: a typed cost
+ * already survives re-quoting (see quoteForOrder), and the COD fee is worked
+ * out from it rather than from the estimate it replaced.
+ *
+ * Deliberately its own action rather than the order edit dialog, which can do
+ * this already in five clicks. Fifteen parcels a week through a dialog is a
+ * job that quietly stops being done, and a reconciliation nobody performs is
+ * not one.
+ */
+export async function recordDeliveryCost(
+  slug: string,
+  orderId: string,
+  /** What the courier's app shows against this parcel. */
+  cost: number,
+): Promise<ActionResult> {
+  const gate = await requireAccess(slug, "sales", "edit");
+  if (!gate.ok) return gate;
+  const workspaceId = gate.access.workspaceId;
+
+  const order = await prisma.order.findFirst({
+    where: { id: orderId, workspaceId },
+    include: { items: { include: { returns: true } }, customer: { select: { name: true } } },
+  });
+  if (!order) return { ok: false, error: "Order not found" };
+  if (order.deliveryType !== "COURIER") {
+    return { ok: false, error: "This order wasn't sent with a courier" };
+  }
+  if (!Number.isFinite(cost) || cost < 0 || cost > 99_999_999) {
+    return { ok: false, error: "Enter what the courier charged for this parcel" };
+  }
+  const deliveryCost = round2(cost);
+
+  const totals = computeOrderTotals(order);
+  // The fee is charged on what the courier hands over, which is what it
+  // collected less the bill it just corrected — through the same helper every
+  // other caller uses, with the new cost in place.
+  const quote = await quoteForOrder(workspaceId, {
+    courierId: order.courierId ?? undefined,
+    courierZoneId: order.courierZoneId ?? undefined,
+    weightKg: order.weightKg == null ? undefined : Number(order.weightKg),
+    deliveryCost,
+    codAmount: codCollectable(order.paymentMethod, codBaseFor(order, totals)),
+  });
+
+  await prisma.$transaction(async (tx) => {
+    await tx.order.update({
+      where: { id: orderId },
+      data: { deliveryCost, codFeeCost: quote.codFeeCost },
+    });
+    // A banked order's entry was computed from the old bill; a bigger charge
+    // means less of the collection ever reaches the treasury.
+    await syncOrderCashEntry(tx, workspaceId, orderId);
+  });
+
+  await recordActivity(gate.access, {
+    action: "UPDATE",
+    entity: "Order",
+    entityId: orderId,
+    entityLabel: orderLabel(orderId, order.customer?.name),
+    summary:
+      `Courier charged ৳${deliveryCost} for the trip` +
+      (Number(order.deliveryCost) !== deliveryCost && order.deliveryCost != null
+        ? ` — was ৳${Number(order.deliveryCost)}`
+        : ""),
+    changes: diffFields(
+      { deliveryCost: order.deliveryCost, codFeeCost: order.codFeeCost },
+      { deliveryCost, codFeeCost: quote.codFeeCost },
+      ["deliveryCost", "codFeeCost"],
     ),
   });
 

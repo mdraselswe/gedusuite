@@ -165,6 +165,11 @@ export default async function CouriersPage({
       invoiced: t.customerTotal,
       shortfall: t.collectionShortfall,
       shortfallNote: o.collectionNote,
+      // What the customer paid for the trip, so correcting the courier's bill
+      // can say whether it just went past what was charged for it. The cost is
+      // fixable after the fact; the price was set before the parcel was
+      // weighed and isn't.
+      deliveryCharge: t.deliveryCharge,
       deliveryCost,
       codFee: t.codFeeCost,
       // Not floored at zero, unlike a treasury deposit: a parcel that cost more
