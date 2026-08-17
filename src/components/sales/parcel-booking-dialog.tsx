@@ -9,7 +9,7 @@ import {
   parcelPreview,
   type ParcelPreview,
 } from "@/server/actions/courier-booking";
-import { mentionsDistrict } from "@/lib/bd-locations";
+import { detectSuburbanArea, mentionsDistrict } from "@/lib/bd-locations";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -80,6 +80,20 @@ export function ParcelBookingDialog({
   const blocked = (preview?.blockers.length ?? 0) > 0;
   const tooShort = address.trim().length < MIN_ADDRESS;
   const noDistrict = !tooShort && !mentionsDistrict(address);
+  /**
+   * The address names a place couriers price as sub-urban, and the zone chosen
+   * for it doesn't say so. Compared here rather than anywhere earlier because
+   * this is the last moment the zone can still be changed for free — and the
+   * only moment what the customer was charged for delivery can still be
+   * reconsidered, which is the part no later correction can undo.
+   *
+   * Matched on the word, so it stays a question rather than an instruction:
+   * "Gazipur Road, Mymensingh" would raise it wrongly, and a zone that is
+   * already right is one glance to dismiss.
+   */
+  const suburb = tooShort ? null : detectSuburbanArea(address);
+  const zoneQuestioned =
+    !!suburb && !!preview?.zoneName && !/sub-?urban/i.test(preview.zoneName);
   const edited = !!preview && address.trim() !== preview.address.trim();
   const canSend = !!preview && !blocked && !tooShort && !sending;
 
@@ -181,6 +195,14 @@ export function ParcelBookingDialog({
                 <p className="text-xs text-amber-600 dark:text-amber-500">
                   No district name found in this address. Fine if it is written in Bangla or
                   shorthand — worth a second look otherwise.
+                </p>
+              )}
+              {zoneQuestioned && (
+                <p className="text-xs text-amber-600 dark:text-amber-500">
+                  This address says <span className="font-medium">{suburb}</span>, which couriers
+                  usually price as a Dhaka sub-urban area — but this parcel is on the{" "}
+                  <span className="font-medium">{preview?.zoneName}</span> zone. Check the zone,
+                  and what you are charging for delivery: the rate is normally 40 taka higher.
                 </p>
               )}
               {edited && !tooShort && (

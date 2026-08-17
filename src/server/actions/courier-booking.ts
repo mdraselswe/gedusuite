@@ -84,6 +84,14 @@ export type ParcelPreview = {
    */
   note: string;
   courierName: string | null;
+  /**
+   * The zone this parcel is priced on, so the dialog can question it. The
+   * address is free text and the zone is a dropdown, and nothing has ever
+   * compared the two — a Keraniganj parcel went out on the Dhaka City rate at
+   * 65 against the 105 it was billed, and turned up two days later inside an
+   * unexplained gap.
+   */
+  zoneName: string | null;
   /** Everything below is a reason the Send button stays disabled. */
   blockers: string[];
 };
@@ -114,6 +122,7 @@ export async function parcelPreview(
       },
       customer: { select: { id: true, name: true, phone: true, address: true } },
       courier: { select: { id: true, name: true, apiProvider: true, apiKeyEnc: true } },
+      courierZone: { select: { name: true } },
     },
   });
   if (!order) return { ok: false, error: "Order not found" };
@@ -166,6 +175,7 @@ export async function parcelPreview(
       ),
       note: (order.notes ?? "").trim().slice(0, 300),
       courierName: order.courier?.name ?? null,
+      zoneName: order.courierZone?.name ?? null,
       blockers,
     },
   };

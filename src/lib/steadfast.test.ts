@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildInvoice, buildItemDescription, normalizePhone } from "@/lib/steadfast";
-import { detectDistrict, DISTRICTS, mentionsDistrict } from "@/lib/bd-locations";
+import { detectDistrict, detectSuburbanArea, DISTRICTS, mentionsDistrict } from "@/lib/bd-locations";
 import { codCollectable } from "@/lib/order-cash";
 
 describe("normalizePhone", () => {
@@ -100,6 +100,41 @@ describe("detectDistrict", () => {
   it("backs mentionsDistrict", () => {
     expect(mentionsDistrict("Zindabazar, Sylhet")).toBe(true);
     expect(mentionsDistrict("behind the big mosque")).toBe(false);
+  });
+});
+
+describe("detectSuburbanArea — the middle rate nobody remembers to pick", () => {
+  it("names the area a courier prices between Dhaka and outside it", () => {
+    // The parcel this exists for: booked on the Dhaka City rate at 65, billed
+    // at the sub-urban 105, and only noticed two days later.
+    expect(
+      detectSuburbanArea("Khejurbag satpakhi vai vai road Keraniganj Dhaka"),
+    ).toBe("Keraniganj");
+    expect(detectSuburbanArea("Al-Madina Washing Plant Ltd. Hemaytpur, Savar, Dhaka")).toBe(
+      "Savar",
+    );
+    expect(detectSuburbanArea("Board Bazar, Gazipur")).toBe("Board Bazar");
+  });
+
+  it("leaves Dhaka proper and the rest of the country alone", () => {
+    expect(detectSuburbanArea("118/17 kusum sritikunjo, Shewrapara, Mirpur, Dhaka")).toBeNull();
+    expect(detectSuburbanArea("Thakurgaon Road, Sadar, Thakurgaon")).toBeNull();
+    expect(detectSuburbanArea("")).toBeNull();
+    expect(detectSuburbanArea(null)).toBeNull();
+  });
+
+  it("matches on the whole word, not inside one", () => {
+    // Savarkar is a surname; Doharia is in Pabna. Neither is a middle rate.
+    expect(detectSuburbanArea("House of Mr Savarkar, Banani, Dhaka")).toBeNull();
+    expect(detectSuburbanArea("Doharia bazar, Pabna")).toBeNull();
+  });
+
+  it("stays quiet on Nawabganj, which names two places 300km apart", () => {
+    // Dhaka's Nawabganj belongs on the middle rate and Chapainawabganj does
+    // not, and one line of free text cannot tell them apart. A warning that
+    // fires on the wrong parcel stops being read on the right one.
+    expect(detectSuburbanArea("Nawabganj bazar, Dhaka")).toBeNull();
+    expect(detectSuburbanArea("Shibganj, Chapainawabganj")).toBeNull();
   });
 });
 

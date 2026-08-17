@@ -149,3 +149,60 @@ export function detectDistrict(address: string | null | undefined): string | nul
 export function mentionsDistrict(address: string | null | undefined): boolean {
   return detectDistrict(address) !== null;
 }
+
+/**
+ * The places couriers price as "Dhaka sub-urban" rather than Dhaka.
+ *
+ * Not a geography: Keraniganj and Savar are in Dhaka district and Narayanganj
+ * and Gazipur are not, and every one of them is on the same middle rate. This
+ * is the courier's own commercial split, which is why the list is here as
+ * words to look for and not derived from DISTRICTS.
+ *
+ * Steadfast's is the list below; other couriers draw the line in much the same
+ * place. It costs a shop 40 taka a parcel to pick the wrong side of it, and the
+ * order that prompted this was booked to Keraniganj on the Dhaka City rate —
+ * 65 against the 105 that was billed — a day before the sub-urban zone existed
+ * here at all.
+ */
+const SUBURBAN_AREAS: readonly string[] = [
+  "Savar",
+  "Ashulia",
+  "Keraniganj",
+  "Dhamrai",
+  "Dohar",
+  // Dhaka's Nawabganj upazila belongs here and is left out anyway: the word
+  // also names Chapainawabganj, three hundred kilometres away and firmly
+  // outside Dhaka, and there is no telling them apart in one line of free
+  // text. A warning that fires on the wrong parcel gets dismissed by habit,
+  // and then it is not there for the right one either.
+  "Tongi",
+  "Gazipur",
+  "Narayanganj",
+  "Hemayetpur",
+  "Zirabo",
+  "Board Bazar",
+  "Konabari",
+  "Kaliakair",
+  "Rupganj",
+  "Siddhirganj",
+];
+
+/**
+ * Which sub-urban area this address appears to name, or null.
+ *
+ * Word-boundary matched and longest-first, exactly as `detectDistrict` is, and
+ * best-effort in the same way: it raises a warning on the booking dialog and
+ * never changes a zone or decides whether a parcel goes. An address written in
+ * Bangla will not match, which is a miss and not a wrong answer.
+ */
+export function detectSuburbanArea(address: string | null | undefined): string | null {
+  const text = (address ?? "").trim();
+  if (!text) return null;
+
+  for (const area of [...SUBURBAN_AREAS].sort((a, b) => b.length - a.length)) {
+    if (new RegExp(`(^|[^\\p{L}])${escapeRegExp(area)}([^\\p{L}]|$)`, "iu").test(text)) {
+      return area;
+    }
+  }
+  return null;
+}
