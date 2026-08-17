@@ -113,7 +113,18 @@ describe("detectSuburbanArea — the middle rate nobody remembers to pick", () =
     expect(detectSuburbanArea("Al-Madina Washing Plant Ltd. Hemaytpur, Savar, Dhaka")).toBe(
       "Savar",
     );
-    expect(detectSuburbanArea("Board Bazar, Gazipur")).toBe("Board Bazar");
+    expect(detectSuburbanArea("Nawabganj bazar, Dhaka")).toBe("Nawabganj");
+  });
+
+  it("leaves the places the courier prices as outside Dhaka alone", () => {
+    // Guessing from geography put these three on the list: they sit on Dhaka's
+    // edge and read like sub-urban. Steadfast's city picker does not have
+    // them, so they are billed at the outside rate — and a warning steering
+    // them to the cheaper one argues for an under-quote, which is the error
+    // nobody goes looking for.
+    expect(detectSuburbanArea("Board Bazar, Gazipur")).toBeNull();
+    expect(detectSuburbanArea("Siddhirganj, Narayanganj")).toBeNull();
+    expect(detectSuburbanArea("Tongi bazar, Gazipur")).toBeNull();
   });
 
   it("leaves Dhaka proper and the rest of the country alone", () => {
@@ -129,12 +140,12 @@ describe("detectSuburbanArea — the middle rate nobody remembers to pick", () =
     expect(detectSuburbanArea("Doharia bazar, Pabna")).toBeNull();
   });
 
-  it("stays quiet on Nawabganj, which names two places 300km apart", () => {
-    // Dhaka's Nawabganj belongs on the middle rate and Chapainawabganj does
-    // not, and one line of free text cannot tell them apart. A warning that
-    // fires on the wrong parcel stops being read on the right one.
-    expect(detectSuburbanArea("Nawabganj bazar, Dhaka")).toBeNull();
+  it("keeps Dhaka's Nawabganj apart from Chapainawabganj", () => {
+    // The courier prices Dhaka's Nawabganj here; the district 300km away is
+    // outside. A word boundary already stops "Chapainawabganj" matching, and
+    // the spelling with a space is what the exception is for.
     expect(detectSuburbanArea("Shibganj, Chapainawabganj")).toBeNull();
+    expect(detectSuburbanArea("Shibganj, Chapai Nawabganj")).toBeNull();
   });
 });
 

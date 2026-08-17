@@ -199,10 +199,11 @@ export function ParcelBookingDialog({
               )}
               {zoneQuestioned && (
                 <p className="text-xs text-amber-600 dark:text-amber-500">
-                  This address says <span className="font-medium">{suburb}</span>, which couriers
-                  usually price as a Dhaka sub-urban area — but this parcel is on the{" "}
+                  This address says <span className="font-medium">{suburb}</span>, which the
+                  courier prices as a Dhaka sub-urban city — but this parcel is on the{" "}
                   <span className="font-medium">{preview?.zoneName}</span> zone. Check the zone,
-                  and what you are charging for delivery: the rate is normally 40 taka higher.
+                  and what you are charging for delivery: the sub-urban rate is higher, and the
+                  price is the part no later correction can undo.
                 </p>
               )}
               {edited && !tooShort && (

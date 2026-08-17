@@ -151,40 +151,34 @@ export function mentionsDistrict(address: string | null | undefined): boolean {
 }
 
 /**
- * The places couriers price as "Dhaka sub-urban" rather than Dhaka.
+ * The places a courier prices as "Dhaka sub-urban" rather than Dhaka.
  *
- * Not a geography: Keraniganj and Savar are in Dhaka district and Narayanganj
- * and Gazipur are not, and every one of them is on the same middle rate. This
- * is the courier's own commercial split, which is why the list is here as
- * words to look for and not derived from DISTRICTS.
+ * Copied from Steadfast's own city picker, not reasoned about — and the two
+ * disagree. Guessing from geography put Tongi, Gazipur and Narayanganj on this
+ * list because they sit on Dhaka's edge; Steadfast's picker does not have them,
+ * which makes them Outside Dhaka at 115. A warning steering those onto the
+ * sub-urban 105 would have argued for the cheaper wrong answer, which is worse
+ * than saying nothing: an under-quoted parcel makes an order look better than
+ * it was, and nobody investigates that.
  *
- * Steadfast's is the list below; other couriers draw the line in much the same
- * place. It costs a shop 40 taka a parcel to pick the wrong side of it, and the
- * order that prompted this was booked to Keraniganj on the Dhaka City rate —
- * 65 against the 105 that was billed — a day before the sub-urban zone existed
- * here at all.
+ * So this list is a copy of somebody else's, and stays one. If the courier adds
+ * a city, this is wrong until it is retyped — which is the honest failure, and
+ * the only kind available when the pricing is not ours.
+ *
+ * Its whole job is one question at booking time: the order that prompted it
+ * went to Keraniganj on the Dhaka City rate, 65 against the 105 it was billed,
+ * a day before a sub-urban zone existed here at all.
  */
 const SUBURBAN_AREAS: readonly string[] = [
-  "Savar",
   "Ashulia",
-  "Keraniganj",
   "Dhamrai",
   "Dohar",
-  // Dhaka's Nawabganj upazila belongs here and is left out anyway: the word
-  // also names Chapainawabganj, three hundred kilometres away and firmly
-  // outside Dhaka, and there is no telling them apart in one line of free
-  // text. A warning that fires on the wrong parcel gets dismissed by habit,
-  // and then it is not there for the right one either.
-  "Tongi",
-  "Gazipur",
-  "Narayanganj",
   "Hemayetpur",
-  "Zirabo",
-  "Board Bazar",
-  "Konabari",
-  "Kaliakair",
-  "Rupganj",
-  "Siddhirganj",
+  // "Keraniganj Model" and "South Keraniganj" are two entries in the picker
+  // and one word to look for.
+  "Keraniganj",
+  "Nawabganj",
+  "Savar",
 ];
 
 /**
@@ -194,12 +188,20 @@ const SUBURBAN_AREAS: readonly string[] = [
  * best-effort in the same way: it raises a warning on the booking dialog and
  * never changes a zone or decides whether a parcel goes. An address written in
  * Bangla will not match, which is a miss and not a wrong answer.
+ *
+ * Nawabganj carries an exception. Dhaka has one and the courier prices it
+ * here; Chapainawabganj is three hundred kilometres away and it does not. The
+ * word boundary already keeps "Chapainawabganj" from matching, but the spelling
+ * with a space would slip through, so anything naming Chapai is left alone —
+ * the miss is cheaper than steering a parcel to the wrong rate.
  */
 export function detectSuburbanArea(address: string | null | undefined): string | null {
   const text = (address ?? "").trim();
   if (!text) return null;
+  const chapai = /chapai/i.test(text);
 
   for (const area of [...SUBURBAN_AREAS].sort((a, b) => b.length - a.length)) {
+    if (area === "Nawabganj" && chapai) continue;
     if (new RegExp(`(^|[^\\p{L}])${escapeRegExp(area)}([^\\p{L}]|$)`, "iu").test(text)) {
       return area;
     }
