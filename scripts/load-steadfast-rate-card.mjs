@@ -38,12 +38,16 @@ const CARD = [
 const EXPRESS = { name: "Dhaka City (Express)", rate: 105, bands: [[1, 105]] };
 
 /**
- * A parcel whose weight was guessed before the card was known. Steadfast
- * charged 55, which the old table read as "under 250g" and the card puts at
- * 150g or less — so the guess of 0.2 would now re-quote to 65 and disagree
- * with what was actually billed.
+ * A parcel whose weight was guessed twice before anybody read it.
+ *
+ * Steadfast charged 55. The old table read that as "under 250g" and 0.2 was
+ * written down; the card puts the step at 150g, so 0.2 would have re-quoted to
+ * 65 and disagreed with the bill, and 0.15 went down instead — the top of the
+ * band that fits, which is a guess wearing a precise-looking number. The app
+ * says 0.1. Both guesses quote 55, so no money moved either time; what moves
+ * is whether this row can be trusted the next time somebody reasons from it.
  */
-const REWEIGH = { tracking: "282719499", from: 0.2, to: 0.15 };
+const REWEIGH = { tracking: "282719499", from: 0.15, to: 0.1 };
 
 async function main() {
   const slugArg = process.argv.find((a) => a.startsWith("--slug="));
