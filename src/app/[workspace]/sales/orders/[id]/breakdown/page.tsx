@@ -16,6 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { variantFullName } from "@/lib/variants";
 import { Money } from "@/components/ui/money";
 import { RecordHistory } from "@/components/activity/record-history";
+import { ParcelJourney } from "@/components/sales/parcel-journey";
 import { formatMoney as money } from "@/lib/money";
 import { dhakaRecordStamp } from "@/lib/dhaka-time";
 import { Stamp } from "@/components/ui/stamp";
@@ -288,6 +289,11 @@ export default async function OrderBreakdownPage({
           <Row label="Cash in treasury" value={order.cashInTreasury ? "Yes" : "No"} />
         </CardContent>
       </Card>
+
+      {/* Where the parcel got to, before why the figures are what they are.
+          Two questions, and the one asked with a customer on the phone is the
+          one that should not need reading twelve rows to answer. */}
+      <ParcelJourney workspaceId={access.workspaceId} orderId={order.id} />
 
       {/* Why this order's figures are what they are — who changed what, when.
           Renders nothing when nobody has touched it since the audit trail
