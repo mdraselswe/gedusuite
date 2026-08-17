@@ -3,6 +3,7 @@ import { parcelJourney } from "@/lib/parcel-journey";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { Check } from "lucide-react";
+import { DHAKA_TZ, formatDhakaTime } from "@/lib/dhaka-time";
 
 /**
  * Where this parcel got to, in five lines.
@@ -16,15 +17,17 @@ import { Check } from "lucide-react";
  * page drops it in and threads nothing through.
  */
 
-/** Dhaka, because that is where the person reading this is. */
-function stamp(d: Date): { day: string; time: string } {
-  const f = (opts: Intl.DateTimeFormatOptions) =>
-    new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Dhaka", ...opts }).format(d);
-  return {
-    day: f({ weekday: "short", day: "numeric", month: "short" }),
-    time: f({ hour: "2-digit", minute: "2-digit", hour12: false }),
-  };
-}
+/**
+ * Dhaka, because that is where the person reading this is — and the clock the
+ * rest of the app already shows, through the same formatter, so a step here
+ * and the history row it came from never disagree about what 10:20 means.
+ */
+const dayFmt = new Intl.DateTimeFormat("en-GB", {
+  timeZone: DHAKA_TZ,
+  weekday: "short",
+  day: "numeric",
+  month: "short",
+});
 
 export async function ParcelJourney({
   workspaceId,
@@ -81,7 +84,9 @@ export async function ParcelJourney({
         <ol className="space-y-0">
           {steps.map((step, i) => {
             const on = i === current;
-            const when = step.at ? stamp(step.at) : null;
+            const when = step.at
+              ? { day: dayFmt.format(step.at), time: formatDhakaTime(step.at) }
+              : null;
             return (
               <li key={step.key} className="flex gap-3">
                 {/* The rail: a dot per step and a line between them, with the

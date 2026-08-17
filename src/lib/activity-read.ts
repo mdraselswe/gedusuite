@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import type { FieldChanges } from "@/lib/activity";
 import type { ActivityEntry } from "@/components/activity/activity-entries";
-import { dhakaDayEnd, dhakaDayStart } from "@/lib/dhaka-time";
+import { dhakaDayEnd, dhakaDayStart, DHAKA_TZ, formatDhakaTime } from "@/lib/dhaka-time";
 
 /**
  * Reading the audit trail.
@@ -11,16 +11,21 @@ import { dhakaDayEnd, dhakaDayStart } from "@/lib/dhaka-time";
  * are obviously two halves.
  */
 
-/** Dhaka time, because that is where the person reading this is. */
+/**
+ * Dhaka time, because that is where the person reading this is — on the same
+ * clock as the rest of the app, which shows "9:30 PM" everywhere else through
+ * formatDhakaTime. This was the one screen still on a 24-hour one, and it sits
+ * directly under a journey that isn't: two readings of 22:20 on one page is a
+ * thing to get wrong at a glance, not a preference.
+ */
+const dayFmt = new Intl.DateTimeFormat("en-GB", {
+  timeZone: DHAKA_TZ,
+  day: "2-digit",
+  month: "short",
+});
+
 function stamp(d: Date): string {
-  return new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Asia/Dhaka",
-    day: "2-digit",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(d);
+  return `${dayFmt.format(d)}, ${formatDhakaTime(d)}`;
 }
 
 function toEntry(row: {
