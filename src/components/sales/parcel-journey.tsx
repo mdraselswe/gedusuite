@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { Check } from "lucide-react";
 import { DHAKA_TZ, formatDhakaTime } from "@/lib/dhaka-time";
+import { formatMoney as money } from "@/lib/money";
 
 /**
  * Where this parcel got to, in five lines.
@@ -49,7 +50,10 @@ export async function ParcelJourney({
       returnLeg: true,
       returnLegAt: true,
       cancelledCollected: true,
+      deliveryCharge: true,
+      deliveryCost: true,
       courier: { select: { name: true } },
+      courierZone: { select: { name: true } },
     },
   });
   if (!order) return null;
@@ -71,14 +75,30 @@ export async function ParcelJourney({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">
-          Where this parcel got to
-          {order.courierTrackingId && (
-            <span className="ml-2 font-normal text-muted-foreground">
-              {order.courier?.name ?? "Courier"} · {order.courierTrackingId}
-            </span>
-          )}
-        </CardTitle>
+        <CardTitle className="text-base">Where this parcel got to</CardTitle>
+        {/* Where it was going, on its own line and above the steps, because
+            the zone is the fact the delivery charge comes out of and the one
+            nobody can recover from the dates. A parcel to Keraniganj booked on
+            the Dhaka City rate looks exactly like a correct one until a payout
+            disagrees — so the zone and what the trip actually cost are shown
+            together, which is the pair that gives it away. */}
+        {order.deliveryType === "COURIER" && (
+          <p className="text-sm text-muted-foreground">
+            {order.courier?.name ?? "Courier"}
+            {" · "}
+            {order.courierZone ? (
+              <span className="font-medium text-foreground">{order.courierZone.name}</span>
+            ) : (
+              <span className="text-amber-700 dark:text-amber-400">no zone set</span>
+            )}
+            {" · "}
+            {money(Number(order.deliveryCost ?? order.deliveryCharge))} delivery
+            {order.courierTrackingId && ` · ${order.courierTrackingId}`}
+          </p>
+        )}
+        {order.deliveryType !== "COURIER" && (
+          <p className="text-sm text-muted-foreground">Delivered by us, no courier</p>
+        )}
       </CardHeader>
       <CardContent>
         <ol className="space-y-0">
