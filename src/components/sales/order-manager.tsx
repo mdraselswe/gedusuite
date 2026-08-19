@@ -120,6 +120,8 @@ type OrderRow = DhakaStamp & {
   paymentMethod: string;
   source: string | null;
   boostCampaignId: string | null;
+  /** Name of the tagged campaign, kept even after it drops off the pick list. */
+  boostCampaignName: string | null;
   /** True once this PAID order's cash was marked deposited in the treasury. */
   cashInTreasury: boolean;
   /** The goods were given away — the customer paid nothing for them. */
@@ -918,7 +920,10 @@ export function OrderManager({
   // offered in one place and rendered in the other.
   const columnAvailable = (c: { key: string }) => {
     if (c.key === "profit") return perms.canViewProfit;
-    if (c.key === "campaign") return campaigns.length > 0;
+    // Tags outlive the pick list: once every campaign has finished there is
+    // nothing left to offer, but the orders they brought in still say so.
+    if (c.key === "campaign")
+      return campaigns.length > 0 || orders.some((o) => o.boostCampaignId);
     return true;
   };
   const showColumn = (key: string) =>
@@ -1828,6 +1833,7 @@ export function OrderManager({
                         slug={slug}
                         orderId={o.id}
                         value={o.boostCampaignId}
+                        valueLabel={o.boostCampaignName}
                         campaigns={campaigns}
                         canEdit={perms.canEdit}
                       />

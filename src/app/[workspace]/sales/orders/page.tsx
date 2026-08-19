@@ -234,6 +234,10 @@ export default async function OrdersPage({
           },
         },
         gifts: { select: { label: true, quantity: true } },
+        // The tagged campaign's own name, read off the order rather than the
+        // pick list: that list only carries campaigns still worth tagging, so
+        // an order tagged to a finished one would otherwise lose its name.
+        boostCampaign: { select: { name: true } },
       },
     }),
     // Parcels a courier is carrying back. Off the filters and off the
@@ -378,6 +382,7 @@ export default async function OrdersPage({
       paymentMethod: o.paymentMethod,
       source: o.source,
       boostCampaignId: o.boostCampaignId,
+      boostCampaignName: o.boostCampaign?.name ?? null,
       cashInTreasury: o.cashInTreasury,
       isGiveaway: o.isGiveaway,
       deliveryCharge: Number(o.deliveryCharge),

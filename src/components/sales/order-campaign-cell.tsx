@@ -30,12 +30,15 @@ export function OrderCampaignCell({
   slug,
   orderId,
   value,
+  valueLabel,
   campaigns,
   canEdit,
 }: {
   slug: string;
   orderId: string;
   value: string | null;
+  /** Name of the tagged campaign, read off the order itself. */
+  valueLabel: string | null;
   campaigns: CampaignOption[];
   canEdit: boolean;
 }) {
@@ -43,10 +46,12 @@ export function OrderCampaignCell({
   const [saving, setSaving] = useState(false);
 
   const current = campaigns.find((c) => c.id === value);
-  // A campaign that's no longer offered (paused, finished) but still tagged on
-  // this order is shown by name anyway — the tag is the truth, the list is
-  // just what's convenient to pick today.
-  const label = current?.label ?? (value ? "Tagged campaign" : NO_CAMPAIGN_LABEL);
+  // A campaign that's no longer offered (finished) but still tagged on this
+  // order is shown by name anyway — the tag is the truth, the list is just
+  // what's convenient to pick today. Its name comes with the order, so the
+  // cell doesn't go blank the moment the campaign leaves the list.
+  const label =
+    current?.label ?? (value ? (valueLabel ?? "Tagged campaign") : NO_CAMPAIGN_LABEL);
 
   if (!canEdit || campaigns.length === 0) {
     return <span className={cn(!value && "text-muted-foreground")}>{label}</span>;
