@@ -55,6 +55,35 @@ export type SourceTotal = {
 };
 
 /**
+ * How parcels to one district ended up.
+ *
+ * `district` is Order.shipDistrict — best-effort and often null, so untagged
+ * orders get their own row rather than being dropped. See the column's note in
+ * schema.prisma for where the tag comes from.
+ *
+ * Note the denominator is NOT the one bySource uses. A channel is judged on
+ * everything it produced, including orders still in flight — they are already
+ * its work. A district is judged on parcels that reached a verdict: one still
+ * travelling has not had its chance to be refused, and counting it as a
+ * success makes every district look better the more parcels are in transit.
+ * Both counts are exposed so either question can be asked of the same row.
+ */
+export type DistrictTotal = {
+  /** null = this parcel's district was never tagged. */
+  district: string | null;
+  /** Every order to this district, cancellations included. */
+  orders: number;
+  delivered: number;
+  cancelled: number;
+  /** Neither delivered nor cancelled yet — no verdict to count. */
+  inFlight: number;
+  revenue: number;
+  cancelledCost: number;
+  /** cancelled ÷ (delivered + cancelled). Null until something settles. */
+  cancelRate: number | null;
+};
+
+/**
  * Where the goods went on the cancellations in range — counted by parcel, not
  * by piece, because that is the unit a courier is answerable for.
  *
@@ -127,6 +156,9 @@ export type Report = {
   // Which channel the orders came from — count, revenue and profit each.
   // Cancelled orders are already excluded upstream, so this counts real sales.
   bySource: SourceTotal[];
+  // Where the parcels went, and how many came back. Biggest first, untagged
+  // last.
+  byDistrict: DistrictTotal[];
 };
 
 /** `range: null` means "all time" — no date filter at all. */
@@ -177,6 +209,17 @@ export async function buildReport(
     cancelledOrders: 0,
     cancelledCost: 0,
   });
+  const districtMap = new Map<
+    string,
+    { delivered: number; cancelled: number; inFlight: number; revenue: number; cancelledCost: number }
+  >();
+  const blankDistrict = () => ({
+    delivered: 0,
+    cancelled: 0,
+    inFlight: 0,
+    revenue: 0,
+    cancelledCost: 0,
+  });
 
   for (const o of orders) {
     const t = computeOrderTotals(o);
@@ -195,6 +238,15 @@ export async function buildReport(
     src.revenue += t.netRevenue;
     src.profit += t.netProfit;
     sourceMap.set(srcKey, src);
+
+    const dstKey = o.shipDistrict ?? "";
+    const dst = districtMap.get(dstKey) ?? blankDistrict();
+    // DELIVERED is the only status that settles a parcel in the shop's favour.
+    // Everything else here — pending, packed, shipped — is still moving.
+    if (o.status === "DELIVERED") dst.delivered += 1;
+    else dst.inFlight += 1;
+    dst.revenue += t.netRevenue;
+    districtMap.set(dstKey, dst);
 
     // What has actually come in, which now includes an advance on a part-paid
     // order — money the shop is holding, and previously counted nowhere.
@@ -267,6 +319,12 @@ export async function buildReport(
     src.cancelledCost += cost;
     src.profit -= cost;
     sourceMap.set(srcKey, src);
+
+    const dstKey = o.shipDistrict ?? "";
+    const dst = districtMap.get(dstKey) ?? blankDistrict();
+    dst.cancelled += 1;
+    dst.cancelledCost += cost;
+    districtMap.set(dstKey, dst);
   }
   // Out of the parcels that have an answer. A hundred still in transit say
   // nothing about how often this courier loses one.
@@ -372,6 +430,28 @@ export async function buildReport(
       .sort((a, b) => {
         if (!a.source !== !b.source) return a.source ? -1 : 1;
         return b.revenue - a.revenue;
+      }),
+    // Most parcels first — a district's cancel rate is only worth reading next
+    // to the volume it is a rate of, and sorting by rate would put a district
+    // with one refused parcel above everywhere the shop actually ships to.
+    // Untagged sorts last for the same reason "Not set" does above.
+    byDistrict: [...districtMap.entries()]
+      .map(([district, v]) => {
+        const settled = v.delivered + v.cancelled;
+        return {
+          district: district || null,
+          orders: v.delivered + v.cancelled + v.inFlight,
+          delivered: v.delivered,
+          cancelled: v.cancelled,
+          inFlight: v.inFlight,
+          revenue: round2(v.revenue),
+          cancelledCost: round2(v.cancelledCost),
+          cancelRate: settled > 0 ? v.cancelled / settled : null,
+        };
+      })
+      .sort((a, b) => {
+        if (!a.district !== !b.district) return a.district ? -1 : 1;
+        return b.orders - a.orders;
       }),
   };
 }

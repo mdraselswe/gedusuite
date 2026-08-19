@@ -24,8 +24,15 @@ import { Money } from "@/components/ui/money";
 import { InfoNote } from "@/components/ui/info-note";
 import { FigureList, FigureRow } from "@/components/ui/figure-list";
 import { formatMoney, toneForBalance } from "@/lib/money";
-import { BarChart3, Users, Wallet } from "lucide-react";
+import { BarChart3, MapPin, Users, Wallet } from "lucide-react";
 import type { Report } from "@/lib/reports";
+
+/**
+ * Below this many settled parcels a district's cancel rate is one refusal away
+ * from any figure you like, so the percentage is shown muted. The count next to
+ * it is still real and still worth reading.
+ */
+const MIN_SETTLED_FOR_RATE = 5;
 
 function formatMethod(value: string) {
   return value
@@ -147,6 +154,26 @@ export function ReportView({
         "Order sources",
       );
     }
+    if (report.byDistrict.length) {
+      XLSX.utils.book_append_sheet(
+        wb,
+        XLSX.utils.json_to_sheet(
+          report.byDistrict.map((d) => ({
+            District: d.district ?? "Not tagged",
+            Orders: d.orders,
+            Delivered: d.delivered,
+            Cancelled: d.cancelled,
+            "Still travelling": d.inFlight,
+            // Out of settled parcels, same as the table — an export that
+            // computed it differently would be a second answer to one question.
+            "Cancel rate %": d.cancelRate === null ? "" : +(d.cancelRate * 100).toFixed(1),
+            Revenue: d.revenue,
+            "Cancelled cost": d.cancelledCost,
+          })),
+        ),
+        "Districts",
+      );
+    }
     if (report.collectedByMethod.length) {
       XLSX.utils.book_append_sheet(
         wb,
@@ -252,6 +279,20 @@ export function ReportView({
           s.cancelledOrders === 0
             ? "—"
             : `${s.cancelledOrders} (${((s.cancelRate ?? 0) * 100).toFixed(0)}%)`,
+        ]),
+      });
+    }
+    if (report.byDistrict.length) {
+      autoTable(doc, {
+        head: [["District", "Orders", "Delivered", "On the way", "Cancelled"]],
+        body: report.byDistrict.map((d) => [
+          d.district ?? "Not tagged",
+          String(d.orders),
+          String(d.delivered),
+          String(d.inFlight),
+          d.cancelled === 0
+            ? "—"
+            : `${d.cancelled} (${((d.cancelRate ?? 0) * 100).toFixed(0)}%)`,
         ]),
       });
     }
@@ -600,6 +641,103 @@ export function ReportView({
               ] as Column<Report["bySource"][number]>[]
             }
           />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Where parcels went</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <DataTable
+            rows={report.byDistrict}
+            rowKey={(d) => d.district ?? "__unset__"}
+            empty={{ icon: MapPin, title: "No orders in this range" }}
+            columns={
+              [
+                {
+                  key: "district",
+                  header: "District",
+                  cardTitle: true,
+                  cell: (d) => (
+                    // Same treatment as an untagged channel: a gap to close,
+                    // not a place.
+                    <span className={cn(!d.district && "text-amber-700 dark:text-amber-400")}>
+                      {d.district ?? "Not tagged"}
+                    </span>
+                  ),
+                },
+                { key: "orders", header: "Orders", align: "right", cell: (d) => d.orders },
+                {
+                  key: "delivered",
+                  header: "Delivered",
+                  align: "right",
+                  cell: (d) => (
+                    <span className="tabular-nums">
+                      {d.delivered}
+                      {d.inFlight > 0 && (
+                        <span
+                          className="text-muted-foreground"
+                          title={`${d.inFlight} still on the way — no verdict yet`}
+                        >
+                          {" "}
+                          +{d.inFlight}
+                        </span>
+                      )}
+                    </span>
+                  ),
+                },
+                {
+                  key: "revenue",
+                  header: "Revenue",
+                  align: "right",
+                  cell: (d) => <Money value={d.revenue} className="font-medium" />,
+                },
+                {
+                  key: "cancelRate",
+                  header: "Cancelled",
+                  align: "right",
+                  // The rate is out of settled parcels only, so it answers "of
+                  // the ones that got an answer, how many came back". Below a
+                  // handful of settled parcels it is one refusal away from any
+                  // number at all, so it is shown muted rather than in amber —
+                  // the count is real, the percentage is not yet worth acting
+                  // on.
+                  cell: (d) => {
+                    if (d.cancelled === 0) {
+                      return <span className="text-muted-foreground">—</span>;
+                    }
+                    const settled = d.delivered + d.cancelled;
+                    const thin = settled < MIN_SETTLED_FOR_RATE;
+                    return (
+                      <span
+                        className={cn(
+                          "tabular-nums",
+                          thin
+                            ? "text-muted-foreground"
+                            : (d.cancelRate ?? 0) >= 0.2 && "text-amber-700 dark:text-amber-400",
+                        )}
+                        title={
+                          thin
+                            ? `Only ${settled} settled parcel(s) here — the count is real, the percentage is noise. ${formatMoney(d.cancelledCost)} lost on packaging, gifts and courier returns`
+                            : `${formatMoney(d.cancelledCost)} lost on packaging, gifts and courier returns`
+                        }
+                      >
+                        {d.cancelled} · {((d.cancelRate ?? 0) * 100).toFixed(0)}%
+                      </span>
+                    );
+                  },
+                },
+              ] as Column<Report["byDistrict"][number]>[]
+            }
+          />
+          <p className="mt-3 text-xs text-muted-foreground">
+            Cancel rate is out of parcels that settled — delivered or cancelled. Ones still
+            travelling are shown as <span className="tabular-nums">+n</span> beside delivered
+            and left out of the rate. Percentages in grey have fewer than{" "}
+            {MIN_SETTLED_FOR_RATE} settled parcels behind them: the count is real, the
+            percentage is not yet.
+          </p>
         </CardContent>
       </Card>
 
