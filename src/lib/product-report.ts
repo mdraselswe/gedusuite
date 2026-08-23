@@ -110,6 +110,8 @@ export type ProductReport = {
     netProfit: number;
     refunds: number;
     cancelledOrders: number;
+    /** Units of this product that sat in those cancelled orders — never sold. */
+    cancelledUnits: number;
     cancelledCost: number;
     netProfitAfterCancellations: number;
     avgSellPrice: number;
@@ -457,6 +459,7 @@ export async function buildProductReport(
   // courier return charge were spent. Split by ordered value, the only weight
   // a cancelled order has (its kept quantities are all zero by definition).
   let cancelledCost = 0;
+  let cancelledUnits = 0;
   for (const o of cancelled) {
     const waste = cancelledOrderCost(o).total;
     const gross = o.items.reduce((s, it) => s + Number(it.unitPrice) * it.quantity, 0);
@@ -476,6 +479,7 @@ export async function buildProductReport(
     }
     const mySharedCost = waste * share;
     cancelledCost += mySharedCost;
+    cancelledUnits += oUnits;
 
     orderRows.push({
       orderId: o.id,
@@ -543,6 +547,7 @@ export async function buildProductReport(
       netProfit: round2(netProfit),
       refunds: round2(refunds),
       cancelledOrders: cancelled.length,
+      cancelledUnits,
       cancelledCost: round2(cancelledCost),
       netProfitAfterCancellations: round2(netProfit - cancelledCost),
       avgSellPrice: unitsSold > 0 ? round2(revenue / unitsSold) : 0,

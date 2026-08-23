@@ -69,11 +69,24 @@ export function ProductDetailView({
     router.push(`/${slug}/products/${product.id}?from=${f}&to=${t}`);
   }
 
+  // Cancelled orders sell nothing, so "Units sold" leaves their pieces out —
+  // but "how many of this went out on orders at all" is a fair question, and
+  // the answer was nowhere on the page. It rides along in the hint.
+  const unitsHint = [
+    totals.unitsReturned > 0 ? `${totals.unitsReturned} returned` : null,
+    totals.cancelledUnits > 0
+      ? `${formatStock(totals.cancelledUnits, pack)} cancelled · ` +
+        `${formatStock(totals.unitsSold + totals.cancelledUnits, pack)} incl. cancelled`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
   const kpis: { label: string; value: string; hint?: string; className?: string }[] = [
     {
       label: "Units sold",
       value: formatStock(totals.unitsSold, pack),
-      hint: totals.unitsReturned > 0 ? `${totals.unitsReturned} returned` : undefined,
+      hint: unitsHint || undefined,
     },
     { label: "Orders", value: String(totals.orders) },
     { label: "Revenue", value: money(totals.revenue) },
@@ -270,7 +283,8 @@ export function ProductDetailView({
                   {totals.cancelledOrders}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  cost {money(totals.cancelledCost)} · net after them{" "}
+                  {formatStock(totals.cancelledUnits, pack)} unit(s) · cost{" "}
+                  {money(totals.cancelledCost)} · net after them{" "}
                   <span className={profitClass(totals.netProfitAfterCancellations)}>
                     {money(totals.netProfitAfterCancellations)}
                   </span>
