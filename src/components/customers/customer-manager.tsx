@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "@/lib/live-router";
 import { toast } from "sonner";
@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/dialog";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { useFilterBar, type FilterDef } from "@/components/ui/filter-bar";
-import { Users, AlertTriangle } from "lucide-react";
+import { Users, AlertTriangle, X } from "lucide-react";
 import { Money } from "@/components/ui/money";
 import { Field, FormError, type FieldError } from "@/components/ui/field";
 
@@ -47,10 +47,16 @@ export function CustomerManager({
   slug,
   customers,
   perms,
+  query,
+  total,
 }: {
   slug: string;
   customers: Customer[];
   perms: Perms;
+  /** The ?q= this page was rendered for — the search box shows it back. */
+  query: string;
+  /** How many customers match that search in all, across every page. */
+  total: number;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -59,8 +65,33 @@ export function CustomerManager({
   // The last refusal, kept so the Field it names can show it. A toast alone
   // left the message hovering over a form with no sign of which box it meant.
   const [formError, setFormError] = useState<FieldError>(null);
-  const [query, setQuery] = useState("");
   const [phoneMatch, setPhoneMatch] = useState<{ id: string; name: string } | null>(null);
+
+  // ── Search: URL-driven, so the server searches every page ──
+  // The filters below stay in memory — they narrow a list somebody is already
+  // reading. A name or a number is the opposite: it is asked of the whole book,
+  // and the answer is usually not on the page that happens to be open, so it
+  // has to be a query rather than a filter over the 50 rows in hand.
+  const [search, setSearch] = useState(query);
+  const searchDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function pushSearch(v: string) {
+    const params = new URLSearchParams();
+    const qv = v.trim();
+    if (qv) params.set("q", qv);
+    // No page param: a new search starts at the first page of its own results.
+    router.replace(`/${slug}/customers${params.size ? `?${params}` : ""}`);
+  }
+  function onSearchChange(v: string) {
+    setSearch(v);
+    if (searchDebounce.current) clearTimeout(searchDebounce.current);
+    searchDebounce.current = setTimeout(() => pushSearch(v), 400);
+  }
+  useEffect(() => {
+    return () => {
+      if (searchDebounce.current) clearTimeout(searchDebounce.current);
+    };
+  }, []);
 
   async function checkPhone(value: string) {
     setPhoneMatch(null);
@@ -114,7 +145,8 @@ export function CustomerManager({
     { key: "spend", label: "Lifetime spend", kind: "numberRange", value: (c) => c.lifetime },
   ];
 
-  const { rows: byFilters, bar, active } = useFilterBar(customers, filters, {
+  const { rows: filtered, bar, active } = useFilterBar(customers, filters, {
+    total,
     // Both figures, because "due" alone next to a filtered list reads as the
     // whole shop's — the header carries that one.
     summary: (shown) => (
@@ -129,17 +161,6 @@ export function CustomerManager({
         </span>
       </span>
     ),
-  });
-
-  // Search stays its own control: it is typed constantly, the filters are set
-  // occasionally, and pairing them in one panel would hide the common one.
-  const filtered = byFilters.filter((c) => {
-    const q = query.toLowerCase();
-    return (
-      c.name.toLowerCase().includes(q) ||
-      (c.phone ?? "").includes(query) ||
-      (c.altPhone ?? "").includes(query)
-    );
   });
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -196,12 +217,28 @@ export function CustomerManager({
           empty table with nothing to explain why. */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
-          <Input
-            placeholder="Search name or phone…"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            className="max-w-xs"
-          />
+          <div className="relative w-full max-w-xs">
+            <Input
+              placeholder="Search name, phone or address…"
+              value={search}
+              onChange={(e) => onSearchChange(e.target.value)}
+              className={search ? "pr-8" : undefined}
+            />
+            {search && (
+              <button
+                type="button"
+                aria-label="Clear search"
+                onClick={() => {
+                  if (searchDebounce.current) clearTimeout(searchDebounce.current);
+                  setSearch("");
+                  pushSearch("");
+                }}
+                className="absolute top-1/2 right-2 -translate-y-1/2 rounded-sm text-muted-foreground hover:text-foreground"
+              >
+                <X className="size-4" />
+              </button>
+            )}
+          </div>
           {bar}
         </div>
         {perms.canAdd && (
@@ -222,8 +259,13 @@ export function CustomerManager({
         rowKey={(c) => c.id}
         empty={{
           icon: Users,
-          title: active > 0 ? "No customers match these filters" : "No customers",
-          description: perms.canAdd ? "Add a customer to track orders and dues." : undefined,
+          title:
+            query || active > 0 ? "No customers match this search" : "No customers",
+          description: query
+            ? `Nothing found for "${query}" — try a name, a phone number or part of an address.`
+            : perms.canAdd
+              ? "Add a customer to track orders and dues."
+              : undefined,
         }}
         columns={
           [

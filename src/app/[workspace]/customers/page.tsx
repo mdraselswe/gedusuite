@@ -6,6 +6,7 @@ import { computeOrderTotals } from "@/lib/orders";
 import { amountOutstanding } from "@/lib/order-cash";
 import { dhakaDayKey, dhakaToday } from "@/lib/dhaka-time";
 import { serverT } from "@/lib/session";
+import { phoneSearchTerms } from "@/lib/phone";
 import { CustomerManager } from "@/components/customers/customer-manager";
 import { Pagination, parsePage } from "@/components/ui/pagination";
 import { PageHeader } from "@/components/ui/page-header";
@@ -20,10 +21,12 @@ export default async function CustomersPage({
   searchParams,
 }: {
   params: Promise<{ workspace: string }>;
-  searchParams: Promise<{ page?: string }>;
+  searchParams: Promise<{ page?: string; q?: string }>;
 }) {
   const { workspace: slug } = await params;
-  const page = parsePage((await searchParams).page);
+  const sp = await searchParams;
+  const page = parsePage(sp.page);
+  const q = (sp.q ?? "").trim();
   const access = await workspaceAccess(slug);
   if (!access) redirect("/");
   if (!can(access.role, "customers", "view", access.permissions)) {
@@ -35,10 +38,35 @@ export default async function CustomersPage({
     canEdit: can(access.role, "customers", "edit", access.permissions),
   };
 
-  const [customerCount, customers] = await Promise.all([
+  // The search reaches the database, not the 50 rows this page happens to
+  // hold. The book runs to several pages and it is sorted by name, so a filter
+  // over the visible page could only ever find people whose names start with
+  // the right letters — everyone else came back "no data" while sitting two
+  // pages down. Numbers are matched in every shape one is stored in (lib/phone),
+  // since a customer typed at checkout and one typed by hand rarely agree.
+  const phoneTerms = phoneSearchTerms(q);
+  const where = {
+    workspaceId: access.workspaceId,
+    ...(q
+      ? {
+          OR: [
+            { name: { contains: q, mode: "insensitive" as const } },
+            { address: { contains: q, mode: "insensitive" as const } },
+            ...phoneTerms.flatMap((p) => [
+              { phone: { contains: p } },
+              { altPhone: { contains: p } },
+            ]),
+          ],
+        }
+      : {}),
+  };
+
+  const [matchCount, customerCount, customers] = await Promise.all([
+    prisma.customer.count({ where }),
+    // Unfiltered: the header counts the book, not the search.
     prisma.customer.count({ where: { workspaceId: access.workspaceId } }),
     prisma.customer.findMany({
-      where: { workspaceId: access.workspaceId },
+      where,
       orderBy: { name: "asc" },
       skip: (page - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
@@ -100,6 +128,10 @@ export default async function CustomersPage({
 
   const totalDue = round2(rows.reduce((s, r) => s + r.outstanding, 0));
   const owingCount = rows.filter((r) => r.outstanding > 0).length;
+  // The dues line adds up the customers actually listed, which is the whole
+  // book only when one page holds it and nothing is being searched for. It
+  // says so rather than letting a search's total read as the shop's.
+  const duesAreEverybody = !q && customerCount <= rows.length;
 
   return (
     <div className="space-y-6">
@@ -113,7 +145,7 @@ export default async function CustomersPage({
         action={
           totalDue > 0 ? (
             <span className="text-sm text-muted-foreground">
-              Owed by customers:{" "}
+              {duesAreEverybody ? "Owed by customers" : "Owed by those shown"}:{" "}
               <Money value={totalDue} tone="negative" className="text-lg font-bold" />
               <span className="ml-1">
                 across {owingCount} {owingCount === 1 ? "customer" : "customers"}
@@ -122,11 +154,18 @@ export default async function CustomersPage({
           ) : undefined
         }
       />
-      <CustomerManager slug={slug} customers={rows} perms={perms} />
+      <CustomerManager
+        slug={slug}
+        customers={rows}
+        perms={perms}
+        query={q}
+        total={matchCount}
+      />
       <Pagination
         page={page}
-        totalPages={Math.ceil(customerCount / PAGE_SIZE)}
+        totalPages={Math.ceil(matchCount / PAGE_SIZE)}
         basePath={`/${slug}/customers`}
+        query={{ q: q || undefined }}
       />
     </div>
   );
