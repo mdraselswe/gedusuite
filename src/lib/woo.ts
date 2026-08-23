@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { districtFromIso } from "@/lib/bd-locations";
 
 /**
  * Turning a WooCommerce order into a call-list lead.
@@ -37,7 +38,23 @@ function addressOf(o: WooOrder) {
   const s = o.shipping ?? {};
   const b = o.billing ?? {};
   const pick = (k: string) => (s[k]?.trim() ? s[k] : b[k]);
-  return join(pick("address_1"), pick("address_2"), pick("city"), pick("state")) || null;
+  const city = pick("city")?.trim();
+  // `state` is not a district name: the checkout's select stores an ISO
+  // 3166-2:BD code, so every website address ended in "BD-13" — a line that
+  // means nothing to whoever makes the call and nothing to the courier who
+  // prints it. The customer did pick a district; this is what they picked.
+  const district = districtFromIso(pick("state"));
+  return (
+    join(
+      pick("address_1"),
+      pick("address_2"),
+      city,
+      // "Cumilla, Cumilla" when the town somebody typed is the district itself.
+      district && district.toLowerCase() === (city ?? "").toLowerCase()
+        ? undefined
+        : (district ?? undefined),
+    ) || null
+  );
 }
 
 function orderedAtOf(o: WooOrder) {

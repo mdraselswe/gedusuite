@@ -118,6 +118,57 @@ function escapeRegExp(s: string): string {
 }
 
 /**
+ * ISO 3166-2:BD -> the spellings above, so a code turned into a name is
+ * indistinguishable from one somebody typed.
+ *
+ * The website's checkout district select does not store the district; it
+ * stores this code, and WooCommerce hands it over as billing/shipping `state`.
+ * Left alone it travels the whole way — onto the call list, onto the customer
+ * record and onto the address a courier prints — as "BD-13", which names a
+ * district to nobody. scripts/backfill-ship-district.mjs keeps its own copy of
+ * this table: it runs under plain node with no TypeScript loader, so it cannot
+ * import this one.
+ */
+const ISO_DISTRICT: Record<string, string> = {
+  "BD-01": "Bandarban", "BD-02": "Barguna", "BD-03": "Bogura", "BD-04": "Brahmanbaria",
+  "BD-05": "Bagerhat", "BD-06": "Barishal", "BD-07": "Bhola", "BD-08": "Cumilla",
+  "BD-09": "Chandpur", "BD-10": "Chattogram", "BD-11": "Cox's Bazar", "BD-12": "Chuadanga",
+  "BD-13": "Dhaka", "BD-14": "Dinajpur", "BD-15": "Faridpur", "BD-16": "Feni",
+  "BD-17": "Gopalganj", "BD-18": "Gazipur", "BD-19": "Gaibandha", "BD-20": "Habiganj",
+  "BD-21": "Jamalpur", "BD-22": "Jashore", "BD-23": "Jhenaidah", "BD-24": "Joypurhat",
+  "BD-25": "Jhalakathi", "BD-26": "Kishoreganj", "BD-27": "Khulna", "BD-28": "Kurigram",
+  "BD-29": "Khagrachhari", "BD-30": "Kushtia", "BD-31": "Lakshmipur", "BD-32": "Lalmonirhat",
+  "BD-33": "Manikganj", "BD-34": "Mymensingh", "BD-35": "Munshiganj", "BD-36": "Madaripur",
+  "BD-37": "Magura", "BD-38": "Moulvibazar", "BD-39": "Meherpur", "BD-40": "Narayanganj",
+  "BD-41": "Netrakona", "BD-42": "Narsingdi", "BD-43": "Narail", "BD-44": "Natore",
+  "BD-45": "Chapainawabganj", "BD-46": "Nilphamari", "BD-47": "Noakhali", "BD-48": "Naogaon",
+  "BD-49": "Pabna", "BD-50": "Pirojpur", "BD-51": "Patuakhali", "BD-52": "Panchagarh",
+  "BD-53": "Rajbari", "BD-54": "Rajshahi", "BD-55": "Rangpur", "BD-56": "Rangamati",
+  "BD-57": "Sherpur", "BD-58": "Satkhira", "BD-59": "Sirajganj", "BD-60": "Sylhet",
+  "BD-61": "Sunamganj", "BD-62": "Shariatpur", "BD-63": "Tangail", "BD-64": "Thakurgaon",
+};
+
+/**
+ * The district a value names, when the value is an ISO code.
+ *
+ * Anything else is handed back as it came, trimmed: the same field holds a
+ * plain district name on an order typed by hand, and a code this table has
+ * never heard of is still better shown than swallowed.
+ */
+export function districtFromIso(raw: string | null | undefined): string | null {
+  const text = (raw ?? "").trim();
+  if (!text) return null;
+  return ISO_DISTRICT[text.toUpperCase()] ?? text;
+}
+
+/** Replace every ISO code inside a written address with its district name. */
+export function expandIsoDistricts(address: string | null | undefined): string | null {
+  const text = (address ?? "").trim();
+  if (!text) return null;
+  return text.replace(/\bBD-\d{2}\b/gi, (m) => ISO_DISTRICT[m.toUpperCase()] ?? m);
+}
+
+/**
  * Which district this address appears to name, or null.
  *
  * Matched on a word boundary so "Dhakadakshin" — which is in Sylhet — does not
