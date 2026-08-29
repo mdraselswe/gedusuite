@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   allocateComboPrice,
   comboBuildable,
+  comboPricePayload,
   componentsTotal,
   type ComboComponent,
 } from "@/lib/combos";
@@ -108,5 +109,27 @@ describe("allocateComboPrice", () => {
   it("returns nothing for an empty recipe or a zero quantity", () => {
     expect(allocateComboPrice([], 1200)).toEqual([]);
     expect(allocateComboPrice(FLIGHT, 1200, 0)).toEqual([]);
+  });
+});
+
+describe("comboPricePayload", () => {
+  it("keeps a higher regular price and writes the combo price as the sale", () => {
+    // The shop is showing "149 struck through, 120 to pay". Pushing the combo
+    // must not flatten that to a plain 120.
+    expect(comboPricePayload(120, 149)).toEqual({ sale_price: "120" });
+  });
+
+  it("sets the regular price when the website has none", () => {
+    expect(comboPricePayload(120, 0)).toEqual({ regular_price: "120", sale_price: "" });
+  });
+
+  it("clears a stale sale price when the combo price catches up", () => {
+    // Regular 120, combo now 120: an old sale price left standing would keep
+    // selling at a price this app no longer asks for.
+    expect(comboPricePayload(120, 120)).toEqual({ regular_price: "120", sale_price: "" });
+  });
+
+  it("takes over a regular price the combo has risen above", () => {
+    expect(comboPricePayload(160, 149)).toEqual({ regular_price: "160", sale_price: "" });
   });
 });

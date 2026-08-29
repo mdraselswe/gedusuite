@@ -127,3 +127,28 @@ export function allocateComboPrice(
     };
   });
 }
+
+/**
+ * How a combo's price should be written to the website.
+ *
+ * What the combo sells for is decided in this app; how the website *presents*
+ * that price is not. A shop that has put a higher regular price on the combo is
+ * showing a crossed-out figure beside it, and overwriting the regular price
+ * would delete that strike-through — the offer would still be the same money
+ * and would stop looking like an offer at all.
+ *
+ * So the selling price goes across as a sale price whenever a higher regular
+ * price is already standing, and replaces the regular price only when it is
+ * not. `existingRegular` is 0 for a product being created.
+ */
+export function comboPricePayload(
+  price: number,
+  existingRegular: number,
+): { regular_price?: string; sale_price: string } {
+  if (existingRegular > price) {
+    return { sale_price: String(price) };
+  }
+  // Clearing the sale price matters: a combo whose price rose above an old
+  // sale price would otherwise keep selling at the old one.
+  return { regular_price: String(price), sale_price: "" };
+}

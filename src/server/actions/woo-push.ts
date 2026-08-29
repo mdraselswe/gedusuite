@@ -6,6 +6,8 @@ import { requireAccess } from "@/lib/authz";
 import type { ActionFailure } from "@/lib/form";
 import { recordActivity } from "@/lib/activity";
 import { variantFullName } from "@/lib/variants";
+import { round2 } from "@/lib/money";
+import { comboPricePayload } from "@/lib/combos";
 import {
   clearWooCatalogCache,
   fetchWooCatalog,
@@ -209,10 +211,10 @@ export async function pushComboToWebsite(slug: string, comboId: string): Promise
     };
   }
 
+  const price = round2(Number(combo.price));
   const payload: Record<string, unknown> = {
     name: combo.name,
     type: "simple",
-    regular_price: String(combo.price),
     // The website counts the combo's own stock, written by the plugin from the
     // components. Without this the shop would treat it as always available and
     // the last set would keep selling after the shelf was empty.
@@ -234,11 +236,18 @@ export async function pushComboToWebsite(slug: string, comboId: string): Promise
   let result: WooProductResponse;
   try {
     if (combo.wooProductId) {
+      // Read before writing, so a compare-at price the shop set here survives.
+      // See comboPricePayload.
+      const existing = await wooFetch<{ regular_price?: string }>(
+        `/products/${combo.wooProductId}`,
+      );
+      Object.assign(payload, comboPricePayload(price, round2(Number(existing?.regular_price ?? 0))));
       result = await wooFetch<WooProductResponse>(`/products/${combo.wooProductId}`, {
         method: "PUT",
         body: JSON.stringify(payload),
       });
     } else {
+      Object.assign(payload, comboPricePayload(price, 0));
       created = true;
       result = await wooFetch<WooProductResponse>("/products", {
         method: "POST",
