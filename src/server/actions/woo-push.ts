@@ -21,9 +21,19 @@ import {
 export type PushResult = { ok: true; wooProductId: number; created: boolean } | ActionFailure;
 export type LinkResult = { ok: true } | ActionFailure;
 
-/** The plugin on the website reads these two. They are the whole contract. */
+/** The plugin on the website reads these three. They are the whole contract. */
 const ITEMS_META = "_gedu_combo_items";
 const FREE_SHIPPING_META = "_gedu_combo_free_shipping";
+/**
+ * What the combo sells for.
+ *
+ * Sent separately from WooCommerce's own price fields because those two say
+ * how a price is *presented* — a regular price with a sale price under it
+ * reads as a discount, one alone does not — and the website works that out
+ * from what the contents come to. It can only do so while something still
+ * says plainly what the set sells for.
+ */
+const PRICE_META = "_gedu_combo_price";
 
 function notConfigured(): ActionFailure {
   return {
@@ -228,6 +238,7 @@ export async function pushComboToWebsite(slug: string, comboId: string): Promise
         })),
       },
       { key: FREE_SHIPPING_META, value: combo.freeDelivery ? "yes" : "no" },
+      { key: PRICE_META, value: String(price) },
     ],
   };
   if (combo.sku) payload.sku = combo.sku;
@@ -236,8 +247,12 @@ export async function pushComboToWebsite(slug: string, comboId: string): Promise
   let result: WooProductResponse;
   try {
     if (combo.wooProductId) {
-      // Read before writing, so a compare-at price the shop set here survives.
-      // See comboPricePayload.
+      // The website decides how the price is *presented* — it strikes the
+      // contents' total through the selling price — so these two fields are
+      // only a sane starting point for the moment before it does, and cover
+      // the case where the plugin is missing or out of date. Reading the
+      // existing regular price first keeps a compare-at price somebody set by
+      // hand from being flattened in that case.
       const existing = await wooFetch<{ regular_price?: string }>(
         `/products/${combo.wooProductId}`,
       );
