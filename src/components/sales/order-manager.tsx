@@ -2134,13 +2134,19 @@ export function OrderManager({
                                     }
                                   >
                                     <SelectTrigger className="w-full">
-                                      <SelectValue placeholder="Choose a combo" />
+                                      <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
+                                      <SelectItem value={NONE}>Choose a combo</SelectItem>
                                       {combos.map((c) => (
+                                        // One string, not several nodes: the closed
+                                        // trigger takes its label from the chosen
+                                        // item's text, and a fragment leaves it
+                                        // nothing to read but the raw id.
                                         <SelectItem key={c.id} value={c.id}>
-                                          {c.name} · {formatMoney(c.price)}
-                                          {c.buildable === 0 ? " · none left" : ""}
+                                          {`${c.name} · ${formatMoney(c.price)}${
+                                            c.buildable === 0 ? " · none left" : ""
+                                          }`}
                                         </SelectItem>
                                       ))}
                                     </SelectContent>
