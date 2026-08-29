@@ -23,6 +23,10 @@ export type VariantOption = ComboOption & {
   salePrice: number | null;
   // >1 when the product is pack-based (enables Packet<->Piece form toggles).
   unitsPerPack: number | null;
+  // The website's id for this same thing, when it has been linked. Only combos
+  // need it, and only so a recipe pushed to the website names something the
+  // shop there can recognise.
+  wooProductId: number | null;
   // Shipping weight of one piece. Lets the order form total a parcel's weight
   // instead of asking for it — null when the product hasn't been weighed.
   weightGrams: number | null;
@@ -65,6 +69,7 @@ export async function searchVariants(
       attributes: true,
       salePrice: true,
       unitCost: true,
+      wooProductId: true,
       product: {
         select: { name: true, expiryTracked: true, unitsPerPack: true, weightGrams: true },
       },
@@ -105,6 +110,7 @@ export async function searchVariants(
       salePrice,
       unitsPerPack: r.product.unitsPerPack,
       weightGrams: r.product.weightGrams,
+      wooProductId: r.wooProductId,
     };
   });
 

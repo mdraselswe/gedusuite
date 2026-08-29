@@ -200,6 +200,7 @@ export const ENTITY_LABEL: Record<string, string> = {
   Product: "Product",
   ProductVariant: "Variant",
   ProductCategory: "Category",
+  ComboSet: "Combo set",
   Purchase: "Purchase",
   Supplier: "Supplier",
   Customer: "Customer",
@@ -270,6 +271,13 @@ export const FIELD_LABEL: Record<string, string> = {
   channel: "Channel",
   callStatus: "Call status",
   fulfilmentStatus: "Fulfilment",
+  price: "Price",
+  freeDelivery: "Free delivery",
+  active: "Active",
+  wooProductId: "Website product id",
+  validFrom: "Valid from",
+  validTo: "Valid to",
+  items: "Components",
 };
 
 export function fieldLabel(field: string): string {

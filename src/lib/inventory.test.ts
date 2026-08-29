@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { variantCost } from "./inventory";
+import { variantCost, variantListPrice } from "./inventory";
 
 /**
  * The cost chain, which decides what the shelf is worth and what a write-off
@@ -33,5 +33,30 @@ describe("variantCost", () => {
 
   it("keeps a free piece at zero rather than treating it as unknown", () => {
     expect(variantCost({ unitCost: null, purchases: [{ unitCost: 0 }] })).toBe(0);
+  });
+});
+
+describe("variantListPrice", () => {
+  it("uses the catalogue price when there is one", () => {
+    expect(variantListPrice({ salePrice: 250, purchases: [{ salePrice: 199 }] })).toBe(250);
+  });
+
+  it("falls back to what it last actually sold for", () => {
+    expect(variantListPrice({ salePrice: null, purchases: [{ salePrice: 199 }] })).toBe(199);
+  });
+
+  it("is null when nobody has ever priced it, rather than zero", () => {
+    // Zero would quietly count the piece as free, and a combo would report a
+    // saving bigger than it is while looking perfectly ordinary.
+    expect(variantListPrice({ salePrice: null, purchases: [] })).toBeNull();
+    expect(variantListPrice({ salePrice: null, purchases: [{ salePrice: null }] })).toBeNull();
+  });
+
+  it("reads a Decimal-shaped value", () => {
+    expect(variantListPrice({ salePrice: "250.50", purchases: [] })).toBe(250.5);
+  });
+
+  it("keeps a real zero price", () => {
+    expect(variantListPrice({ salePrice: 0, purchases: [{ salePrice: 199 }] })).toBe(0);
   });
 });

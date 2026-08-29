@@ -22,6 +22,7 @@ import {
   syncOrderCashEntry,
 } from "@/lib/order-cash";
 import { computeOrderTotals, goodsDiscount } from "@/lib/orders";
+import { allocateComboPrice, type ComboComponent } from "@/lib/combos";
 import { isOrderSource } from "@/lib/order-source";
 import { codFeeOn, quoteCourier } from "@/lib/courier";
 import { syncCourierStatuses } from "@/lib/courier-status-sync";
@@ -169,8 +170,27 @@ const OrderSchema = z.object({
     (v) => (v === "" || v == null ? undefined : v),
     z.coerce.number().nonnegative().max(1000).optional(),
   ),
-  items: z.array(ItemSchema).min(1, "Add at least one item"),
+  // No .min(1): an order can be nothing but combos, and the real check —
+  // "did anything at all end up on this order" — can only run once the combos
+  // have been expanded into lines.
+  items: z.array(ItemSchema).default([]),
   gifts: z.array(GiftSchema).default([]),
+  /**
+   * Combos, as sets rather than as products.
+   *
+   * The form sends "two Flight Starter Combos"; the server turns that into the
+   * component lines it actually is (see expandCombos). Nothing about the price
+   * comes from the browser — a combo's price is the shop's, not the caller's,
+   * and it is read from the recipe here.
+   */
+  combos: z
+    .array(
+      z.object({
+        comboSetId: z.string().min(1),
+        quantity: z.coerce.number().int().positive(),
+      }),
+    )
+    .default([]),
 });
 
 
@@ -320,6 +340,95 @@ async function zeroCostLabels(
   return rows.map((v) => variantFullName(v.product.name, v.attributes));
 }
 
+/**
+ * An order line, whether it was picked on its own or came out of a combo.
+ *
+ * The combo tags are what the invoice groups by. Everything else about the row
+ * — stock, cost, returns, profit — treats a combo's components as the ordinary
+ * lines they are, which is the whole reason a combo is expanded rather than
+ * stored as a line of its own.
+ */
+type ExpandedItem = {
+  productVariantId: string;
+  unitPrice: number;
+  quantity: number;
+  discount: number;
+  comboSetId: string | null;
+  comboKey: string | null;
+};
+
+/** Distinguishes two of the same combo on one order, so the invoice can split them. */
+function newComboKey(): string {
+  return `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/**
+ * Turn "two Flight Starter Combos" into the lines an order actually carries.
+ *
+ * The price is read from the recipe, never taken from the browser: a combo is
+ * the shop's offer, and a form that could name its own combo price would be a
+ * discount anybody could type. Each component keeps its ordinary catalogue
+ * price and takes a share of the saving as a line discount — see
+ * allocateComboPrice for why the saving goes there rather than into the price.
+ *
+ * Each set gets its own `comboKey`, rather than one key for a quantity of two,
+ * so that returning one of a pair of identical combos has somewhere to land.
+ *
+ * Refuses a combo that is switched off or outside its promotion window, since
+ * neither is something a seller should be able to put on an order by accident.
+ * Availability is NOT checked here — the components join `need` below and are
+ * checked against stock with everything else, under the same transaction.
+ */
+async function expandCombos(
+  workspaceId: string,
+  picked: { comboSetId: string; quantity: number }[],
+): Promise<{ ok: true; items: ExpandedItem[] } | ActionFailure> {
+  if (picked.length === 0) return { ok: true, items: [] };
+
+  const now = new Date();
+  const combos = await prisma.comboSet.findMany({
+    where: { workspaceId, id: { in: picked.map((c) => c.comboSetId) } },
+    include: {
+      items: {
+        include: { productVariant: { select: { salePrice: true } } },
+      },
+    },
+  });
+  const byId = new Map(combos.map((c) => [c.id, c]));
+
+  const items: ExpandedItem[] = [];
+  for (const want of picked) {
+    const combo = byId.get(want.comboSetId);
+    if (!combo) return { ok: false, error: "One or more combos are invalid" };
+    if (!combo.active) {
+      return { ok: false, error: `${combo.name} is switched off and can't be sold` };
+    }
+    if (combo.validFrom && combo.validFrom > now) {
+      return { ok: false, error: `${combo.name} hasn't started yet` };
+    }
+    if (combo.validTo && combo.validTo < now) {
+      return { ok: false, error: `${combo.name} has ended` };
+    }
+    if (combo.items.length === 0) {
+      return { ok: false, error: `${combo.name} has no products in it` };
+    }
+
+    const components: ComboComponent[] = combo.items.map((i) => ({
+      productVariantId: i.productVariantId,
+      quantity: i.quantity,
+      salePrice: i.productVariant.salePrice != null ? Number(i.productVariant.salePrice) : null,
+    }));
+
+    for (let n = 0; n < want.quantity; n++) {
+      const comboKey = newComboKey();
+      for (const line of allocateComboPrice(components, Number(combo.price), 1)) {
+        items.push({ ...line, comboSetId: combo.id, comboKey });
+      }
+    }
+  }
+  return { ok: true, items };
+}
+
 export async function createOrder(
   slug: string,
   formData: FormData,
@@ -339,6 +448,12 @@ export async function createOrder(
     giftsRaw = JSON.parse(String(formData.get("gifts") ?? "[]"));
   } catch {
     giftsRaw = [];
+  }
+  let combosRaw: unknown = [];
+  try {
+    combosRaw = JSON.parse(String(formData.get("combos") ?? "[]"));
+  } catch {
+    combosRaw = [];
   }
   const parsed = OrderSchema.safeParse({
     customerId: formData.get("customerId") ?? undefined,
@@ -365,15 +480,29 @@ export async function createOrder(
     weightKg: formData.get("weightKg") ?? undefined,
     items: itemsRaw,
     gifts: giftsRaw,
+    combos: combosRaw,
   });
   if (!parsed.success) {
     return failed(parsed.error);
   }
   const d = parsed.data;
+
+  // Combos become ordinary lines before anything else looks at the order, so
+  // stock, cost, totals and the notification below all treat them as the
+  // products they are. Everything from here down reads `orderItems`, never
+  // `d.items`.
+  const expanded = await expandCombos(workspaceId, d.combos);
+  if (!expanded.ok) return expanded;
+  const orderItems: ExpandedItem[] = [
+    ...d.items.map((it) => ({ ...it, comboSetId: null, comboKey: null })),
+    ...expanded.items,
+  ];
+  if (orderItems.length === 0) return { ok: false, error: "Add at least one item" };
+
   const giftVariantIds = d.gifts
     .map((g) => g.productVariantId)
     .filter((v): v is string => !!v);
-  const variantIds = [...d.items.map((i) => i.productVariantId), ...giftVariantIds];
+  const variantIds = [...orderItems.map((i) => i.productVariantId), ...giftVariantIds];
 
   // These 5 checks are all independent (none needs another's result) but were
   // previously awaited one after another — over a long-haul DB connection that
@@ -417,8 +546,12 @@ export async function createOrder(
   const byLabel = new Map(
     validVariants.map((v) => [v.id, variantFullName(v.product.name, v.attributes)]),
   );
+  // One demand figure per variant, whatever it arrived as. This is what makes
+  // a combo and a loose piece of the same product share one shelf: two combos
+  // each containing an aeroplane plus a third aeroplane on its own is a demand
+  // of three, and gets checked as three.
   const need = new Map<string, number>();
-  for (const it of d.items) {
+  for (const it of orderItems) {
     need.set(it.productVariantId, (need.get(it.productVariantId) ?? 0) + it.quantity);
   }
   for (const g of d.gifts) {
@@ -469,10 +602,10 @@ export async function createOrder(
 
   // Descriptive notification: who ordered, for how much. Mirrors the
   // customer-total math in computeOrderTotals for a fresh order (no returns).
-  const itemsNet = d.items.reduce((s, it) => s + it.unitPrice * it.quantity - it.discount, 0);
+  const itemsNet = orderItems.reduce((s, it) => s + it.unitPrice * it.quantity - it.discount, 0);
   const discount = goodsDiscount(d.isGiveaway, d.discount, itemsNet);
   const customerTotal = round2(itemsNet - discount + d.deliveryCharge);
-  const itemCount = d.items.reduce((s, it) => s + it.quantity, 0);
+  const itemCount = orderItems.reduce((s, it) => s + it.quantity, 0);
   const notifMessage = `New order — ${customer?.name ?? "Walk-in"} · ৳${customerTotal.toFixed(2)} (${itemCount} item${itemCount > 1 ? "s" : ""})`;
 
   // An advance can't be more than the order, and only means anything while the
@@ -549,12 +682,14 @@ export async function createOrder(
         heldByMembershipId,
         notes: d.notes?.trim() || null,
         items: {
-          create: d.items.map((it) => ({
+          create: orderItems.map((it) => ({
             productVariantId: it.productVariantId,
             unitPrice: it.unitPrice,
             unitCost: costs.get(it.productVariantId) ?? 0,
             quantity: it.quantity,
             discount: it.discount,
+            comboSetId: it.comboSetId,
+            comboKey: it.comboKey,
           })),
         },
         gifts: { create: giftLines },
@@ -588,7 +723,9 @@ export async function createOrder(
     entity: "Order",
     entityId: order.id,
     entityLabel: orderLabel(order.id, customer?.name ?? null),
-    summary: `Created — ${d.items.length} item(s), ${d.status.toLowerCase()}`,
+    summary: `Created — ${orderItems.length} item(s)${
+      d.combos.length ? ` incl. ${d.combos.length} combo(s)` : ""
+    }, ${d.status.toLowerCase()}`,
   });
 
   revalidatePath(`/${slug}/sales/orders`);

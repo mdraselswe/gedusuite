@@ -13,6 +13,8 @@ import { districtFromIso } from "@/lib/bd-locations";
 export const WOO_SOURCE = "WOOCOMMERCE";
 
 export type WooLineItem = {
+  /** The catalogue product this line sold — how a combo is recognised again. */
+  product_id?: number;
   name?: string;
   quantity?: number;
   meta_data?: { key?: string; display_value?: string }[];
@@ -144,6 +146,34 @@ export async function upsertLeadFromWooOrder(
     },
     update: fields,
   });
+}
+
+/**
+ * What a website order bought, as catalogue product ids.
+ *
+ * The one thing a lead keeps that a person cannot retype reliably. `itemsText`
+ * is written to be read down a phone line — "Flight Starter Combo x1" — and
+ * matching that back to a catalogue variant by name is exactly the guess the
+ * order form has always refused to make. The raw payload still carries the
+ * product ids WooCommerce sold under, and a combo is identified by its own id
+ * on both sides (see ComboSet.wooProductId), so a combo — and only a combo —
+ * can be put back together exactly.
+ *
+ * Returns every line, not only the combos: which of these ids IS a combo is a
+ * question for whoever holds the recipes, and this function has no database.
+ * Quantities are summed, so the same product on two lines counts once.
+ */
+export function wooLineProductIds(rawPayload: unknown): { productId: number; quantity: number }[] {
+  const items = (rawPayload as WooOrder | null)?.line_items;
+  if (!Array.isArray(items)) return [];
+  const totals = new Map<number, number>();
+  for (const li of items) {
+    const id = Number(li?.product_id);
+    if (!Number.isInteger(id) || id <= 0) continue;
+    const qty = Math.max(1, Math.trunc(Number(li?.quantity) || 1));
+    totals.set(id, (totals.get(id) ?? 0) + qty);
+  }
+  return [...totals].map(([productId, quantity]) => ({ productId, quantity }));
 }
 
 /** Statuses that need no phone call, so pulling them in would only be noise. */

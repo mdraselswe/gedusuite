@@ -39,6 +39,27 @@ export type ProductPerf = {
   profit: number;
 };
 
+/**
+ * What a combo actually did.
+ *
+ * Built from the component lines it was saved as, using the same per-line
+ * allocation the product table uses — so a combo's revenue and profit are on
+ * the same footing as everything else in this report and can be added to it
+ * without double-counting. `sets` counts distinct comboKeys, which is the only
+ * thing that can tell two of the same combo apart once their components have
+ * been merged.
+ */
+export type ComboPerf = {
+  comboSetId: string;
+  name: string;
+  /** Complete sets sold. */
+  sets: number;
+  /** Pieces those sets contained, net of returns. */
+  units: number;
+  revenue: number;
+  profit: number;
+};
+
 export type PaymentMethodTotal = { method: string; amount: number; orders: number };
 
 /** Where orders came from. `source` is null for anything never tagged. */
@@ -147,6 +168,9 @@ export type Report = {
   returns: ReturnLegSummary;
   series: { date: string; sales: number; profit: number }[];
   products: ProductPerf[]; // all products, sorted by qty desc
+  // Combos that sold in range, best-selling first. Empty when the shop sells
+  // none — the report then leaves the section out entirely.
+  combos: ComboPerf[];
   // `percent` is what the partner's record says; `effectivePercent` is what
   // they're actually paid on once shares are normalized to their own total.
   partnerShares: { name: string; percent: number; effectivePercent: number; amount: number }[];
@@ -185,6 +209,14 @@ export async function buildReport(
     },
     orderBy: { date: "asc" },
   });
+  // Names for the combo table. Fetched separately because an order line keeps
+  // only the recipe's id — deliberately, so deleting a combo cannot delete the
+  // history of what it sold. A combo since deleted still reports, unnamed.
+  const comboSets = await prisma.comboSet.findMany({
+    where: { workspaceId },
+    select: { id: true, name: true },
+  });
+  const comboNames = new Map(comboSets.map((c) => [c.id, c.name]));
   const orders = allOrders.filter((o) => o.status !== "CANCELLED");
   const cancelled = allOrders.filter((o) => o.status === "CANCELLED");
 
@@ -197,6 +229,9 @@ export async function buildReport(
   let profit = 0;
   const seriesMap = new Map<string, { sales: number; profit: number }>();
   const productMap = new Map<string, ProductPerf>();
+  const comboMap = new Map<string, ComboPerf>();
+  /** comboSetId -> the set instances seen, so two of one combo count as two. */
+  const comboKeys = new Map<string, Set<string>>();
   const methodMap = new Map<string, { amount: number; orders: number }>();
   const sourceMap = new Map<
     string,
@@ -275,8 +310,35 @@ export async function buildReport(
       a.revenue += alloc.revenue;
       a.profit += alloc.netProfit;
       productMap.set(pid, a);
+
+      // The same line, counted a second time under the combo it came out of.
+      // Not a double-count of the report's totals: this is a separate table
+      // answering "which of my combos is worth keeping", and a combo's pieces
+      // are genuinely also products.
+      if (it.comboSetId) {
+        const c =
+          comboMap.get(it.comboSetId) ??
+          {
+            comboSetId: it.comboSetId,
+            name: comboNames.get(it.comboSetId) ?? "Deleted combo",
+            sets: 0,
+            units: 0,
+            revenue: 0,
+            profit: 0,
+          };
+        c.units += alloc.keptUnits;
+        c.revenue += alloc.revenue;
+        c.profit += alloc.netProfit;
+        comboMap.set(it.comboSetId, c);
+        if (it.comboKey) {
+          const seen = comboKeys.get(it.comboSetId) ?? new Set<string>();
+          seen.add(it.comboKey);
+          comboKeys.set(it.comboSetId, seen);
+        }
+      }
     }
   }
+  for (const [id, c] of comboMap) c.sets = comboKeys.get(id)?.size ?? 0;
 
   // A cancelled order costs money without selling anything, so it lands in
   // profit and in its channel's row, but never in revenue, the order count or
@@ -351,6 +413,10 @@ export async function buildReport(
     .map((p) => ({ ...p, revenue: round2(p.revenue), profit: round2(p.profit) }))
     .sort((a, b) => b.qty - a.qty);
 
+  const combos = [...comboMap.values()]
+    .map((c) => ({ ...c, revenue: round2(c.revenue), profit: round2(c.profit) }))
+    .sort((a, b) => b.sets - a.sets);
+
   const collectedByMethod = [...methodMap.entries()]
     .map(([method, v]) => ({ method, amount: round2(v.amount), orders: v.orders }))
     .sort((a, b) => b.amount - a.amount);
@@ -408,6 +474,7 @@ export async function buildReport(
     returns: legs,
     series,
     products,
+    combos,
     partnerShares,
     collectedByMethod,
     // Biggest channel first; untagged orders sort last however large, because

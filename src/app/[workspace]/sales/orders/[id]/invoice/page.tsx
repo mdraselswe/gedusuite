@@ -8,6 +8,8 @@ import { orderRecipient } from "@/lib/order-recipient";
 import { amountCollected, amountOutstanding } from "@/lib/order-cash";
 import { DownloadInvoicePdfButton } from "@/components/invoice-actions";
 import { variantFullName } from "@/lib/variants";
+import { groupComboLines } from "@/lib/combo-lines";
+import { round2 } from "@/lib/money";
 import {
   Table,
   TableBody,
@@ -32,7 +34,7 @@ export default async function InvoicePage({
     redirect(`/${slug}/dashboard`);
   }
 
-  const [order, workspace] = await Promise.all([
+  const [order, workspace, comboSets] = await Promise.all([
     prisma.order.findFirst({
       where: { id, workspaceId: access.workspaceId },
       include: {
@@ -51,10 +53,38 @@ export default async function InvoicePage({
       where: { id: access.workspaceId },
       select: { name: true, logoUrl: true },
     }),
+    // Names for whatever combos this order sold. The lines carry only an id —
+    // deliberately, so deleting a recipe can never take an order's history
+    // with it — which leaves the name to be looked up when one is printed.
+    prisma.comboSet.findMany({
+      where: { workspaceId: access.workspaceId },
+      select: { id: true, name: true },
+    }),
   ]);
   if (!order) notFound();
 
   const totals = computeOrderTotals(order);
+
+  // A combo was sold as one price and is printed as one price. Its components
+  // reach the database separately because that is what stock and returns need;
+  // an invoice that reprinted them as 900 + 650 less 350 would be telling the
+  // customer the same arithmetic the hard way.
+  const { groups, comboDiscount } = groupComboLines(
+    order.items.map((it) => ({
+      id: it.id,
+      quantity: it.quantity,
+      unitPrice: Number(it.unitPrice),
+      discount: Number(it.discount),
+      comboSetId: it.comboSetId,
+      comboKey: it.comboKey,
+      label: variantFullName(it.productVariant.product.name, it.productVariant.attributes),
+      returned: it.returns.reduce((s, r) => s + r.quantity, 0),
+    })),
+    new Map(comboSets.map((c) => [c.id, c.name])),
+  );
+  // The saving is already inside each combo's printed price, so the discount
+  // line below must not claim it again.
+  const looseItemDiscounts = round2(Math.max(0, totals.itemDiscounts - comboDiscount));
 
   const orderNumber = invoiceNumber(order);
   // What this order was addressed to, not what the customer record says now.
@@ -111,23 +141,60 @@ export default async function InvoicePage({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {order.items.map((it) => {
-                const returned = it.returns.reduce((s, r) => s + r.quantity, 0);
-                const eq = it.quantity - returned;
+              {groups.map((g) => {
+                if (g.kind === "combo") {
+                  return (
+                    <TableRow key={g.comboSetId}>
+                      <TableCell className="whitespace-normal wrap-break-word">
+                        <span className="font-medium">{g.name}</span>
+                        {g.returned > 0 && (
+                          <span className="text-xs text-muted-foreground">
+                            {" "}
+                            ({g.returned} returned)
+                          </span>
+                        )}
+                        {/* What is in the box, so the customer can check the
+                            parcel against the invoice without knowing what a
+                            combo contains. */}
+                        <ul className="mt-0.5 text-xs text-muted-foreground">
+                          {g.lines.map((l) => (
+                            <li key={l.id}>
+                              {l.label} ×{Math.max(0, l.quantity - l.returned)}
+                            </li>
+                          ))}
+                        </ul>
+                      </TableCell>
+                      <TableCell className="text-right">{g.sets}</TableCell>
+                      <TableCell className="text-right">
+                        <Money value={g.sets > 0 ? round2(g.net / g.sets) : 0} />
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Money value={g.net} />
+                      </TableCell>
+                    </TableRow>
+                  );
+                }
+                const it = g.line;
+                const eq = it.quantity - it.returned;
                 return (
                   <TableRow key={it.id}>
                     {/* Long product names wrap instead of forcing the table
                         wider than the invoice (which cropped/scrolled). */}
                     <TableCell className="whitespace-normal wrap-break-word">
-                      {variantFullName(it.productVariant.product.name, it.productVariant.attributes)}
-                      {returned > 0 && (
-                        <span className="text-xs text-muted-foreground"> ({returned} returned)</span>
+                      {it.label}
+                      {it.returned > 0 && (
+                        <span className="text-xs text-muted-foreground">
+                          {" "}
+                          ({it.returned} returned)
+                        </span>
                       )}
                     </TableCell>
                     <TableCell className="text-right">{eq}</TableCell>
-                    <TableCell className="text-right"><Money value={Number(it.unitPrice)} /></TableCell>
                     <TableCell className="text-right">
-                      <Money value={(Number(it.unitPrice) * eq)} />
+                      <Money value={it.unitPrice} />
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Money value={round2(it.unitPrice * eq)} />
                     </TableCell>
                   </TableRow>
                 );
@@ -137,7 +204,7 @@ export default async function InvoicePage({
         </div>
 
         <div className="mt-6 ml-auto max-w-xs space-y-1 text-sm">
-          <Row label="Item discounts" value={-totals.itemDiscounts} />
+          <Row label="Item discounts" value={-looseItemDiscounts} />
           <Row label="Order discount" value={-totals.orderDiscount} />
           {/* Delivery always shows — a zero/absent charge prints as "Free". */}
           <div className="flex justify-between">

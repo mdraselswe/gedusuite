@@ -11,6 +11,8 @@ import { dhakaDayEnd, dhakaDayStart, dhakaRecordStamp, formatDhakaDate } from "@
 import { amountOutstanding } from "@/lib/order-cash";
 import { OrderManager } from "@/components/sales/order-manager";
 import { PendingReturns } from "@/components/sales/pending-returns";
+import { listCombosForOrder } from "@/server/actions/combos";
+import { wooLineProductIds } from "@/lib/woo";
 import { STOCK_CONSUMING_STATUSES } from "@/lib/inventory";
 import { variantFullName } from "@/lib/variants";
 import { Pagination, parsePage } from "@/components/ui/pagination";
@@ -188,6 +190,7 @@ export default async function OrdersPage({
     orders,
     pendingParcels,
     pendingReturns,
+    combos,
   ] = await Promise.all([
     prisma.productVariant.count({ where: { product: { workspaceId } } }),
     prisma.membership.findMany({
@@ -296,6 +299,10 @@ export default async function OrdersPage({
         },
       },
     }),
+    // Combos on offer, already priced and counted. Its own action rather than
+    // a query here: the order form needs the same buildable count and price
+    // allocation the server will save with, and that lives in one place.
+    listCombosForOrder(slug),
   ]);
 
   const memberOptions = members.map((m) => ({
@@ -315,6 +322,9 @@ export default async function OrdersPage({
           phone: true,
           convertedCustomerId: true,
           itemsText: true,
+          // The webhook body, kept for exactly this: the product ids the site
+          // sold under, which `itemsText` cannot carry (see wooLineProductIds).
+          rawPayload: true,
           deliveryCharge: true,
           channel: true,
           address: true,
@@ -328,6 +338,33 @@ export default async function OrdersPage({
         },
       })
     : null;
+  // Combos this website order actually bought.
+  //
+  // The only part of a lead that can be filled in for somebody rather than
+  // read out to them. `itemsText` is prose and matching it to variants by name
+  // is the guess this form has always refused to make — but a combo carries a
+  // product id on both sides, so it maps exactly, and one id brings its whole
+  // component list with it.
+  const leadCombos = leadRow
+    ? await (async () => {
+        const wanted = wooLineProductIds(leadRow.rawPayload);
+        if (wanted.length === 0) return [];
+        const matches = await prisma.comboSet.findMany({
+          where: {
+            workspaceId,
+            active: true,
+            wooProductId: { in: wanted.map((w) => w.productId) },
+          },
+          select: { id: true, wooProductId: true },
+        });
+        const qtyByWooId = new Map(wanted.map((w) => [w.productId, w.quantity]));
+        return matches.map((m) => ({
+          comboSetId: m.id,
+          quantity: qtyByWooId.get(m.wooProductId!) ?? 1,
+        }));
+      })()
+    : [];
+
   const fromLead = leadRow && !leadRow.orderId
     ? {
         leadId: leadRow.id,
@@ -335,6 +372,7 @@ export default async function OrdersPage({
         customerName: leadRow.customerName,
         phone: leadRow.phone,
         itemsText: leadRow.itemsText,
+        combos: leadCombos,
         deliveryCharge: Number(leadRow.deliveryCharge),
         channel: leadRow.channel,
         address: leadRow.address,
@@ -497,6 +535,7 @@ export default async function OrdersPage({
             bands: z.bands.map((b) => ({ uptoKg: Number(b.uptoKg), rate: Number(b.rate) })),
           })),
         }))}
+        combos={combos}
         fromLead={fromLead}
         orders={orderRows}
         perms={perms}

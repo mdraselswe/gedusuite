@@ -523,6 +523,61 @@ export function ReportView({
         </Card>
       </div>
 
+      {report.combos.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Combo sets</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <DataTable
+              rows={report.combos}
+              rowKey={(c) => c.comboSetId}
+              empty={{ icon: BarChart3, title: "No combos sold in this range." }}
+              columns={
+                [
+                  {
+                    key: "name",
+                    header: "Combo",
+                    cardTitle: true,
+                    wrap: true,
+                    cell: (c) => c.name,
+                  },
+                  { key: "sets", header: "Sets", align: "right", cell: (c) => c.sets },
+                  {
+                    key: "units",
+                    header: "Pieces",
+                    align: "right",
+                    hideable: true,
+                    cell: (c) => c.units,
+                  },
+                  {
+                    key: "revenue",
+                    header: "Revenue",
+                    align: "right",
+                    cell: (c) => <Money value={c.revenue} />,
+                  },
+                  {
+                    key: "profit",
+                    header: "Profit",
+                    align: "right",
+                    cell: (c) => (
+                      <Money value={c.profit} tone={c.profit < 0 ? "negative" : "positive"} />
+                    ),
+                  },
+                ] as Column<Report["combos"][number]>[]
+              }
+            />
+            {/* Said plainly, because the two tables above will not add up with
+                this one and somebody will check. */}
+            <p className="text-xs text-muted-foreground">
+              These sales are also counted in the product tables above — a combo&rsquo;s pieces
+              are products too. This table asks a different question: which sets are worth
+              keeping on offer.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
       {report.partnerShares.length > 0 && (
         <Card>
           <CardHeader>

@@ -27,6 +27,20 @@ function purchaseHistoryError(
   );
 }
 
+// A combo is a recipe, not a shelf: deleting an ingredient would leave a set
+// that can never be built and a price that means nothing. Ask for the recipe
+// to be changed first, and say which recipes those are.
+function comboUseError(
+  used: { comboSet: { name: string } }[],
+  kind: "product" | "variant",
+): string {
+  const names = used.map((u) => u.comboSet.name).join(", ");
+  return (
+    `This ${kind} is part of the combo ${used.length > 1 ? "sets" : "set"} ${names} and can't be deleted. ` +
+    `Remove it from ${used.length > 1 ? "those combos" : "that combo"} first.`
+  );
+}
+
 const MAX_IMAGE_CHARS = 2_000_000; // ~1.5MB data URI
 
 const imageField = z
@@ -305,13 +319,26 @@ export async function deleteProduct(slug: string, id: string): Promise<ActionRes
   // its purchase rows with it, and with them the partner's investment credit
   // for the money they put in to buy it. Money spent would simply stop having
   // been spent.
-  const [soldCount, purchases] = await Promise.all([
+  //
+  // ComboItem -> ProductVariant is RESTRICT too, and it is the one a shopkeeper
+  // actually walks into: a product that never sold but sits inside a recipe.
+  // Name the combos, because "it's used in a combo" leaves them hunting.
+  const [soldCount, purchases, comboItems] = await Promise.all([
     prisma.orderItem.count({ where: { productVariant: { productId: id } } }),
     prisma.purchase.findMany({
       where: { productVariant: { productId: id } },
       select: { unitCost: true, quantity: true },
     }),
+    prisma.comboItem.findMany({
+      where: { productVariant: { productId: id } },
+      select: { comboSet: { select: { name: true } } },
+      distinct: ["comboSetId"],
+      take: 5,
+    }),
   ]);
+  if (comboItems.length > 0) {
+    return { ok: false, error: comboUseError(comboItems, "product") };
+  }
   if (soldCount > 0) {
     return {
       ok: false,
@@ -394,13 +421,23 @@ export async function deleteVariant(
   // instead of letting the raw DB constraint error surface. Purchase cascades
   // rather than restricting, so it needs the same check made by hand — see
   // deleteProduct above for what that silently destroyed.
-  const [soldCount, purchases] = await Promise.all([
+  // ComboItem -> ProductVariant is RESTRICT as well; see deleteProduct.
+  const [soldCount, purchases, comboItems] = await Promise.all([
     prisma.orderItem.count({ where: { productVariantId: variantId } }),
     prisma.purchase.findMany({
       where: { productVariantId: variantId },
       select: { unitCost: true, quantity: true },
     }),
+    prisma.comboItem.findMany({
+      where: { productVariantId: variantId },
+      select: { comboSet: { select: { name: true } } },
+      distinct: ["comboSetId"],
+      take: 5,
+    }),
   ]);
+  if (comboItems.length > 0) {
+    return { ok: false, error: comboUseError(comboItems, "variant") };
+  }
   if (soldCount > 0) {
     return {
       ok: false,

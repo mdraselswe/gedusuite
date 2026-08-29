@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { variantSuffix } from "@/lib/variants";
+import { comboBuildable } from "@/lib/combos";
 import { round2 } from "@/lib/money";
 
 /** Enough of a Prisma client to derive stock — the real one or a transaction. */
@@ -197,6 +198,42 @@ export async function inTransitReturnMap(
 }
 
 /**
+ * How many of each combo the shelf can actually make right now.
+ *
+ * Nothing stores this, and nothing should. A combo is a recipe over variants
+ * that are also on sale individually, so the same piece backs the combo and
+ * its own product listing at once; a stored combo count would be a second
+ * copy of a number `variantStockMap` already holds, and it would be wrong the
+ * first time either side sold. Derived here, selling the last aeroplane on its
+ * own empties every combo containing one, and selling that combo empties the
+ * aeroplane's own listing — with no bookkeeping in between.
+ *
+ * Pass the transaction when the answer is about to be acted on, for exactly
+ * the reason `variantStockMap` gives.
+ */
+export async function comboStockMap(
+  workspaceId: string,
+  comboIds?: string[],
+  client: StockClient & Pick<Prisma.TransactionClient, "comboSet"> = prisma,
+): Promise<Map<string, number>> {
+  const combos = await client.comboSet.findMany({
+    where: { workspaceId, ...(comboIds ? { id: { in: comboIds } } : {}) },
+    select: { id: true, items: { select: { productVariantId: true, quantity: true } } },
+  });
+  if (combos.length === 0) return new Map();
+
+  // One stock query for every component of every combo asked about, rather
+  // than one per combo: a shop with twenty combos over forty variants would
+  // otherwise run twenty aggregations of five tables each.
+  const variantIds = [
+    ...new Set(combos.flatMap((c) => c.items.map((i) => i.productVariantId))),
+  ];
+  const stock = await variantStockMap(workspaceId, variantIds, client);
+
+  return new Map(combos.map((c) => [c.id, comboBuildable(c.items, stock)]));
+}
+
+/**
  * What one piece of a variant cost: what it last cost to buy, then the
  * catalogue cost, then nothing.
  *
@@ -214,6 +251,26 @@ export function variantCost(v: {
 }): number {
   if (v.purchases[0]) return Number(v.purchases[0].unitCost);
   return v.unitCost != null ? Number(v.unitCost) : 0;
+}
+
+/**
+ * What one piece of this variant lists for when sold on its own.
+ *
+ * The catalogue price is the answer when there is one; otherwise the price it
+ * last actually went out at. Written down once because a combo's whole pitch
+ * is "these would cost you X separately", and X computed two different ways on
+ * two different screens is worse than no X at all.
+ *
+ * Null means nobody has ever priced it — a caller showing "bought separately"
+ * has to say so rather than quietly counting it as free.
+ */
+export function variantListPrice(v: {
+  salePrice: unknown;
+  purchases: { salePrice?: unknown }[];
+}): number | null {
+  if (v.salePrice != null) return Number(v.salePrice);
+  const last = v.purchases[0]?.salePrice;
+  return last != null ? Number(last) : null;
 }
 
 /**

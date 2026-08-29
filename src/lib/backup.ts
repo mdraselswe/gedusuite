@@ -72,6 +72,8 @@ export async function buildSnapshot(workspaceId: string): Promise<Snapshot> {
     boostDailySpends,
     couriers,
     courierZones,
+    comboSets,
+    comboItems,
   ] = await Promise.all([
     prisma.supplier.findMany({ where: { workspaceId } }),
     prisma.product.findMany({ where: { workspaceId } }),
@@ -93,6 +95,8 @@ export async function buildSnapshot(workspaceId: string): Promise<Snapshot> {
     prisma.boostDailySpend.findMany({ where: { workspaceId } }),
     prisma.courier.findMany({ where: { workspaceId } }),
     prisma.courierZone.findMany({ where: { workspaceId } }),
+    prisma.comboSet.findMany({ where: { workspaceId } }),
+    prisma.comboItem.findMany({ where: { comboSet: { workspaceId } } }),
   ]);
   const stockAdjustments = await prisma.stockAdjustment.findMany({ where: { workspaceId } });
 
@@ -120,6 +124,8 @@ export async function buildSnapshot(workspaceId: string): Promise<Snapshot> {
     boostDailySpends,
     couriers,
     courierZones,
+    comboSets,
+    comboItems,
   } as unknown as Snapshot["tables"];
 
   return {
@@ -261,6 +267,10 @@ export async function restoreSnapshot(
   const returns = force(rows("returns"));
   const internalPurchases = force(rows("internalPurchases"));
   const stockAdjustments = force(rows("stockAdjustments"));
+  const comboSets = force(rows("comboSets"));
+  // ComboItem has no workspaceId of its own — it hangs off the combo — so it is
+  // the one child table here that must NOT be forced into the workspace.
+  const comboItems = rows("comboItems");
 
   const inserted: SnapshotCounts = {};
 
@@ -278,6 +288,11 @@ export async function restoreSnapshot(
         await tx.partner.deleteMany({ where: { workspaceId } });
         await tx.stockAdjustment.deleteMany({ where: { workspaceId } });
         await tx.purchase.deleteMany({ where: { workspaceId } });
+        // Before the variants: a ComboItem's FK to ProductVariant is Restrict,
+        // so a variant that some recipe still lists cannot be deleted, and the
+        // whole restore would fail on the first shop that sells a combo.
+        await tx.comboItem.deleteMany({ where: { comboSet: { workspaceId } } });
+        await tx.comboSet.deleteMany({ where: { workspaceId } });
         await tx.productVariant.deleteMany({ where: { product: { workspaceId } } });
         await tx.product.deleteMany({ where: { workspaceId } });
         await tx.productCategory.deleteMany({ where: { workspaceId } });
@@ -333,6 +348,11 @@ export async function restoreSnapshot(
       await insert("orderGifts", tx.orderGift, orderGifts);
       await insert("returns", tx.return, returns);
       await insert("stockAdjustments", tx.stockAdjustment, stockAdjustments);
+      // After the variants they are built from. Order lines reference a combo
+      // by a plain id rather than a foreign key, so they can go in either way
+      // round — but a report reading a restored order still wants its name.
+      await insert("comboSets", tx.comboSet, comboSets);
+      await insert("comboItems", tx.comboItem, comboItems);
     },
     { timeout: 30_000 },
   );

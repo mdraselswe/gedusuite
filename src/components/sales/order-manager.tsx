@@ -18,6 +18,7 @@ import {
   setOrderSource,
 } from "@/server/actions/orders";
 import { linkLeadToOrder } from "@/server/actions/leads";
+import type { ComboOptionForOrder } from "@/server/actions/combos";
 import {
   createCustomer,
   customerContact,
@@ -225,6 +226,14 @@ export type FromLead = {
   phone: string;
   /** What the caller wrote down — free text, so it's shown, not auto-added. */
   itemsText: string;
+  /**
+   * Combos the website order bought, already matched to this shop's recipes.
+   *
+   * These ARE added automatically, unlike the free-text items: a combo is
+   * matched by product id rather than by name, so there is nothing being
+   * guessed at, and its whole component list comes with it.
+   */
+  combos: { comboSetId: string; quantity: number }[];
   /** The lead's channel, prefilled onto the order's "came from". */
   channel: string | null;
   /** What the caller agreed for shipping, prefilled onto the order. */
@@ -587,6 +596,7 @@ export function OrderManager({
   members,
   campaigns,
   couriers,
+  combos,
   fromLead,
   orders,
   perms,
@@ -604,6 +614,11 @@ export function OrderManager({
   campaigns: CampaignOption[];
   /** Courier rules, so the form can price a parcel as it's being written. */
   couriers: CourierOption[];
+  /**
+   * Combos on offer right now, already priced and counted. Empty when the shop
+   * sells none, and the whole section then stays off the form.
+   */
+  combos: ComboOptionForOrder[];
   /**
    * Set when the sales page was opened from a call-list row ("+ Order"): the
    * form opens filled in, and the order it creates links back to that lead.
@@ -655,6 +670,16 @@ export function OrderManager({
   const [partMode, setPartMode] = useState<"add" | "correct">("add");
   const [partPaySaving, setPartPaySaving] = useState(false);
   const [items, setItems] = useState<ItemDraft[]>([emptyItem()]);
+  /**
+   * Combos on this order, as sets.
+   *
+   * Deliberately NOT expanded into `items` here. The price a combo's
+   * components end up carrying is the shop's arithmetic, and doing it in the
+   * browser would mean two implementations of it — one here and one on the
+   * server, which is the only one that counts. So the form sends "two Flight
+   * Starter Combos" and the server writes the lines.
+   */
+  const [comboPicks, setComboPicks] = useState<{ comboSetId: string; quantity: string }[]>([]);
   const [gifts, setGifts] = useState<GiftDraft[]>([]);
   const [customer, setCustomer] = useState<ComboOption | null>(null);
   const [heldById, setHeldById] = useState(NONE);
@@ -1007,6 +1032,15 @@ export function OrderManager({
     // The call taker already agreed a price with the customer; the items are
     // free text and can't be matched to catalogue variants reliably, so the
     // total is offered and the lines are shown for the person to pick.
+    // Matched by id, so this is a fact rather than a guess — see FromLead.combos.
+    if (fromLead.combos.length > 0) {
+      setComboPicks(
+        fromLead.combos.map((c) => ({
+          comboSetId: c.comboSetId,
+          quantity: String(c.quantity),
+        })),
+      );
+    }
     setDeliveryType("COURIER");
     // The caller already agreed a shipping charge; retyping it is how the
     // order and the call end up quoting the customer two different figures.
@@ -1034,6 +1068,7 @@ export function OrderManager({
     // opens on the moment it is being taken rather than on midnight.
     setOrderDate(toDhakaInputValue(new Date()));
     setItems([emptyItem()]);
+    setComboPicks([]);
     setGifts([]);
     setCustomer(null);
     setShip(EMPTY_SHIP);
@@ -1061,20 +1096,72 @@ export function OrderManager({
     setCourierZoneId(NONE);
   }
 
-  // Weight from the items themselves, so nobody has to guess. Only offered
+  const comboById = useMemo(() => new Map(combos.map((c) => [c.id, c])), [combos]);
+
+  /** The combos on this order, resolved to their offers. */
+  const pickedCombos = useMemo(
+    () =>
+      comboPicks
+        .map((p) => ({ combo: comboById.get(p.comboSetId), quantity: parseInt(p.quantity) || 0 }))
+        .filter((p): p is { combo: ComboOptionForOrder; quantity: number } => !!p.combo && p.quantity > 0),
+    [comboPicks, comboById],
+  );
+
+  /** Does anything on this order carry free delivery as part of the offer? */
+  const comboFreeDelivery = pickedCombos.some((p) => p.combo.freeDelivery);
+  const freeDeliveryApplied = useRef(false);
+  useEffect(() => {
+    // Once, on the transition into "this order has a free-delivery combo".
+    // A prefill that ran on every render would fight anyone who deliberately
+    // typed a charge — a free-delivery combo plus a heavy second product is a
+    // real order, and the shop may still want something for the parcel.
+    if (comboFreeDelivery && !freeDeliveryApplied.current) {
+      freeDeliveryApplied.current = true;
+      setDeliveryCharge("0");
+    }
+    if (!comboFreeDelivery) freeDeliveryApplied.current = false;
+  }, [comboFreeDelivery]);
+
+  /**
+   * What the customer is paying for goods, however they were picked.
+   *
+   * One figure rather than the three separate `items.reduce` loops the courier
+   * quote, the break-even and the preview each used to keep — which agreed
+   * only for as long as nobody added a way of putting goods on an order.
+   * Combos were exactly that: priced as sets, they belong in every one of
+   * those sums, and three copies is three chances to forget.
+   */
+  const goodsSubtotal = useMemo(() => {
+    const loose = items.reduce((s, it) => {
+      const price = parseFloat(it.unitPrice) || 0;
+      const qty = parseInt(it.quantity) || 0;
+      return s + price * qty - (parseFloat(it.discount) || 0);
+    }, 0);
+    const sets = pickedCombos.reduce((s, p) => s + p.combo.price * p.quantity, 0);
+    return round2(loose + sets);
+  }, [items, pickedCombos]);
+
+  // Weight from the goods themselves, so nobody has to guess. Only offered
   // when EVERY line knows its own weight — a partial sum would be confidently
-  // wrong and quietly under-quote the parcel.
+  // wrong and quietly under-quote the parcel. A combo counts as the pieces
+  // inside it, which is what actually goes in the box.
   const suggestedWeightKg = useMemo(() => {
     const picked = items.filter((it) => it.variant);
-    if (picked.length === 0) return null;
+    if (picked.length === 0 && pickedCombos.length === 0) return null;
     let grams = 0;
     for (const it of picked) {
       const g = it.variant?.weightGrams;
       if (g == null) return null;
       grams += g * (parseInt(it.quantity) || 0);
     }
+    for (const p of pickedCombos) {
+      for (const k of p.combo.components) {
+        if (k.weightGrams == null) return null;
+        grams += k.weightGrams * k.quantity * p.quantity;
+      }
+    }
     return grams > 0 ? Math.round((grams / 1000) * 1000) / 1000 : null;
-  }, [items]);
+  }, [items, pickedCombos]);
 
   // What the courier will actually keep, previewed while the charge is being
   // set rather than discovered on a statement weeks later.
@@ -1082,11 +1169,7 @@ export function OrderManager({
     if (deliveryType !== "COURIER" || !selectedCourier) return null;
     const zone = selectedCourier.zones.find((z) => z.id === courierZoneId);
     if (!zone) return null;
-    const goods = items.reduce((s, it) => {
-      const price = parseFloat(it.unitPrice) || 0;
-      const qty = parseInt(it.quantity) || 0;
-      return s + price * qty - (parseFloat(it.discount) || 0);
-    }, 0);
+    const goods = goodsSubtotal;
     // Only what the courier itself collects carries the fee — a bKash
     // prepayment travels by courier too, but there's nothing to collect.
     const codAmount =
@@ -1103,7 +1186,7 @@ export function OrderManager({
     deliveryType,
     selectedCourier,
     courierZoneId,
-    items,
+    goodsSubtotal,
     orderDiscount,
     deliveryCharge,
     weightKg,
@@ -1138,18 +1221,13 @@ export function OrderManager({
     if (!courierQuote || !selectedCourier) return null;
     const zone = selectedCourier.zones.find((z) => z.id === courierZoneId);
     if (!zone) return null;
-    const goods = items.reduce((s, it) => {
-      const price = parseFloat(it.unitPrice) || 0;
-      const qty = parseInt(it.quantity) || 0;
-      return s + price * qty - (parseFloat(it.discount) || 0);
-    }, 0);
     return breakEvenDeliveryCharge(selectedCourier, {
       zoneRate: zone.rate,
       bands: zone.bands,
       weightKg: parseFloat(weightKg) || suggestedWeightKg,
-      goodsAmount: goods - (parseFloat(orderDiscount) || 0),
+      goodsAmount: goodsSubtotal - (parseFloat(orderDiscount) || 0),
     });
-  }, [courierQuote, selectedCourier, courierZoneId, items, orderDiscount, weightKg, suggestedWeightKg]);
+  }, [courierQuote, selectedCourier, courierZoneId, goodsSubtotal, orderDiscount, weightKg, suggestedWeightKg]);
 
   const editCourier = couriers.find((c) => c.id === editCourierId) ?? null;
   const editCourierQuote = useMemo(() => {
@@ -1170,12 +1248,7 @@ export function OrderManager({
   }, [editOrder, editDeliveryType, editCourier, editCourierZoneId, editWeightKg, editPaymentMethod]);
 
   const preview = useMemo(() => {
-    const itemsSubtotal = items.reduce((s, it) => {
-      const price = parseFloat(it.unitPrice) || 0;
-      const qty = parseInt(it.quantity) || 0;
-      const disc = parseFloat(it.discount) || 0;
-      return s + price * qty - disc;
-    }, 0);
+    const itemsSubtotal = goodsSubtotal;
     const customerTotal =
       itemsSubtotal + (parseFloat(deliveryCharge) || 0) - (parseFloat(orderDiscount) || 0);
     // Product gifts prefill their cost from the latest purchase cost (still
@@ -1190,7 +1263,7 @@ export function OrderManager({
       (deliveryType === "COURIER" ? parseFloat(deliveryCost || deliveryCharge) || 0 : 0);
 
     return { itemsSubtotal, customerTotal, costPreview };
-  }, [deliveryCharge, deliveryCost, deliveryType, gifts, items, orderDiscount, packagingCost]);
+  }, [deliveryCharge, deliveryCost, deliveryType, gifts, goodsSubtotal, orderDiscount, packagingCost]);
 
   function updateGift(i: number, patch: Partial<GiftDraft>) {
     setGifts((prev) => prev.map((g, j) => (j === i ? { ...g, ...patch } : g)));
@@ -1216,8 +1289,12 @@ export function OrderManager({
           discount: parseFloat(it.discount) || 0,
         };
       });
-    if (cleanItems.length === 0) {
-      toast.error("Add at least one item with a product and quantity");
+    const cleanCombos = pickedCombos.map((p) => ({
+      comboSetId: p.combo.id,
+      quantity: p.quantity,
+    }));
+    if (cleanItems.length === 0 && cleanCombos.length === 0) {
+      toast.error("Add at least one item or combo");
       return;
     }
     const cleanGifts = gifts
@@ -1252,6 +1329,9 @@ export function OrderManager({
     if (!weightKg && suggestedWeightKg !== null) fd.set("weightKg", String(suggestedWeightKg));
     fd.set("items", JSON.stringify(cleanItems));
     fd.set("gifts", JSON.stringify(cleanGifts));
+    // Sets, not lines: the server reads each combo's price from the recipe and
+    // writes the component rows itself (see expandCombos).
+    fd.set("combos", JSON.stringify(cleanCombos));
     const res = await createOrder(slug, fd);
     setLoading(false);
     if (!res.ok) return toast.error(res.error);
@@ -1995,6 +2075,152 @@ export function OrderManager({
           ) : (
             <form onSubmit={onSubmit} className="flex min-h-0 flex-1 flex-col overflow-hidden">
               <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 py-4 sm:px-5">
+                {combos.length > 0 && (
+                  <section className="space-y-3 rounded-xl bg-muted/25 p-3 ring-1 ring-border sm:p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <h3 className="text-sm font-semibold">Combo sets</h3>
+                        <p className="text-xs text-muted-foreground">
+                          Priced as a set. Saved as the products inside it, so stock comes off
+                          every one of them.
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          setComboPicks([...comboPicks, { comboSetId: NONE, quantity: "1" }])
+                        }
+                      >
+                        <Plus />
+                        Add combo
+                      </Button>
+                    </div>
+
+                    {comboPicks.length > 0 && (
+                      <div className="space-y-3">
+                        {comboPicks.map((pick, i) => {
+                          const combo = comboById.get(pick.comboSetId) ?? null;
+                          const qty = parseInt(pick.quantity) || 0;
+                          // The bottleneck, named. "None left" on its own sends
+                          // somebody to the product list to work out which of
+                          // five things ran out.
+                          const shortest = combo?.components.length
+                            ? combo.components.reduce((worst, k) =>
+                                Math.floor(k.stock / k.quantity) <
+                                Math.floor(worst.stock / worst.quantity)
+                                  ? k
+                                  : worst,
+                              )
+                            : null;
+                          const overBuildable = combo ? qty > combo.buildable : false;
+                          return (
+                            <div
+                              key={i}
+                              className="rounded-xl bg-background p-3 ring-1 ring-border sm:p-4"
+                            >
+                              <div className="grid grid-cols-[minmax(0,1fr)_5rem_2.25rem] items-end gap-2">
+                                <div className="space-y-2">
+                                  <Label>Combo</Label>
+                                  <Select
+                                    value={pick.comboSetId}
+                                    onValueChange={(v) =>
+                                      setComboPicks((prev) =>
+                                        prev.map((p, j) =>
+                                          j === i ? { ...p, comboSetId: v ?? NONE } : p,
+                                        ),
+                                      )
+                                    }
+                                  >
+                                    <SelectTrigger className="w-full">
+                                      <SelectValue placeholder="Choose a combo" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {combos.map((c) => (
+                                        <SelectItem key={c.id} value={c.id}>
+                                          {c.name} · {formatMoney(c.price)}
+                                          {c.buildable === 0 ? " · none left" : ""}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div className="space-y-2">
+                                  <Label>Sets</Label>
+                                  <Input
+                                    type="number"
+                                    min="1"
+                                    inputMode="numeric"
+                                    value={pick.quantity}
+                                    aria-invalid={overBuildable || undefined}
+                                    onChange={(e) =>
+                                      setComboPicks((prev) =>
+                                        prev.map((p, j) =>
+                                          j === i ? { ...p, quantity: e.target.value } : p,
+                                        ),
+                                      )
+                                    }
+                                  />
+                                </div>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  aria-label={`Remove combo ${i + 1}`}
+                                  onClick={() =>
+                                    setComboPicks(comboPicks.filter((_, j) => j !== i))
+                                  }
+                                >
+                                  <Trash2 />
+                                </Button>
+                              </div>
+
+                              {combo && (
+                                <>
+                                  <ul className="mt-3 space-y-0.5 text-xs text-muted-foreground">
+                                    {combo.components.map((k) => (
+                                      <li
+                                        key={k.productVariantId}
+                                        className="flex justify-between gap-3"
+                                      >
+                                        <span className="truncate">
+                                          {k.label} ×{k.quantity * Math.max(qty, 1)}
+                                        </span>
+                                        <span className="shrink-0 tabular-nums">
+                                          {k.stock} in stock
+                                        </span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                  <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs">
+                                    <span
+                                      className={
+                                        overBuildable
+                                          ? "text-destructive"
+                                          : "text-muted-foreground"
+                                      }
+                                    >
+                                      {overBuildable
+                                        ? `Only ${combo.buildable} can be made — ${shortest?.label ?? "a component"} is short`
+                                        : combo.freeDelivery
+                                          ? "Free delivery with this combo"
+                                          : `Saves ${formatMoney(Math.max(0, combo.listTotal - combo.price))} against buying separately`}
+                                    </span>
+                                    <span className="font-medium tabular-nums">
+                                      Line total {formatMoney(combo.price * Math.max(qty, 0))}
+                                    </span>
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </section>
+                )}
+
                 <section className="space-y-3 rounded-xl bg-muted/25 p-3 ring-1 ring-border sm:p-4">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
@@ -2419,7 +2645,15 @@ export function OrderManager({
                           </SelectContent>
                         </Select>
                       </div>
-                      <Field name="deliveryCharge" label="Charge from customer">
+                      <Field
+                        name="deliveryCharge"
+                        label="Charge from customer"
+                        hint={
+                          comboFreeDelivery
+                            ? "Free delivery comes with this combo. What the courier charges still goes in delivery cost below, so the promotion shows up as what it costs."
+                            : undefined
+                        }
+                      >
                         <Input
                           id="o-delivery"
                           name="deliveryCharge"

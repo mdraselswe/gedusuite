@@ -35,7 +35,8 @@ export default async function OrderBreakdownPage({
     redirect(`/${slug}/sales/orders`);
   }
 
-  const order = await prisma.order.findFirst({
+  const [order, comboSets] = await Promise.all([
+    prisma.order.findFirst({
     where: { id, workspaceId: access.workspaceId },
     include: {
       customer: true,
@@ -50,8 +51,17 @@ export default async function OrderBreakdownPage({
       },
       gifts: true,
     },
-  });
+    }),
+    // The lines hold a combo id and nothing else, so a name has to be fetched
+    // to say which combo a discounted line belongs to.
+    prisma.comboSet.findMany({
+      where: { workspaceId: access.workspaceId },
+      select: { id: true, name: true },
+    }),
+  ]);
   if (!order) notFound();
+
+  const comboNames = new Map(comboSets.map((c) => [c.id, c.name]));
 
   const totals = computeOrderTotals(order);
   const deliveryCostWasBlank = order.deliveryCost == null;
@@ -119,6 +129,15 @@ export default async function OrderBreakdownPage({
                   <TableRow key={it.id}>
                     <TableCell>
                       {variantFullName(it.productVariant.product.name, it.productVariant.attributes)}
+                      {/* Deliberately still one row per component: this page
+                          exists to show what each piece cost and earned, which
+                          a folded-up combo would hide. What it owes the reader
+                          is why the discount is there. */}
+                      {it.comboSetId && (
+                        <span className="mt-0.5 block text-xs text-muted-foreground">
+                          part of {comboNames.get(it.comboSetId) ?? "a combo"}
+                        </span>
+                      )}
                     </TableCell>
                     <TableCell className="text-right">{it.quantity}</TableCell>
                     <TableCell className="text-right">{returned || "—"}</TableCell>

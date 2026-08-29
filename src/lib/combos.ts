@@ -1,0 +1,129 @@
+/**
+ * The arithmetic of selling several products as one priced set.
+ *
+ * A combo never reaches the database as a line of its own — it is expanded
+ * into ordinary OrderItem rows when the order is saved (see createOrder), so
+ * stock derivation, cost snapshots, returns and every profit report keep
+ * working on rows they already understand. Two questions have to be answered
+ * to do that, and both live here so the order form's preview and the server's
+ * authoritative save can never disagree about the numbers on the invoice.
+ */
+
+import { round2 } from "@/lib/money";
+
+/** One line of a combo recipe, priced at what the component normally sells for. */
+export type ComboComponent = {
+  productVariantId: string;
+  /** Pieces of this variant in ONE set. */
+  quantity: number;
+  /** The variant's ordinary catalogue price per piece; null when it has none. */
+  salePrice: number | null;
+};
+
+/** What one component contributes to one expanded order line. */
+export type AllocatedComponent = {
+  productVariantId: string;
+  /** Pieces on this line = component quantity × how many sets were bought. */
+  quantity: number;
+  /** The ordinary catalogue price — NOT a share of the combo price. */
+  unitPrice: number;
+  /** This line's share of the combo saving, as a line-total discount. */
+  discount: number;
+};
+
+/**
+ * How many complete sets the components on hand can make.
+ *
+ * The whole of a combo's availability, and the reason nothing stores a combo
+ * stock number anywhere: ask this instead. A recipe with no components can
+ * make nothing — an empty `min()` is Infinity, which would have advertised an
+ * unlimited supply of a set containing nothing.
+ */
+export function comboBuildable(
+  components: { productVariantId: string; quantity: number }[],
+  stock: Map<string, number>,
+): number {
+  if (components.length === 0) return 0;
+  let buildable = Infinity;
+  for (const c of components) {
+    if (c.quantity <= 0) return 0;
+    buildable = Math.min(buildable, Math.floor((stock.get(c.productVariantId) ?? 0) / c.quantity));
+  }
+  return Math.max(0, buildable);
+}
+
+/** What the same goods would have cost bought separately, for one set. */
+export function componentsTotal(components: ComboComponent[]): number {
+  return round2(components.reduce((s, c) => s + (c.salePrice ?? 0) * c.quantity, 0));
+}
+
+/**
+ * Split a combo's price across its components, as discounts.
+ *
+ * The components keep their ordinary `unitPrice` and the saving is written
+ * into each line's `discount`. Setting a reduced unit price instead would have
+ * been simpler and lost two things worth keeping: `grossRevenue` would stop
+ * meaning "what these goods list for", and — the real reason — a returned
+ * piece would take none of the combo saving back with it. computeOrderTotals
+ * already scales a line's discount by the fraction of it still kept, so
+ * putting the saving there makes a partial return of a combo come out right
+ * with no new code at all.
+ *
+ * The share is proportional to what each component is worth: the expensive
+ * half of a set absorbs most of the discount, which is what makes a
+ * single-line return of the cheap half refund a sensible figure. When no
+ * component has a price on record — nothing to be proportional to — it falls
+ * back to splitting by piece count.
+ *
+ * Rounding remainders land on the last line, so the discounts always sum to
+ * exactly the saving. Anything else leaves an invoice one paisa off its own
+ * total, every time, in a way nobody can find.
+ */
+export function allocateComboPrice(
+  components: ComboComponent[],
+  comboPrice: number,
+  /** How many of this combo were bought. Every figure below scales with it. */
+  sets = 1,
+): AllocatedComponent[] {
+  if (components.length === 0 || sets <= 0) return [];
+
+  const lines = components.map((c) => ({
+    productVariantId: c.productVariantId,
+    quantity: c.quantity * sets,
+    unitPrice: c.salePrice ?? 0,
+    lineValue: (c.salePrice ?? 0) * c.quantity * sets,
+  }));
+
+  const listTotal = round2(lines.reduce((s, l) => s + l.lineValue, 0));
+  const target = round2(comboPrice * sets);
+  // A combo priced at or above what its parts list for is not a discount, and
+  // the customer still pays the combo price — so the components carry no
+  // saving and the difference simply is not one. Negative discounts would
+  // report as negative revenue somewhere downstream.
+  const saving = round2(Math.max(0, listTotal - target));
+
+  // Nothing to be proportional to: no component has a price, so the list total
+  // is zero and every share would be 0/0. Split by pieces instead.
+  const weights = listTotal > 0
+    ? lines.map((l) => l.lineValue / listTotal)
+    : (() => {
+        const pieces = lines.reduce((s, l) => s + l.quantity, 0);
+        return pieces > 0 ? lines.map((l) => l.quantity / pieces) : lines.map(() => 0);
+      })();
+
+  let assigned = 0;
+  return lines.map((l, i) => {
+    const last = i === lines.length - 1;
+    // The last line takes whatever is left rather than its own rounded share,
+    // so the discounts sum to `saving` to the paisa.
+    const discount = last ? round2(saving - assigned) : round2(saving * weights[i]);
+    assigned = round2(assigned + discount);
+    return {
+      productVariantId: l.productVariantId,
+      quantity: l.quantity,
+      unitPrice: l.unitPrice,
+      // Guard the last line: a float path could leave it fractionally negative.
+      discount: Math.max(0, discount),
+    };
+  });
+}
