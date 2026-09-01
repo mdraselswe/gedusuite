@@ -454,7 +454,14 @@ export function ComboManager({
   async function onToggle(c: ComboRow) {
     const res = await setComboActive(slug, c.id, !c.active);
     if (!res.ok) return toast.error(res.error);
-    toast.success(c.active ? "Combo switched off" : "Combo switched on");
+    toast.success(c.active ? "Combo switched off" : "Combo switched on", {
+      // Only where it could mislead: a combo that is on the website is still
+      // selling there, and this is the moment somebody would assume otherwise.
+      description:
+        c.active && c.wooProductId
+          ? "Orders here only — it is still on sale on the website until you unpublish it there."
+          : undefined,
+    });
     router.refresh();
   }
 
@@ -726,7 +733,9 @@ export function ComboManager({
                   size="sm"
                   title={
                     c.active
-                      ? "Stop offering it on the order form. Past orders keep theirs."
+                      ? c.wooProductId
+                        ? "Stop offering it on the order form here. Past orders keep theirs. The website is not affected — unpublish it in WooCommerce to stop selling there."
+                        : "Stop offering it on the order form. Past orders keep theirs."
                       : "Offer it on the order form again"
                   }
                   onClick={() => onToggle(c)}
@@ -767,8 +776,10 @@ export function ComboManager({
           the way they work on anything else.
         </p>
         <p>
-          Build the same combo on the website separately, then paste its WooCommerce product id
-          here — that is what turns a website order for the combo back into these products.
+          <strong>Put on website</strong> creates it there as a draft with the price and recipe
+          already set; add the pictures and publish it. The id it comes back with is what turns
+          a website order for the combo back into these products. Switching a combo off here,
+          or letting its dates run out, does not stop it selling there.
         </p>
       </InfoNote>
 
@@ -878,6 +889,22 @@ export function ComboManager({
                   onChange={(e) => setValidTo(e.target.value)}
                 />
               </div>
+              <InfoNote
+                tone="warn"
+                className="sm:col-span-2"
+                title="These dates stop orders taken here — not sales on the website."
+              >
+                <p>
+                  The window is never sent to the website. A combo published there keeps
+                  selling after the end date, at the same price, with no countdown, until
+                  somebody unpublishes it in WooCommerce.
+                </p>
+                <p>
+                  So these are for orders written up in this app — over the phone, on
+                  Facebook. Ending a real offer on the shop is a second thing to do, in
+                  WooCommerce.
+                </p>
+              </InfoNote>
             </div>
 
             <div className="space-y-2">
