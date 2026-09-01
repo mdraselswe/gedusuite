@@ -331,6 +331,16 @@ const PAY_STATUS = ["UNPAID", "PAID", "PARTIAL"];
 const NONE = "__none__";
 
 /**
+ * How a combo reads in the picker.
+ *
+ * Shared by the option list and the `items` map behind the closed trigger, so
+ * the two cannot drift into describing the same combo differently.
+ */
+function comboLabel(c: ComboOptionForOrder): string {
+  return `${c.name} · ${formatMoney(c.price)}${c.buildable === 0 ? " · none left" : ""}`;
+}
+
+/**
  * Packaging cost on an order, with a nudge when it isn't zero.
  *
  * Packaging is bought in bulk and recorded once under Internal purchases, where
@@ -2125,6 +2135,20 @@ export function OrderManager({
                                   <Label>Combo</Label>
                                   <Select
                                     value={pick.comboSetId}
+                                    // Base UI reads the closed trigger's label from
+                                    // here, not from the options — those live in a
+                                    // portal that does not exist until the popup is
+                                    // first opened, so without this map the trigger
+                                    // has only the value to show, and the value is a
+                                    // cuid. Every other id-valued select on this form
+                                    // passes it; this one did not.
+                                    items={[
+                                      { value: NONE, label: "Choose a combo" },
+                                      ...combos.map((c) => ({
+                                        value: c.id,
+                                        label: comboLabel(c),
+                                      })),
+                                    ]}
                                     onValueChange={(v) =>
                                       setComboPicks((prev) =>
                                         prev.map((p, j) =>
@@ -2139,14 +2163,8 @@ export function OrderManager({
                                     <SelectContent>
                                       <SelectItem value={NONE}>Choose a combo</SelectItem>
                                       {combos.map((c) => (
-                                        // One string, not several nodes: the closed
-                                        // trigger takes its label from the chosen
-                                        // item's text, and a fragment leaves it
-                                        // nothing to read but the raw id.
                                         <SelectItem key={c.id} value={c.id}>
-                                          {`${c.name} · ${formatMoney(c.price)}${
-                                            c.buildable === 0 ? " · none left" : ""
-                                          }`}
+                                          {comboLabel(c)}
                                         </SelectItem>
                                       ))}
                                     </SelectContent>
