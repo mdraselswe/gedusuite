@@ -34,6 +34,7 @@ import {
 import { AsyncCombobox, type ComboOption } from "@/components/ui/async-combobox";
 import { searchVariants, type VariantOption } from "@/server/actions/search";
 import {
+  linkSiblingVariantsToWebsite,
   linkVariantToWebsite,
   pushComboToWebsite,
   searchWebsiteProducts,
@@ -111,12 +112,49 @@ function WebsiteLinkField({
 }) {
   const [linking, setLinking] = useState(false);
   const [picked, setPicked] = useState<WebsitePick | null>(null);
+  /**
+   * The other variants of this product that could go to the same listing.
+   *
+   * Kept here rather than read from the variant, because the moment a link is
+   * made this field re-renders as "linked" and the chance to offer it would be
+   * gone — which is exactly the moment the answer is obvious to whoever just
+   * chose it.
+   */
+  const [siblings, setSiblings] = useState<{ wooProductId: number; count: number } | null>(null);
+
+  async function onLinkSiblings() {
+    if (!siblings) return;
+    setLinking(true);
+    const res = await linkSiblingVariantsToWebsite(slug, variant.value, siblings.wooProductId);
+    setLinking(false);
+    if (!res.ok) {
+      toast.error(res.error);
+      return;
+    }
+    setSiblings(null);
+    toast.success(`Linked ${res.linked} more ${res.linked > 1 ? "variants" : "variant"}`);
+  }
 
   if (variant.wooProductId != null) {
     return (
-      <p className="text-xs text-emerald-600 dark:text-emerald-400">
-        Website #{variant.wooProductId}
-      </p>
+      <div className="space-y-1.5">
+        <p className="text-xs text-emerald-600 dark:text-emerald-400">
+          Website #{variant.wooProductId}
+        </p>
+        {siblings && (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={linking}
+            onClick={onLinkSiblings}
+            className="h-7 text-xs"
+          >
+            Also link {siblings.count} more{" "}
+            {siblings.count > 1 ? "variants" : "variant"} of this product
+          </Button>
+        )}
+      </div>
     );
   }
 
@@ -140,6 +178,9 @@ function WebsiteLinkField({
             return;
           }
           toast.success("Linked to the website");
+          if (res.unlinkedSiblings > 0) {
+            setSiblings({ wooProductId: Number(opt.value), count: res.unlinkedSiblings });
+          }
           onLinked(Number(opt.value));
         }}
         fetchPage={async (q) => {
@@ -313,6 +354,25 @@ export function ComboManager({
     }
     const duplicated = pickedIds.length !== new Set(pickedIds).size;
 
+    // Rows that are one product once they reach the website. Ordinary, not an
+    // error — this app keeps a toy's colours apart and the website sells one
+    // listing for them — but worth saying out loud, because the set will be
+    // described there as needing the total rather than the separate rows, and
+    // its availability there will be counted from one shelf.
+    const byWebsite = new Map<number, { labels: string[]; qty: number }>();
+    for (const c of components) {
+      const v = c.variant;
+      const qty = parseInt(c.quantity) || 0;
+      if (!v || v.wooProductId == null || qty <= 0) continue;
+      const g = byWebsite.get(v.wooProductId) ?? { labels: [], qty: 0 };
+      if (!g.labels.includes(v.label)) g.labels.push(v.label);
+      g.qty += qty;
+      byWebsite.set(v.wooProductId, g);
+    }
+    const websiteMerges = [...byWebsite]
+      .filter(([, g]) => g.labels.length > 1)
+      .map(([id, g]) => ({ id, ...g }));
+
     const picked = [...byVariant].map(([productVariantId, quantity]) => {
       const f = facts[productVariantId];
       return {
@@ -338,6 +398,7 @@ export function ComboManager({
       loading,
       unpriced,
       duplicated,
+      websiteMerges,
       listTotal,
       costTotal,
       saving: round2(Math.max(0, listTotal - comboPrice)),
@@ -996,6 +1057,13 @@ export function ComboManager({
                     quantity — saving will refuse it otherwise.
                   </p>
                 )}
+                {preview.websiteMerges.map((m) => (
+                  <p key={m.id} className="text-xs text-muted-foreground">
+                    {m.labels.join(" and ")} are one product on the website (#{m.id}) — it
+                    will be told this set needs {m.qty}, and will count how many sets it can
+                    make from that one listing.
+                  </p>
+                ))}
                 {preview.unpriced > 0 && (
                   <p className="text-xs text-amber-600 dark:text-amber-400">
                     {preview.unpriced} of these has no price of its own, so &ldquo;bought

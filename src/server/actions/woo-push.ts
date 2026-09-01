@@ -7,7 +7,7 @@ import type { ActionFailure } from "@/lib/form";
 import { recordActivity } from "@/lib/activity";
 import { variantFullName } from "@/lib/variants";
 import { round2 } from "@/lib/money";
-import { comboPricePayload } from "@/lib/combos";
+import { comboPricePayload, mergeByWebsiteProduct } from "@/lib/combos";
 import {
   clearWooCatalogCache,
   fetchWooCatalog,
@@ -19,7 +19,7 @@ import {
 } from "@/lib/woo-catalog";
 
 export type PushResult = { ok: true; wooProductId: number; created: boolean } | ActionFailure;
-export type LinkResult = { ok: true } | ActionFailure;
+export type LinkResult = { ok: true; unlinkedSiblings: number } | ActionFailure;
 
 /** The plugin on the website reads these three. They are the whole contract. */
 const ITEMS_META = "_gedu_combo_items";
@@ -94,18 +94,24 @@ export async function linkVariantToWebsite(
 
   const variant = await prisma.productVariant.findFirst({
     where: { id: variantId, product: { workspaceId: gate.access.workspaceId } },
-    select: { id: true, attributes: true, product: { select: { name: true } } },
+    select: { id: true, productId: true, attributes: true, product: { select: { name: true } } },
   });
   if (!variant) return { ok: false, error: "Variant not found" };
 
   if (wooProductId !== null) {
-    // Two variants pointing at one website product would make a combo's recipe
-    // ask for the same shelf twice under two names, and the stock arithmetic
-    // would quietly under-count what a set needs.
+    // Variants of ONE product sharing a website product is the ordinary case,
+    // not a mistake: this app tracks a toy's colours apart, the website sells
+    // one listing for all of them. The recipe is merged by website id before
+    // it is pushed, so the set's arithmetic comes out right — see
+    // mergeByWebsiteProduct, which is what makes this allowed.
+    //
+    // Two DIFFERENT products on one website product stays refused. That has no
+    // honest reading: it would silently pack one thing where another was
+    // ordered, and take its stock from the wrong shelf.
     const clash = await prisma.productVariant.findFirst({
       where: {
         wooProductId,
-        id: { not: variantId },
+        productId: { not: variant.productId },
         product: { workspaceId: gate.access.workspaceId },
       },
       select: { attributes: true, product: { select: { name: true } } },
@@ -113,7 +119,9 @@ export async function linkVariantToWebsite(
     if (clash) {
       return {
         ok: false,
-        error: `Website product #${wooProductId} is already linked to ${variantFullName(clash.product.name, clash.attributes)}.`,
+        error:
+          `Website product #${wooProductId} already stands for ${variantFullName(clash.product.name, clash.attributes)}, ` +
+          `which is a different product. Two products cannot share one website listing.`,
       };
     }
   }
@@ -132,7 +140,15 @@ export async function linkVariantToWebsite(
   });
 
   revalidatePath(`/${slug}/products`);
-  return { ok: true };
+  // Offered, not done: the other colours usually belong on the same website
+  // listing, but "usually" is not "always", so a person says so.
+  const unlinkedSiblings =
+    wooProductId === null
+      ? 0
+      : await prisma.productVariant.count({
+          where: { productId: variant.productId, id: { not: variantId }, wooProductId: null },
+        });
+  return { ok: true, unlinkedSiblings };
 }
 
 /**
@@ -210,7 +226,16 @@ export async function pushComboToWebsite(slug: string, comboId: string): Promise
   if (!combo) return { ok: false, error: "Combo not found" };
   if (combo.items.length === 0) return { ok: false, error: "Add products to the combo first" };
 
-  const unlinked = combo.items.filter((i) => !i.productVariant.wooProductId);
+  // One pass so the guard below and the recipe agree by construction: every
+  // item is either reported as unlinked or carries a website id the types know
+  // about, with no cast standing in for the check.
+  const recipe: { wooProductId: number; quantity: number }[] = [];
+  const unlinked: typeof combo.items = [];
+  for (const i of combo.items) {
+    const wooProductId = i.productVariant.wooProductId;
+    if (wooProductId == null) unlinked.push(i);
+    else recipe.push({ wooProductId, quantity: i.quantity });
+  }
   if (unlinked.length > 0) {
     const names = unlinked
       .map((i) => variantFullName(i.productVariant.product.name, i.productVariant.attributes))
@@ -232,10 +257,10 @@ export async function pushComboToWebsite(slug: string, comboId: string): Promise
     meta_data: [
       {
         key: ITEMS_META,
-        value: combo.items.map((i) => ({
-          id: i.productVariant.wooProductId,
-          qty: i.quantity,
-        })),
+        // Merged, because several variants here can be one product there. Two
+        // rows naming one listing would let the website work out a larger
+        // buildable count than the shelf can actually fill.
+        value: mergeByWebsiteProduct(recipe),
       },
       { key: FREE_SHIPPING_META, value: combo.freeDelivery ? "yes" : "no" },
       { key: PRICE_META, value: String(price) },
@@ -301,4 +326,65 @@ export async function pushComboToWebsite(slug: string, comboId: string): Promise
 
   revalidatePath(`/${slug}/products`);
   return { ok: true, wooProductId, created };
+}
+
+/**
+ * Link every other variant of this product to the same website product.
+ *
+ * The website often sells as one listing what this app tracks as several
+ * variants — a toy's colours, say, where the shop does not promise which one
+ * goes in the box. Linking those one at a time is the same choice made five
+ * times, so it is offered once after the first is made.
+ *
+ * Only variants with no link are touched: one already pointing somewhere else
+ * was pointed there on purpose.
+ */
+export async function linkSiblingVariantsToWebsite(
+  slug: string,
+  variantId: string,
+  wooProductId: number,
+): Promise<{ ok: true; linked: number } | ActionFailure> {
+  const gate = await requireAccess(slug, "products", "edit");
+  if (!gate.ok) return gate;
+
+  const variant = await prisma.productVariant.findFirst({
+    where: { id: variantId, product: { workspaceId: gate.access.workspaceId } },
+    select: { productId: true, product: { select: { name: true } } },
+  });
+  if (!variant) return { ok: false, error: "Variant not found" };
+
+  // The same rule the single link applies: one website listing may stand for
+  // the variants of one product, never for two products.
+  const clash = await prisma.productVariant.findFirst({
+    where: {
+      wooProductId,
+      productId: { not: variant.productId },
+      product: { workspaceId: gate.access.workspaceId },
+    },
+    select: { attributes: true, product: { select: { name: true } } },
+  });
+  if (clash) {
+    return {
+      ok: false,
+      error: `Website product #${wooProductId} already stands for ${variantFullName(clash.product.name, clash.attributes)}, which is a different product.`,
+    };
+  }
+
+  const { count } = await prisma.productVariant.updateMany({
+    where: { productId: variant.productId, id: { not: variantId }, wooProductId: null },
+    data: { wooProductId },
+  });
+
+  if (count > 0) {
+    await recordActivity(gate.access, {
+      action: "UPDATE",
+      entity: "Product",
+      entityId: variant.productId,
+      entityLabel: variant.product.name,
+      summary: `Linked ${count} more ${count > 1 ? "variants" : "variant"} to website product #${wooProductId}`,
+    });
+    revalidatePath(`/${slug}/products`);
+  }
+
+  return { ok: true, linked: count };
 }

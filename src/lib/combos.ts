@@ -152,3 +152,30 @@ export function comboPricePayload(
   // sale price would otherwise keep selling at the old one.
   return { regular_price: String(price), sale_price: "" };
 }
+
+/**
+ * A recipe rewritten in the website's ids, with repeats added together.
+ *
+ * Several variants here can be one product there: this app tracks a toy's
+ * colours separately, the website sells one listing for all of them. That is a
+ * deliberate choice — the shop does not promise a colour — and it means a
+ * recipe of "Red ×1, Blue ×2" is, to the website, three of one product.
+ *
+ * Sending it unmerged is the bug this exists to prevent. The website works out
+ * a combo's availability as the smallest `stock ÷ qty` across the rows, so two
+ * rows naming one product with 10 in stock would answer min(10÷1, 10÷2) = 5
+ * sets from stock that can only build 3 — and it would sell the difference.
+ * Merged first, it answers 10÷3 = 3.
+ *
+ * Order is first-seen so the website lists the box's contents the way the
+ * recipe was written.
+ */
+export function mergeByWebsiteProduct(
+  items: { wooProductId: number; quantity: number }[],
+): { id: number; qty: number }[] {
+  const merged = new Map<number, number>();
+  for (const i of items) {
+    merged.set(i.wooProductId, (merged.get(i.wooProductId) ?? 0) + i.quantity);
+  }
+  return [...merged].map(([id, qty]) => ({ id, qty }));
+}

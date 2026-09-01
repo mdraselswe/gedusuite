@@ -251,6 +251,13 @@ model ProductVariant {
    * as a recipe, and a recipe written in this app's own ids would mean nothing
    * there — so the link is made once, per variant, and only for the variants a
    * combo actually uses. Everything else can stay unlinked forever.
+   *
+   * Not unique: several variants of ONE product may share a website id, where
+   * the website sells as a single listing what is tracked here as separate
+   * things — a toy's colours, say, when the shop does not promise which colour
+   * ships. Recipes are merged by this id before being pushed so the set's
+   * arithmetic still comes out right. Two different products sharing one id is
+   * refused (see linkVariantToWebsite), having no honest reading.
    */
   wooProductId      Int?
 

@@ -4,6 +4,7 @@ import {
   comboBuildable,
   comboPricePayload,
   componentsTotal,
+  mergeByWebsiteProduct,
   type ComboComponent,
 } from "@/lib/combos";
 
@@ -131,5 +132,58 @@ describe("comboPricePayload", () => {
 
   it("takes over a regular price the combo has risen above", () => {
     expect(comboPricePayload(160, 149)).toEqual({ regular_price: "160", sale_price: "" });
+  });
+});
+
+describe("mergeByWebsiteProduct", () => {
+  it("adds together variants the website sells as one product", () => {
+    // Red and Blue are two shelves here and one listing there.
+    expect(
+      mergeByWebsiteProduct([
+        { wooProductId: 2396, quantity: 1 },
+        { wooProductId: 2396, quantity: 2 },
+      ]),
+    ).toEqual([{ id: 2396, qty: 3 }]);
+  });
+
+  it("is what stops the website overselling a merged recipe", () => {
+    // Unmerged, the website reads two rows and answers min(10/1, 10/2) = 5
+    // sets. There is stock for three. This is the whole reason for merging.
+    const merged = mergeByWebsiteProduct([
+      { wooProductId: 2396, quantity: 1 },
+      { wooProductId: 2396, quantity: 2 },
+    ]);
+    const stock = 10;
+    const buildable = Math.min(...merged.map((m) => Math.floor(stock / m.qty)));
+    expect(buildable).toBe(3);
+  });
+
+  it("leaves distinct products alone", () => {
+    expect(
+      mergeByWebsiteProduct([
+        { wooProductId: 2620, quantity: 2 },
+        { wooProductId: 2614, quantity: 2 },
+      ]),
+    ).toEqual([
+      { id: 2620, qty: 2 },
+      { id: 2614, qty: 2 },
+    ]);
+  });
+
+  it("keeps first-seen order so the box reads the way it was written", () => {
+    expect(
+      mergeByWebsiteProduct([
+        { wooProductId: 30, quantity: 1 },
+        { wooProductId: 10, quantity: 1 },
+        { wooProductId: 30, quantity: 1 },
+      ]),
+    ).toEqual([
+      { id: 30, qty: 2 },
+      { id: 10, qty: 1 },
+    ]);
+  });
+
+  it("has nothing to say about an empty recipe", () => {
+    expect(mergeByWebsiteProduct([])).toEqual([]);
   });
 });
