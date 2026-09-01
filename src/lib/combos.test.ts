@@ -5,6 +5,7 @@ import {
   comboPricePayload,
   componentsTotal,
   mergeByWebsiteProduct,
+  stockShortfall,
   type ComboComponent,
 } from "@/lib/combos";
 
@@ -222,5 +223,68 @@ describe("a buy-one-get-one, which is one product taken twice", () => {
     expect(allocateComboPrice(B2G3, 200, 1)).toEqual([
       { productVariantId: "toy", quantity: 3, unitPrice: 100, discount: 100 },
     ]);
+  });
+});
+
+describe("stockShortfall", () => {
+  it("adds a combo's pieces to the loose ones before judging", () => {
+    // Two combos with an aeroplane each, plus one on its own: three wanted,
+    // two on the shelf. Judged per combo this passes — each set is buildable.
+    expect(
+      stockShortfall(
+        [
+          { productVariantId: "plane", quantity: 1 },
+          { productVariantId: "plane", quantity: 1 },
+          { productVariantId: "plane", quantity: 1 },
+        ],
+        new Map([["plane", 2]]),
+      ),
+    ).toEqual([{ productVariantId: "plane", need: 3, have: 2 }]);
+  });
+
+  it("says nothing when the shelf covers it exactly", () => {
+    expect(
+      stockShortfall(
+        [
+          { productVariantId: "plane", quantity: 2 },
+          { productVariantId: "plane", quantity: 1 },
+        ],
+        new Map([["plane", 3]]),
+      ),
+    ).toEqual([]);
+  });
+
+  it("reports each short variant once, with the total wanted", () => {
+    expect(
+      stockShortfall(
+        [
+          { productVariantId: "a", quantity: 2 },
+          { productVariantId: "b", quantity: 1 },
+          { productVariantId: "a", quantity: 2 },
+        ],
+        new Map([
+          ["a", 3],
+          ["b", 5],
+        ]),
+      ),
+    ).toEqual([{ productVariantId: "a", need: 4, have: 3 }]);
+  });
+
+  it("treats a variant it knows no stock for as having none", () => {
+    expect(stockShortfall([{ productVariantId: "ghost", quantity: 1 }], new Map())).toEqual([
+      { productVariantId: "ghost", need: 1, have: 0 },
+    ]);
+  });
+
+  it("ignores rows asking for nothing", () => {
+    expect(
+      stockShortfall(
+        [
+          { productVariantId: "a", quantity: 0 },
+          { productVariantId: "a", quantity: -1 },
+        ],
+        new Map([["a", 0]]),
+      ),
+    ).toEqual([]);
   });
 });

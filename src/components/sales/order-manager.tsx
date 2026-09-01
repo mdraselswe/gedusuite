@@ -77,6 +77,7 @@ import { Money } from "@/components/ui/money";
 import { Stamp } from "@/components/ui/stamp";
 import { toDhakaInputValue, type DhakaStamp } from "@/lib/dhaka-time";
 import { formatMoney, round2 } from "@/lib/money";
+import { stockShortfall } from "@/lib/combos";
 import { goodsLikelyWithCourier, OVERDUE_RETURN_DAYS } from "@/lib/returns";
 import { Field } from "@/components/ui/field";
 import { MoneyInput } from "@/components/ui/money-input";
@@ -1320,6 +1321,65 @@ export function OrderManager({
         // cost (or any custom gift) is kept as-is.
         costOverridden: g.mode === "CUSTOM" || g.costEdited,
       }));
+
+    // The same arithmetic the server runs before it writes anything: one
+    // demand figure per variant, whatever it arrived as. Two combos each
+    // containing an aeroplane plus a third aeroplane on its own is a demand of
+    // three, and gets checked as three.
+    //
+    // The per-row "only N can be made" note cannot see that — it reads one
+    // combo at a time, and knows nothing about the loose lines or the gifts —
+    // so a basket that overdrew a shelf across rows was filled in, sent, and
+    // refused on the way back, with the form still on screen.
+    //
+    // Advisory, not authoritative. These stock figures were read when the form
+    // was opened; the server re-reads them inside the transaction and stays
+    // the one that decides. If a delivery lands while the form is open this
+    // will refuse an order that would in fact go through — reopening the form
+    // clears it, and being told early is worth that.
+    const known = new Map<string, { stock: number; label: string }>();
+    for (const it of items) {
+      if (it.variant) {
+        known.set(it.variant.value, { stock: it.variant.stock, label: it.variant.label });
+      }
+    }
+    for (const g of gifts) {
+      if (g.mode === "PRODUCT" && g.variant) {
+        known.set(g.variant.value, { stock: g.variant.stock, label: g.variant.label });
+      }
+    }
+    for (const p of pickedCombos) {
+      for (const k of p.combo.components) {
+        known.set(k.productVariantId, { stock: k.stock, label: k.label });
+      }
+    }
+
+    const short = stockShortfall(
+      [
+        ...cleanItems.map((it) => ({
+          productVariantId: it.productVariantId,
+          quantity: it.quantity,
+        })),
+        ...cleanGifts
+          .filter((g) => g.productVariantId)
+          .map((g) => ({ productVariantId: g.productVariantId, quantity: g.quantity })),
+        ...pickedCombos.flatMap((p) =>
+          p.combo.components.map((k) => ({
+            productVariantId: k.productVariantId,
+            quantity: k.quantity * p.quantity,
+          })),
+        ),
+      ],
+      new Map([...known].map(([id, k]) => [id, k.stock])),
+    );
+    if (short.length > 0) {
+      toast.error(
+        `Not enough stock — ${short
+          .map((r) => `${known.get(r.productVariantId)?.label ?? "item"}: need ${r.need}, ${r.have} in stock`)
+          .join("; ")}`,
+      );
+      return;
+    }
     setLoading(true);
     const fd = new FormData(e.currentTarget);
     fd.set("customerId", customer?.value ?? "");

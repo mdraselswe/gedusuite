@@ -179,3 +179,41 @@ export function mergeByWebsiteProduct(
   }
   return [...merged].map(([id, qty]) => ({ id, qty }));
 }
+
+/** One variant's claim on the shelf, whatever line it arrived on. */
+export type StockDemand = { productVariantId: string; quantity: number };
+
+/**
+ * What an order asks for that the shelf cannot cover.
+ *
+ * One demand figure per variant, whatever it arrived as — a loose line, a
+ * gift, or a piece inside a combo. This is the rule that makes a combo and a
+ * single of the same product share one shelf: two combos each containing an
+ * aeroplane, plus a third aeroplane on its own, is a demand of three and gets
+ * checked as three.
+ *
+ * Checking each combo against its own buildable count instead answers a
+ * different question — "could this set be built if it were the only thing on
+ * the order" — and passes baskets that overdraw a shelf across several rows.
+ *
+ * A variant with no entry in `stock` counts as none. Absent is not unlimited:
+ * the one place that mistake would surface is an order for something the shop
+ * does not have.
+ */
+export function stockShortfall(
+  demand: StockDemand[],
+  stock: Map<string, number>,
+): { productVariantId: string; need: number; have: number }[] {
+  const need = new Map<string, number>();
+  for (const d of demand) {
+    if (d.quantity <= 0) continue;
+    need.set(d.productVariantId, (need.get(d.productVariantId) ?? 0) + d.quantity);
+  }
+  return [...need]
+    .map(([productVariantId, n]) => ({
+      productVariantId,
+      need: n,
+      have: stock.get(productVariantId) ?? 0,
+    }))
+    .filter((r) => r.need > r.have);
+}
