@@ -1008,7 +1008,9 @@ export function ComboManager({
                       variant="ghost"
                       size="icon-sm"
                       aria-label={`Remove product ${i + 1}`}
-                      disabled={components.length <= 2}
+                      // One row is a valid combo: the same product twice is a
+                      // buy-one-get-one. The quantity box carries the rest.
+                      disabled={components.length <= 1}
                       onClick={() => setComponents(components.filter((_, j) => j !== i))}
                     >
                       <Trash2 />

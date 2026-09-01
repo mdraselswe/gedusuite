@@ -44,7 +44,26 @@ const ComboSchema = z.object({
     (v) => (v === "" || v == null ? undefined : v),
     z.coerce.date().optional(),
   ),
-  items: z.array(ComponentSchema).min(2, "A combo needs at least two products"),
+  /**
+   * Two pieces, which is not the same as two products.
+   *
+   * One product taken twice at the price of one is the whole of "buy one get
+   * one free", and the rest of a combo's machinery already handles it: the
+   * shelf makes floor(stock / 2) of them, the saving comes out at half, and an
+   * order still writes down two pieces of an ordinary product. Requiring two
+   * *products* refused that for no reason.
+   *
+   * One piece is still refused. A single product at its own quantity of one,
+   * sold at a different price, is not a set — it is that product's price, and
+   * changing it there is the honest place.
+   */
+  items: z
+    .array(ComponentSchema)
+    .min(1, "Add a product to the combo")
+    .refine((items) => items.reduce((n, i) => n + i.quantity, 0) >= 2, {
+      message:
+        "A combo needs at least two pieces. One product twice is fine — that is a buy-one-get-one; one piece on its own is just a price.",
+    }),
 });
 
 /** Read the form once; create and update parse the same shape. */

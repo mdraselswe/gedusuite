@@ -187,3 +187,40 @@ describe("mergeByWebsiteProduct", () => {
     expect(mergeByWebsiteProduct([])).toEqual([]);
   });
 });
+
+describe("a buy-one-get-one, which is one product taken twice", () => {
+  // "Buy 1 get 1" on a ৳79 keychain: the set is two pieces at the price of
+  // one. Nothing about it is special — it is an ordinary recipe with a single
+  // component — which is the point.
+  const BOGO: ComboComponent[] = [{ productVariantId: "keychain", quantity: 2, salePrice: 79 }];
+
+  it("lists for two and sells for one", () => {
+    expect(componentsTotal(BOGO)).toBe(158);
+  });
+
+  it("gives the whole saving to the one line", () => {
+    expect(allocateComboPrice(BOGO, 79, 1)).toEqual([
+      { productVariantId: "keychain", quantity: 2, unitPrice: 79, discount: 79 },
+    ]);
+  });
+
+  it("counts a set for every two on the shelf", () => {
+    expect(comboBuildable(BOGO, new Map([["keychain", 11]]))).toBe(5);
+    expect(comboBuildable(BOGO, new Map([["keychain", 1]]))).toBe(0);
+  });
+
+  it("scales when somebody takes two of the offer", () => {
+    // Two BOGOs = four pieces for the price of two.
+    expect(allocateComboPrice(BOGO, 79, 2)).toEqual([
+      { productVariantId: "keychain", quantity: 4, unitPrice: 79, discount: 158 },
+    ]);
+  });
+
+  it("handles buy two get three the same way", () => {
+    const B2G3: ComboComponent[] = [{ productVariantId: "toy", quantity: 3, salePrice: 100 }];
+    expect(componentsTotal(B2G3)).toBe(300);
+    expect(allocateComboPrice(B2G3, 200, 1)).toEqual([
+      { productVariantId: "toy", quantity: 3, unitPrice: 100, discount: 100 },
+    ]);
+  });
+});
