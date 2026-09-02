@@ -28,6 +28,7 @@ import {
   type LinkCandidate,
 } from "@/server/actions/leads";
 import { searchCustomers } from "@/server/actions/search";
+import { CART_STATUS } from "@/lib/abandoned-cart";
 import { customerContact } from "@/server/actions/customers";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { AsyncCombobox, type ComboOption } from "@/components/ui/async-combobox";
@@ -175,6 +176,8 @@ const CALL_ROW_TONE: Record<string, string | undefined> = {
  *  than a source — the two live in one dropdown because "where did this come
  *  from" is one question to the person making the calls. */
 const DRAFT = "__draft__";
+/** Same idea for a cart that never reached "Place order" at all. */
+const CART = "__cart__";
 /** Leads nobody has tagged yet — a real answer, not the absence of one. */
 const UNTAGGED = "__untagged__";
 
@@ -319,9 +322,11 @@ export function LeadManager({
         // WooCommerce state rather than a channel, but "where did this come
         // from" is one question to the person making the calls.
         { value: DRAFT, label: "Abandoned checkout" },
+        { value: CART, label: "Abandoned cart" },
       ],
       match: (l, v) => {
         if (v === DRAFT) return l.wooStatus === "checkout-draft";
+        if (v === CART) return l.wooStatus === CART_STATUS;
         if (v === UNTAGGED) return !l.channel;
         return l.channel === v;
       },
@@ -634,6 +639,20 @@ export function LeadManager({
                 title="Customer filled the checkout form but never placed the order"
               >
                 Draft
+              </Badge>
+            )}
+            {/* Never reached "Place order" at all — the storefront sent what
+                they had typed and they left. No order number exists for these,
+                so the cell above reads "—" and this badge is the only thing
+                saying what the row is. Violet rather than the draft's amber:
+                it is a step further from a sale, and the two need telling
+                apart at a glance down a column. */}
+            {l.wooStatus === CART_STATUS && (
+              <Badge
+                className="border-violet-500/40 bg-violet-500/20 font-semibold text-violet-700 dark:bg-violet-500/25 dark:text-violet-300"
+                title="Filled in the checkout but never placed the order — the cart is still sitting there"
+              >
+                Cart
               </Badge>
             )}
           </span>

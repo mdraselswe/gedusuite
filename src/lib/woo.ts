@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { districtFromIso } from "@/lib/bd-locations";
+import { clearAbandonedCartFor } from "@/lib/abandoned-cart-store";
 
 /**
  * Turning a WooCommerce order into a call-list lead.
@@ -126,7 +127,7 @@ export async function upsertLeadFromWooOrder(
   rawPayload: unknown,
 ) {
   const fields = leadFieldsFrom(order, rawPayload);
-  return prisma.orderLead.upsert({
+  const lead = await prisma.orderLead.upsert({
     where: {
       workspaceId_source_externalId: {
         workspaceId,
@@ -146,6 +147,17 @@ export async function upsertLeadFromWooOrder(
     },
     update: fields,
   });
+
+  // This person reached the checkout, so the storefront's beacon will have
+  // filed them as an abandoned cart while they were typing. They finished —
+  // drop that row, or the call list shows "they left this behind" beside the
+  // order they actually placed. A checkout-draft is left alone on purpose:
+  // that one really did fail.
+  if (order.status !== "checkout-draft") {
+    await clearAbandonedCartFor(workspaceId, fields.phone);
+  }
+
+  return lead;
 }
 
 /**

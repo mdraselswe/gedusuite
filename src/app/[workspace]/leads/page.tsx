@@ -8,6 +8,7 @@ import { dhakaInstant } from "@/lib/dhaka-time";
 import { leadFulfilment } from "@/lib/lead-fulfilment";
 import { normalizePhone, phoneSearchTerms } from "@/lib/phone";
 import { buildBuyerHistory, historyForLead } from "@/lib/buyer-history";
+import { ABANDON_AFTER_MS, CART_SOURCE } from "@/lib/abandoned-cart";
 import { Pagination, parsePage } from "@/components/ui/pagination";
 import { PageHeader } from "@/components/ui/page-header";
 
@@ -60,6 +61,15 @@ export default async function LeadsPage({
   const phoneTerms = phoneSearchTerms(q);
   const where = {
     workspaceId: access.workspaceId,
+    // A cart snapshot arrives while the customer is still typing in the
+    // checkout, so the newest ones are people who are mid-purchase right now.
+    // Ringing them would be worse than not ringing them at all. They stay in
+    // the database — the row keeps being refreshed as they type — and appear
+    // here once they have been quiet for ABANDON_AFTER_MS.
+    NOT: {
+      source: CART_SOURCE,
+      orderedAt: { gt: new Date(Date.now() - ABANDON_AFTER_MS) },
+    },
     ...(q
       ? {
           OR: [
@@ -81,8 +91,11 @@ export default async function LeadsPage({
   const [leadCount, totalLeadCount, leads] = await Promise.all([
     prisma.orderLead.count({ where }),
     // Unfiltered, for the bar's "showing N of M" — the list is bigger than the
-    // page of it that was fetched.
-    prisma.orderLead.count({ where: { workspaceId: access.workspaceId } }),
+    // page of it that was fetched. Carries the same cart cutoff as `where`, or
+    // the total would count rows the list is deliberately not showing yet.
+    prisma.orderLead.count({
+      where: { workspaceId: access.workspaceId, NOT: where.NOT },
+    }),
     prisma.orderLead.findMany({
       where,
       orderBy: { orderedAt: "desc" },

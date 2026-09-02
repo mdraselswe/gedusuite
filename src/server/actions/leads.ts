@@ -9,6 +9,7 @@ import { requireAccess } from "@/lib/authz";
 import { requireUser } from "@/lib/session";
 import { createCustomer, findCustomerByPhone } from "@/server/actions/customers";
 import { syncWooOrders, wooConfigured } from "@/lib/woo";
+import { refreshAbandonedCartAlerts } from "@/lib/abandoned-cart-store";
 import { isOrderSource } from "@/lib/order-source";
 import { nextOrderNo } from "@/lib/lead-order-no";
 import { dhakaInputToDate } from "@/lib/dhaka-time";
@@ -660,6 +661,9 @@ export async function syncFromWebsite(
 
   try {
     const res = await syncWooOrders(workspaceId);
+    // Opening the call list is also the moment to notice the carts that went
+    // quiet since it was last looked at, so the bell agrees with the table.
+    await refreshAbandonedCartAlerts(workspaceId);
     await prisma.wooSyncState.upsert({
       where: { workspaceId },
       create: { workspaceId, lastSyncAt: new Date(), lastResult: `${res.upserted} orders` },
