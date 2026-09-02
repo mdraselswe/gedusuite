@@ -97,9 +97,19 @@ export function leadFieldsFrom(order: WooOrder, rawPayload: unknown) {
 
   return {
     orderNo: order.number ? `#${order.number}` : null,
-    // "checkout-draft" = the customer filled the checkout form but never
-    // pressed Place order. WooCommerce fires no webhook for those, so they can
-    // only ever arrive through the sync.
+    // "checkout-draft" = the customer pressed Place order and it did not go
+    // through. Not "never pressed it", which this comment said for a long time
+    // and which the storefront makes impossible: the draft carries
+    // `payment_method: cod` and the synthetic `order.<digits>@gedushop.com`
+    // address, and both are built inside CheckoutForm's submit handler and
+    // sent only in the POST that places the order. Every draft on the store
+    // also carries a resolved shipping line and a full address — they are
+    // finished orders that never flipped to processing.
+    //
+    // Worth calling for exactly that reason, and worth watching: of the eleven
+    // on record to 2026-09-03, not one of those customers ever came back and
+    // ordered. WooCommerce fires no webhook for these, so they only ever
+    // arrive through the sync.
     wooStatus: order.status ?? null,
     customerName: name,
     // Never drop an order for a missing phone — an empty cell is still callable
