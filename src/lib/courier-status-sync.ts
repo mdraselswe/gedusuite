@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { loadCourierCredentials } from "@/lib/courier-credentials";
 import { statusByConsignment } from "@/lib/steadfast";
 import { recordSystemActivity } from "@/lib/activity";
+import { syncOrderStatusToWoo } from "@/lib/woo-order-sync";
 
 /**
  * Ask the courier where each parcel in flight has got to.
@@ -168,6 +169,10 @@ export async function syncCourierStatuses(opts: {
           ? "Courier says: delivered — order marked delivered"
           : `Courier says: ${status}`,
     });
+
+    // This is the other place DELIVERED gets set — the dropdown on the sales
+    // page is the first — so it needs the same mirror to the website.
+    if (applies) await syncOrderStatusToWoo(order.id, "DELIVERED");
   }
 
   return { checked, changed, delivered, slugs: [...slugs] };

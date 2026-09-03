@@ -26,6 +26,7 @@ import { allocateComboPrice, type ComboComponent } from "@/lib/combos";
 import { isOrderSource } from "@/lib/order-source";
 import { codFeeOn, quoteCourier } from "@/lib/courier";
 import { syncCourierStatuses } from "@/lib/courier-status-sync";
+import { syncOrderStatusToWoo } from "@/lib/woo-order-sync";
 import type { OrderStatus, PaymentStatus, Prisma, ReturnLeg } from "@prisma/client";
 import { checkboxField, failed, type ActionFailure } from "@/lib/form";
 import { diffFields, newActivityGroup, recordActivity } from "@/lib/activity";
@@ -1250,6 +1251,12 @@ export async function updateOrderStatus(
   // A status change moves stock in both directions — confirming consumes it,
   // cancelling puts it back — so the alerts have to be recomputed either way.
   await refreshInventoryAlerts(workspaceId);
+
+  // Mirrors to the website when this order started there. See woo-order-sync
+  // for why an order with no Woo lead is skipped rather than guessed at.
+  if (status === "DELIVERED" || status === "CANCELLED") {
+    await syncOrderStatusToWoo(orderId, status);
+  }
 
   // A cancellation is the one status change that carries money with it, and
   // the figures typed into the dialog are exactly the ones somebody asks about
