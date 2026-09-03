@@ -93,6 +93,12 @@ type OrderItem = {
 };
 type OrderRow = DhakaStamp & {
   id: string;
+  /**
+   * The short per-workspace number, not the cuid — the figure a courier's
+   * statement and Steadfast's own app carry. Null on rows that predate the
+   * backfill; nothing assigns one retroactively.
+   */
+  orderNo: number | null;
   customerId: string | null;
   customerName: string;
   /** Who this parcel was addressed to — the snapshot, or the customer record. */
@@ -279,6 +285,7 @@ type GiftDraft = {
 // this page keeps its own toolbar, so the table would grow a second Columns
 // button beside the first.
 const OPTIONAL_COLUMNS = [
+  { key: "orderId", label: "Order ID" },
   { key: "heldBy", label: "Held by" },
   { key: "courier", label: "Courier ID" },
   { key: "campaign", label: "Campaign" },
@@ -1800,6 +1807,26 @@ export function OrderManager({
                 </span>
               ),
             },
+            // Near the front rather than down with the other optional columns:
+            // when it is on at all it is because somebody is matching this list
+            // against a courier statement line by line, and a number they have
+            // to look sideways for defeats the point. Not first — the customer
+            // column is the mobile card's title line.
+            ...(showColumn("orderId")
+              ? [
+                  {
+                    key: "orderId",
+                    header: "Order ID",
+                    cell: (o: OrderRow) =>
+                      o.orderNo == null ? (
+                        <span className="text-muted-foreground">—</span>
+                      ) : (
+                        <span className="tabular-nums">#{o.orderNo}</span>
+                      ),
+                    sortValue: (o: OrderRow) => o.orderNo ?? 0,
+                  },
+                ]
+              : []),
             {
               key: "date",
               header: "Date",

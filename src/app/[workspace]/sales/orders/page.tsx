@@ -384,6 +384,7 @@ export default async function OrdersPage({
     const totals = computeOrderTotals(o);
     return {
       id: o.id,
+      orderNo: o.orderNo,
       // The day it was sold, plus the time it was entered — two orders an hour
       // apart used to read as one moment.
       ...dhakaRecordStamp(o.date, o.createdAt, o.dateHasTime),
