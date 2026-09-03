@@ -94,11 +94,12 @@ type OrderItem = {
 type OrderRow = DhakaStamp & {
   id: string;
   /**
-   * The short per-workspace number, not the cuid — the figure a courier's
-   * statement and Steadfast's own app carry. Null on rows that predate the
-   * backfill; nothing assigns one retroactively.
+   * The same number the call list shows for this order — already formatted
+   * ("#2663"), because that page's field is free text (typed, or copied from
+   * WooCommerce) rather than a counter this app owns. Null only for an order
+   * no lead ever pointed at.
    */
-  orderNo: number | null;
+  orderNo: string | null;
   customerId: string | null;
   customerName: string;
   /** Who this parcel was addressed to — the snapshot, or the customer record. */
@@ -1821,9 +1822,11 @@ export function OrderManager({
                       o.orderNo == null ? (
                         <span className="text-muted-foreground">—</span>
                       ) : (
-                        <span className="tabular-nums">#{o.orderNo}</span>
+                        <span className="tabular-nums">{o.orderNo}</span>
                       ),
-                    sortValue: (o: OrderRow) => o.orderNo ?? 0,
+                    // The field is free text on the call list, so this can't
+                    // sort numerically for every row — only the digits in it.
+                    sortValue: (o: OrderRow) => Number(o.orderNo?.replace(/\D/g, "")) || 0,
                   },
                 ]
               : []),

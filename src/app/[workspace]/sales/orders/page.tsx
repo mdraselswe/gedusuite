@@ -305,6 +305,22 @@ export default async function OrdersPage({
     listCombosForOrder(slug),
   ]);
 
+  // The number this page's own orderRows map to, further down: whichever
+  // call-list lead became each order — read here, rather than joined, because
+  // OrderLead carries no foreign key to Order (see the schema's note on why:
+  // a backup restore must never be blocked by it). Keyed by lead.orderNo, the
+  // exact string the call list shows — "#2663" for a WooCommerce order, or
+  // whatever was typed for one entered by hand — so the two pages read the
+  // same number for the same sale instead of two different counters.
+  const orderIds = orders.map((o) => o.id);
+  const leadOrderNos = orderIds.length
+    ? await prisma.orderLead.findMany({
+        where: { workspaceId, orderId: { in: orderIds }, orderNo: { not: null } },
+        select: { orderId: true, orderNo: true },
+      })
+    : [];
+  const leadOrderNoByOrderId = new Map(leadOrderNos.map((l) => [l.orderId!, l.orderNo!]));
+
   const memberOptions = members.map((m) => ({
     id: m.id,
     label: `${m.user.name ?? m.user.email} (${m.role})`,
@@ -384,7 +400,12 @@ export default async function OrdersPage({
     const totals = computeOrderTotals(o);
     return {
       id: o.id,
-      orderNo: o.orderNo,
+      // The call list's own number when this order came from a lead — the
+      // same string that page shows, so a row can be found on both without
+      // translating between two counters. Falls back to this app's own
+      // per-workspace number for an order no lead ever pointed at (a walk-in,
+      // or one entered before the lead pipeline existed).
+      orderNo: leadOrderNoByOrderId.get(o.id) ?? (o.orderNo != null ? `#${o.orderNo}` : null),
       // The day it was sold, plus the time it was entered — two orders an hour
       // apart used to read as one moment.
       ...dhakaRecordStamp(o.date, o.createdAt, o.dateHasTime),
