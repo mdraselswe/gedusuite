@@ -21,11 +21,33 @@ import { round2 } from "@/lib/money";
 export type ActionResult = { ok: true } | ActionFailure;
 
 
+// Kept in the same order as the form's dropdown (internal-purchase-manager),
+// and as the Prisma enum's own declared order, up to a point: Postgres can
+// only ADD an enum value at the end, so the five original categories stay
+// first here in their original order and everything since is appended after
+// — this array's order is free to differ from the enum's on-disk order
+// (nothing depends on that), but keeping the two readable side by side is
+// worth more than an alphabetised list.
 const CATEGORIES = [
   "OFFICE_SUPPLIES",
   "PACKAGING_MATERIAL",
   "EQUIPMENT",
+  "REPAIR_MAINTENANCE",
   "UTILITIES",
+  "INTERNET_BILL",
+  "MOBILE_BILL",
+  "WEBSITE_HOSTING",
+  "AI_SUBSCRIPTION",
+  "SOFTWARE_SUBSCRIPTION",
+  "FACEBOOK_ADS",
+  "ONLINE_ADVERTISING",
+  "RENT",
+  "VEHICLE_RENT",
+  "FUEL",
+  "FOOD_REFRESHMENT",
+  "SALARY_WAGES",
+  "BANK_PAYMENT_FEES",
+  "PROFESSIONAL_FEES",
   "OTHER",
 ] as const;
 

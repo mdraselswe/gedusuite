@@ -66,18 +66,52 @@ type Item = DhakaStamp & {
 };
 type Perms = { canAdd: boolean; canEdit: boolean };
 
+// Grouped rather than alphabetised — office/equipment, bills, tech
+// subscriptions, marketing, premises/transport, food, people, finance, then
+// the catch-all last — so the dropdown reads as categories of categories
+// instead of a wall of unrelated words in Z order.
 const CATEGORIES = [
   "OFFICE_SUPPLIES",
   "PACKAGING_MATERIAL",
   "EQUIPMENT",
+  "REPAIR_MAINTENANCE",
   "UTILITIES",
+  "INTERNET_BILL",
+  "MOBILE_BILL",
+  "WEBSITE_HOSTING",
+  "AI_SUBSCRIPTION",
+  "SOFTWARE_SUBSCRIPTION",
+  "FACEBOOK_ADS",
+  "ONLINE_ADVERTISING",
+  "RENT",
+  "VEHICLE_RENT",
+  "FUEL",
+  "FOOD_REFRESHMENT",
+  "SALARY_WAGES",
+  "BANK_PAYMENT_FEES",
+  "PROFESSIONAL_FEES",
   "OTHER",
 ];
 const LABEL: Record<string, string> = {
   OFFICE_SUPPLIES: "Office supplies",
   PACKAGING_MATERIAL: "Packaging material",
   EQUIPMENT: "Equipment",
+  REPAIR_MAINTENANCE: "Repair & maintenance",
   UTILITIES: "Utilities",
+  INTERNET_BILL: "Internet bill",
+  MOBILE_BILL: "Mobile bill",
+  WEBSITE_HOSTING: "Website & hosting",
+  AI_SUBSCRIPTION: "AI tools",
+  SOFTWARE_SUBSCRIPTION: "Software & subscriptions",
+  FACEBOOK_ADS: "Facebook / Meta ads",
+  ONLINE_ADVERTISING: "Other online advertising",
+  RENT: "Office / warehouse rent",
+  VEHICLE_RENT: "Vehicle rent",
+  FUEL: "Fuel",
+  FOOD_REFRESHMENT: "Food & refreshments",
+  SALARY_WAGES: "Salary & wages",
+  BANK_PAYMENT_FEES: "Bank & payment gateway fees",
+  PROFESSIONAL_FEES: "Professional & legal fees",
   OTHER: "Other",
 };
 

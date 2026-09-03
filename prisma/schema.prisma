@@ -1112,6 +1112,25 @@ enum ExpenseCategory {
   EQUIPMENT
   UTILITIES
   OTHER
+  // Added later — appended rather than sorted alphabetically among the five
+  // above, since Postgres can only add an enum value at the end (or with an
+  // explicit BEFORE/AFTER) and a migration that reordered the original five
+  // would mean recreating the type under every row that already uses one.
+  FACEBOOK_ADS
+  ONLINE_ADVERTISING
+  WEBSITE_HOSTING
+  AI_SUBSCRIPTION
+  SOFTWARE_SUBSCRIPTION
+  MOBILE_BILL
+  INTERNET_BILL
+  VEHICLE_RENT
+  FUEL
+  FOOD_REFRESHMENT
+  RENT
+  SALARY_WAGES
+  BANK_PAYMENT_FEES
+  PROFESSIONAL_FEES
+  REPAIR_MAINTENANCE
 }
 
 model InternalPurchase {
