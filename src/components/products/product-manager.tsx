@@ -518,6 +518,15 @@ export function ProductManager({
             className="max-w-xs"
           />
           {bar}
+          {/* Only once something is actually narrowing the list — the plain
+              count already sits on the Products tab itself, so repeating "50
+              of 50" here would say nothing a search or filter hasn't. */}
+          {(query || active > 0) && shown.length > 0 && (
+            <span className="text-sm text-muted-foreground">
+              <span className="font-semibold text-foreground tabular-nums">{shown.length}</span> of{" "}
+              <span className="tabular-nums">{products.length}</span> shown
+            </span>
+          )}
         </div>
         {perms.canAdd && (
           <div className="flex items-center gap-2">

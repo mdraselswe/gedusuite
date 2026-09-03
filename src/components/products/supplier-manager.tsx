@@ -107,13 +107,21 @@ export function SupplierManager({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <Input
-          placeholder="Search suppliers…"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          className="max-w-xs"
-        />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <Input
+            placeholder="Search suppliers…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            className="max-w-xs"
+          />
+          {query && shown.length > 0 && (
+            <span className="text-sm text-muted-foreground">
+              <span className="font-semibold text-foreground tabular-nums">{shown.length}</span> of{" "}
+              <span className="tabular-nums">{suppliers.length}</span> shown
+            </span>
+          )}
+        </div>
         {perms.canAdd && (
           <Button size="sm" onClick={openNew}>
             + Add supplier

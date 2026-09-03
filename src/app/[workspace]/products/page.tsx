@@ -13,6 +13,7 @@ import { comboBuildable, componentsTotal } from "@/lib/combos";
 import { round2 } from "@/lib/money";
 import { variantFullName, variantAttributes } from "@/lib/variants";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
 import { ProductManager } from "@/components/products/product-manager";
 import { SupplierManager } from "@/components/products/supplier-manager";
 import { StockAdjustmentManager } from "@/components/products/stock-adjustment-manager";
@@ -178,13 +179,25 @@ export default async function ProductsPage({
 
   return (
     <div className="space-y-6">
-      <PageHeader icon={<Package />} color="violet" title={(await serverT())("productsSuppliers")} count={products.length} />
+      {/* No count pill here any more — a single number next to the title
+          could only ever describe one of the four tabs below it, and stayed
+          on screen (unchanged, and wrong) no matter which tab was open. Each
+          tab now carries its own. */}
+      <PageHeader icon={<Package />} color="violet" title={(await serverT())("productsSuppliers")} />
       <Tabs defaultValue={page > 1 ? "adjustments" : "products"}>
         <TabsList className="w-full sm:w-fit">
-          <TabsTrigger value="products">Products</TabsTrigger>
-          <TabsTrigger value="combos">Combos</TabsTrigger>
-          <TabsTrigger value="suppliers">Suppliers</TabsTrigger>
-          <TabsTrigger value="adjustments">Stock adjustments</TabsTrigger>
+          <TabsTrigger value="products">
+            Products <Badge variant="secondary" className="ml-1.5 tabular-nums">{products.length}</Badge>
+          </TabsTrigger>
+          <TabsTrigger value="combos">
+            Combos <Badge variant="secondary" className="ml-1.5 tabular-nums">{comboRows.length}</Badge>
+          </TabsTrigger>
+          <TabsTrigger value="suppliers">
+            Suppliers <Badge variant="secondary" className="ml-1.5 tabular-nums">{suppliers.length}</Badge>
+          </TabsTrigger>
+          <TabsTrigger value="adjustments">
+            Stock adjustments <Badge variant="secondary" className="ml-1.5 tabular-nums">{adjustmentCount}</Badge>
+          </TabsTrigger>
         </TabsList>
         <TabsContent value="products" className="pt-4">
           <ProductManager
