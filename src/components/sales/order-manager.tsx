@@ -1617,7 +1617,7 @@ export function OrderManager({
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative w-full max-w-xs">
             <Input
-              placeholder="Search name, phone or courier ID…"
+              placeholder="Search name, phone, order ID or courier ID…"
               value={search}
               onChange={(e) => onSearchChange(e.target.value)}
               className={search ? "pr-8" : undefined}

@@ -135,6 +135,34 @@ export default async function OrdersPage({
   // spelling of a name — so the list has to be searchable by it. Matched in
   // every shape a number is stored in here; see lib/phone.
   const phoneTerms = phoneSearchTerms(q);
+  // The order id column reads two different fields (see its own note further
+  // down) and only one of them lives on Order, so it takes two matchers.
+  //
+  // The call list's number: OrderLead.orderNo, a free-text field with no
+  // foreign key back to Order (see the schema's note on why), so it can't be
+  // reached with a nested `where` — only a lookup run first. Digits only, the
+  // same as the phone search just above: typing "2775" has to find "#2775"
+  // without requiring the "#".
+  const orderIdDigits = q.replace(/\D/g, "");
+  // Every linked order's lead number — not just this workspace's current page,
+  // and not just the ones matching this search. One fetch does three jobs:
+  // matching a search term against it, excluding those orders from the
+  // internal-number fallback below (a row showing "#2744" must not also be
+  // found by "128", the internal number it stopped displaying once a lead got
+  // linked), and further down, what orderRows displays for each row.
+  const allLeadOrderNos = await prisma.orderLead.findMany({
+    where: { workspaceId, orderId: { not: null }, orderNo: { not: null } },
+    select: { orderId: true, orderNo: true },
+  });
+  const matchedLeadOrderIds = orderIdDigits
+    ? allLeadOrderNos.filter((l) => l.orderNo!.includes(orderIdDigits)).map((l) => l.orderId!)
+    : [];
+  const linkedOrderIds = allLeadOrderNos.map((l) => l.orderId!);
+  // This app's own number, for an order no lead ever pointed at. Postgres'
+  // int4 can't hold an 11-digit phone number — that search reuses these same
+  // digits — so this only fires when the term is order-id-shaped, never large
+  // enough to overflow the column and error the whole page out.
+  const orderIdNum = orderIdDigits && orderIdDigits.length <= 9 ? Number(orderIdDigits) : NaN;
   const where = {
     workspaceId,
     ...(statusFilter ? { status: statusFilter as (typeof ORDER_STATUSES)[number] } : {}),
@@ -175,6 +203,10 @@ export default async function OrdersPage({
               { customer: { altPhone: { contains: p } } },
               { shipPhone: { contains: p } },
             ]),
+            ...(matchedLeadOrderIds.length ? [{ id: { in: matchedLeadOrderIds } }] : []),
+            ...(Number.isSafeInteger(orderIdNum) && orderIdNum <= 2147483647
+              ? [{ orderNo: orderIdNum, id: { notIn: linkedOrderIds } }]
+              : []),
           ],
         }
       : {}),
@@ -306,20 +338,9 @@ export default async function OrdersPage({
   ]);
 
   // The number this page's own orderRows map to, further down: whichever
-  // call-list lead became each order — read here, rather than joined, because
-  // OrderLead carries no foreign key to Order (see the schema's note on why:
-  // a backup restore must never be blocked by it). Keyed by lead.orderNo, the
-  // exact string the call list shows — "#2663" for a WooCommerce order, or
-  // whatever was typed for one entered by hand — so the two pages read the
-  // same number for the same sale instead of two different counters.
-  const orderIds = orders.map((o) => o.id);
-  const leadOrderNos = orderIds.length
-    ? await prisma.orderLead.findMany({
-        where: { workspaceId, orderId: { in: orderIds }, orderNo: { not: null } },
-        select: { orderId: true, orderNo: true },
-      })
-    : [];
-  const leadOrderNoByOrderId = new Map(leadOrderNos.map((l) => [l.orderId!, l.orderNo!]));
+  // call-list lead became each order — from allLeadOrderNos, fetched above
+  // for the search matcher and reused here rather than queried a second time.
+  const leadOrderNoByOrderId = new Map(allLeadOrderNos.map((l) => [l.orderId!, l.orderNo!]));
 
   const memberOptions = members.map((m) => ({
     id: m.id,
