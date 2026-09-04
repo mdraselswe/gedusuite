@@ -109,17 +109,29 @@ const MUTED = "#6b6785"; // field labels on a filled slip
 export function OrderFormSlip({
   order,
   workspace,
+  density = 2,
 }: {
   order: SlipOrder | null;
   workspace: SlipWorkspace;
+  /**
+   * How many slips share the A4 sheet. 2 (the default) is the original A5
+   * half-sheet layout, unchanged. 4 is a quarter-sheet: half the height, so
+   * the item list and footer are dropped and everything but order id, phone
+   * and the collect amount shrinks — see FilledBody/BlankBody's `compact`
+   * branches.
+   */
+  density?: 2 | 4;
 }) {
+  const compact = density === 4;
   return (
     <div
-      className="flex h-full flex-col overflow-hidden px-[8mm] py-[6mm] leading-tight"
+      className={`flex h-full flex-col overflow-hidden leading-tight ${
+        compact ? "px-[6mm] py-[3mm]" : "px-[8mm] py-[6mm]"
+      }`}
       style={{ color: BODY }}
     >
       <header className="flex flex-col items-center text-center">
-        {workspace.logoUrl && (
+        {workspace.logoUrl && !compact && (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={workspace.logoUrl}
@@ -127,12 +139,17 @@ export function OrderFormSlip({
             className="mb-[1.5mm] h-[17mm] w-auto max-w-[70mm] object-contain"
           />
         )}
-        <h1 className="text-[22px] font-bold" style={{ color: INK }}>
+        <h1
+          className={compact ? "text-[13px] font-bold" : "text-[22px] font-bold"}
+          style={{ color: INK }}
+        >
           {workspace.name}
         </h1>
-        <p className="text-[12px] font-semibold" style={{ color: ACCENT }}>
-          Delivery &amp; Order Form
-        </p>
+        {!compact && (
+          <p className="text-[12px] font-semibold" style={{ color: ACCENT }}>
+            Delivery &amp; Order Form
+          </p>
+        )}
       </header>
 
       {/* First thing under the masthead on both faces. Every conversation about
@@ -140,7 +157,9 @@ export function OrderFormSlip({
           quoting this number, so it should be the first thing found rather than
           hunted for halfway down. */}
       <div
-        className="mt-[3.5mm] flex items-end justify-between gap-[4mm] border-b-2 pb-[1.5mm]"
+        className={`flex items-end justify-between gap-[4mm] border-b-2 ${
+          compact ? "mt-[1.5mm] pb-[1mm]" : "mt-[3.5mm] pb-[1.5mm]"
+        }`}
         style={{ borderColor: INK }}
       >
         <div>
@@ -148,7 +167,10 @@ export function OrderFormSlip({
             অর্ডার আইডি (Order ID)
           </div>
           {order ? (
-            <div className="text-[22px] leading-tight font-bold tabular-nums" style={{ color: INK }}>
+            <div
+              className={`leading-tight font-bold tabular-nums ${compact ? "text-[19px]" : "text-[22px]"}`}
+              style={{ color: INK }}
+            >
               {order.orderNumber}
             </div>
           ) : (
@@ -170,14 +192,60 @@ export function OrderFormSlip({
         )}
       </div>
 
-      {order ? <FilledBody order={order} /> : <BlankBody />}
+      {order ? (
+        <FilledBody order={order} compact={compact} />
+      ) : (
+        <BlankBody compact={compact} />
+      )}
 
-      <Footer workspace={workspace} />
+      {!compact && <Footer workspace={workspace} />}
     </div>
   );
 }
 
-function FilledBody({ order }: { order: SlipOrder }) {
+function FilledBody({ order, compact }: { order: SlipOrder; compact: boolean }) {
+  if (compact) {
+    return (
+      <>
+        {/* Name shrinks to a caption; the phone is the field a courier
+            actually dials, so it keeps most of its size. */}
+        <Value className="mt-[1.5mm] text-[11px] font-semibold">{order.customerName}</Value>
+        <Value className="mt-[0.5mm] text-[16px] font-bold tracking-wide tabular-nums">
+          {order.phone}
+        </Value>
+        {/* Product names are dropped at this density — no room to read them
+            at arm's length — but the address stays: it's what makes the
+            parcel deliverable, just clamped tighter than the half-sheet. */}
+        <Value className="mt-[1mm] text-[10.5px] whitespace-pre-wrap" clampLines={3}>
+          {order.address}
+        </Value>
+
+        <div className="mt-auto flex items-baseline justify-between text-[10px]" style={{ color: MUTED }}>
+          <span>মোট পিস (Qty)</span>
+          <span className="text-[13px] font-bold tabular-nums" style={{ color: BODY }}>
+            {order.totalQty}
+          </span>
+        </div>
+
+        {/* The one figure the shop can be argued with about, boxed the way
+            every courier's own COD label boxes it. */}
+        <div className="mt-[1.5mm] border-2 px-[2.5mm] py-[1.5mm]" style={{ borderColor: INK }}>
+          <div className="text-[9px]" style={{ color: MUTED }}>
+            সংগ্রহ করতে হবে (ডেলিভারি সহ)
+          </div>
+          <div className="text-[22px] leading-none font-bold tabular-nums" style={{ color: INK }}>
+            {formatMoney(order.collect)}
+          </div>
+          {settledNote(order) && (
+            <div className="mt-[1mm] text-[9px]" style={{ color: MUTED }}>
+              {settledNote(order)}
+            </div>
+          )}
+        </div>
+      </>
+    );
+  }
+
   return (
     <>
       <Heading>প্রাপক (Deliver to)</Heading>
@@ -235,7 +303,26 @@ function FilledBody({ order }: { order: SlipOrder }) {
   );
 }
 
-function BlankBody() {
+/**
+ * The compact blank form drops the numbered sections and ruled write-in
+ * boxes of the half-sheet version — there isn't room for either at a quarter
+ * page — down to the same fields a filled slip shows at this density, plus
+ * the two the shop (not the customer) decides, so nothing that needs an
+ * answer is silently missing from the fill-by-hand copy.
+ */
+function BlankBody({ compact }: { compact: boolean }) {
+  if (compact) {
+    return (
+      <BlankGroup>
+        <BlankField label="কাস্টমার ও মোবাইল" height="12mm" />
+        <BlankField label="ঠিকানা" height="14mm" />
+        <BlankField label="পরিমাণ (Qty) ও সংগ্রহ করতে হবে" height="10mm" />
+        <BlankField label="এরিয়া" ticks={["ভিতরে", "বাইরে"]} />
+        <BlankField label="পেমেন্ট" ticks={["COD", "বিকাশ/নগদ"]} />
+      </BlankGroup>
+    );
+  }
+
   return (
     <>
       <Heading className="mt-[2mm]">১. কাস্টমার ও ডেলিভারি তথ্য (Customer &amp; Delivery)</Heading>

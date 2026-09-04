@@ -233,20 +233,31 @@ html[lang="bn"] {
   transform-origin: top left;
 }
 
+/* Four to a sheet: a second pinned row, same reasoning as the row above — a
+   slot a few millimetres too tall clips instead of pushing the sheet past
+   210mm. */
+.sheet-preview [data-sheet][data-density="4"] {
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+}
+
 /* Whatever a slip contains, it can never spill onto the other half of the
    sheet or off the page. Long addresses are clamped in the component; this is
    the backstop for everything that isn't. */
-.sheet-preview [data-sheet] > div {
+.sheet-preview [data-sheet] > [data-slot] {
   min-height: 0;
   overflow: hidden;
 }
 
-/* The cut line. Dashed rather than solid so it reads as "cut here" and not as
-   a table border belonging to either form. It lands at exactly 148.5mm — the
-   true half of A4 — because the two columns are equal and the sheet's padding
-   is symmetric. */
-.sheet-preview [data-slot-divider] {
+/* The cut lines. Dashed rather than solid so they read as "cut here" and not
+   as a table border belonging to any one form. The vertical line lands at
+   exactly 148.5mm — the true half of A4 — because both columns are equal and
+   the sheet's padding is symmetric; four-up adds a matching horizontal line
+   at 105mm for the same reason. */
+.sheet-preview [data-sheet] [data-slot]:nth-child(2n) {
   border-left: 1px dashed #9b96c0;
+}
+.sheet-preview [data-sheet][data-density="4"] [data-slot]:nth-child(-n + 2) {
+  border-bottom: 1px dashed #9b96c0;
 }
 
 @media print {

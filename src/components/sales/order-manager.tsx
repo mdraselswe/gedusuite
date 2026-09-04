@@ -980,6 +980,11 @@ export function OrderManager({
   // pruned to what's actually on screen when the server sends a new page —
   // otherwise "Print 4 orders" could include two the user can no longer see.
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  // How many order forms share one A4 sheet when printed. 2 is the original
+  // layout (unchanged); 4 fits more per run at the cost of dropping the item
+  // list and shrinking everything but order id, phone and the collect amount
+  // — see OrderFormSlip's `density` prop.
+  const [printDensity, setPrintDensity] = useState<2 | 4>(2);
   useEffect(() => {
     const visible = new Set(orders.map((o) => o.id));
     setSelectedIds((prev) => {
@@ -1002,7 +1007,7 @@ export function OrderManager({
   // Printed in the order they appear in the list, not the order they were
   // clicked — the person collating the printout reads it against the screen.
   const selectedInListOrder = shownOrders.filter((o) => selectedIds.has(o.id)).map((o) => o.id);
-  const sheetCount = Math.ceil(selectedInListOrder.length / 2);
+  const sheetCount = Math.ceil(selectedInListOrder.length / printDensity);
 
   // Ask the courier where the parcels in flight have got to, once the list is
   // on screen rather than while rendering it. Steadfast's webhook was meant to
@@ -2122,15 +2127,37 @@ export function OrderManager({
               <strong>{selectedInListOrder.length}</strong> selected ·{" "}
               <span className="text-muted-foreground">
                 {sheetCount} A4 sheet{sheetCount === 1 ? "" : "s"}
-                {selectedInListOrder.length % 2 === 1 && ", last one half blank"}
+                {selectedInListOrder.length % printDensity !== 0 &&
+                  `, last one ${printDensity - (selectedInListOrder.length % printDensity)} blank`}
               </span>
             </span>
             <div className="flex items-center gap-2">
+              {/* Per-sheet density. 4-up drops the item list and shrinks
+                  everything but order id/phone/collect amount to fit — see
+                  OrderFormSlip's `density` prop — so it's picked here, before
+                  the sheets are generated, rather than after. */}
+              <div className="flex items-center rounded-md border p-0.5">
+                {([2, 4] as const).map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => setPrintDensity(n)}
+                    className={cn(
+                      "rounded px-2 py-1 text-xs font-medium transition-colors",
+                      printDensity === n
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    {n}/page
+                  </button>
+                ))}
+              </div>
               <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
                 Clear
               </Button>
               <Link
-                href={`/${slug}/sales/orders/forms?ids=${selectedInListOrder.join(",")}`}
+                href={`/${slug}/sales/orders/forms?ids=${selectedInListOrder.join(",")}&perPage=${printDensity}`}
                 target="_blank"
                 className={buttonVariants({ size: "sm" })}
               >

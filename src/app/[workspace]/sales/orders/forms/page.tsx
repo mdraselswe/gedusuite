@@ -13,12 +13,14 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Printer } from "lucide-react";
 
 /**
- * Printable delivery/order forms, two to an A4 landscape sheet.
+ * Printable delivery/order forms, two or four to an A4 landscape sheet
+ * (`?perPage=`, chosen on the orders list before printing).
  *
- * Two per page is the whole point: an A4 cut down the middle is two A5 forms,
- * so a run of orders costs half the paper it used to. Selecting an odd number
- * is fine and deliberate — the last sheet's right-hand column prints as a
- * blank form to fill in by hand.
+ * Fewer sheets per run is the whole point: an A4 cut down the middle is two
+ * A5 forms, or into quarters four smaller ones, so a run of orders costs a
+ * fraction of the paper it used to. Selecting a count that doesn't divide
+ * evenly is fine and deliberate — the last sheet's remaining slots print as
+ * blank forms to fill in by hand.
  */
 
 /**
@@ -72,10 +74,13 @@ export default async function OrderFormsPage({
   searchParams,
 }: {
   params: Promise<{ workspace: string }>;
-  searchParams: Promise<{ ids?: string }>;
+  searchParams: Promise<{ ids?: string; perPage?: string }>;
 }) {
   const { workspace: slug } = await params;
-  const { ids: idsParam } = await searchParams;
+  const { ids: idsParam, perPage: perPageParam } = await searchParams;
+  // Only 2 and 4 are laid out for; anything else (a hand-edited URL) falls
+  // back to the original two-to-a-sheet form rather than rendering nothing.
+  const density: 2 | 4 = perPageParam === "4" ? 4 : 2;
 
   const access = await workspaceAccess(slug);
   if (!access) redirect("/");
@@ -161,10 +166,13 @@ export default async function OrderFormsPage({
     websiteUrl: workspace?.websiteUrl ?? null,
   };
 
-  // Two to a sheet, with a null in the second slot when the count is odd.
+  // `density` to a sheet, with nulls filling out the last sheet's remaining
+  // slots when the count doesn't divide evenly.
   const sheets: (SlipOrder | null)[][] = [];
-  for (let i = 0; i < slips.length; i += 2) {
-    sheets.push([slips[i], slips[i + 1] ?? null]);
+  for (let i = 0; i < slips.length; i += density) {
+    const sheet: (SlipOrder | null)[] = [];
+    for (let j = 0; j < density; j++) sheet.push(slips[i + j] ?? null);
+    sheets.push(sheet);
   }
 
   const filename =
@@ -195,15 +203,14 @@ export default async function OrderFormsPage({
         />
       ) : (
         <OrderFormSheetView filename={filename}>
-          {sheets.map((pair, i) => (
+          {sheets.map((slots, i) => (
             <div key={i} data-sheet-frame>
-              <div data-sheet>
-                <div>
-                  <OrderFormSlip order={pair[0]} workspace={ws} />
-                </div>
-                <div data-slot-divider>
-                  <OrderFormSlip order={pair[1]} workspace={ws} />
-                </div>
+              <div data-sheet data-density={density}>
+                {slots.map((order, j) => (
+                  <div key={j} data-slot>
+                    <OrderFormSlip order={order} workspace={ws} density={density} />
+                  </div>
+                ))}
               </div>
             </div>
           ))}
