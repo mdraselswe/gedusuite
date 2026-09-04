@@ -131,12 +131,16 @@ export function OrderFormSlip({
       style={{ color: BODY }}
     >
       <header className="flex flex-col items-center text-center">
-        {workspace.logoUrl && !compact && (
+        {workspace.logoUrl && (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={workspace.logoUrl}
             alt={workspace.name}
-            className="mb-[1.5mm] h-[17mm] w-auto max-w-[70mm] object-contain"
+            className={
+              compact
+                ? "mb-[0.5mm] h-[8mm] w-auto max-w-[40mm] object-contain"
+                : "mb-[1.5mm] h-[17mm] w-auto max-w-[70mm] object-contain"
+            }
           />
         )}
         <h1
@@ -198,7 +202,7 @@ export function OrderFormSlip({
         <BlankBody compact={compact} />
       )}
 
-      {!compact && <Footer workspace={workspace} />}
+      <Footer workspace={workspace} compact={compact} />
     </div>
   );
 }
@@ -424,7 +428,21 @@ function ItemList({ items, totalQty }: { items: SlipItem[]; totalQty: number }) 
   );
 }
 
-function Footer({ workspace }: { workspace: SlipWorkspace }) {
+function Footer({ workspace, compact }: { workspace: SlipWorkspace; compact: boolean }) {
+  // Compact keeps only the bare URL — no caption, no thank-you line — there's
+  // no room for either at a quarter page.
+  if (compact) {
+    if (!workspace.websiteUrl) return null;
+    // No auto margin here: FilledBody/BlankBody already push their own last
+    // element to the bottom with one, and a second auto margin on this
+    // sibling would split the leftover space between the two instead of
+    // letting the amount box sit flush just above this line.
+    return (
+      <p className="mt-[1mm] text-center text-[12px] font-bold" style={{ color: ACCENT }}>
+        {workspace.websiteUrl}
+      </p>
+    );
+  }
   return (
     <div
       className="mt-auto border-t pt-[2.5mm] text-center"
