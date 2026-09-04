@@ -1703,6 +1703,29 @@ export function OrderManager({
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
+          {/* Blank order forms, independent of the order list — a shop keeps
+              a few of these at the packing table for a courier hand-off or a
+              phone order taken away from a computer, so this doesn't require
+              selecting (or even having) any orders the way "Print order
+              forms" below does. */}
+          <DropdownMenu>
+            <DropdownMenuTrigger render={<Button variant="outline" size="sm" />}>
+              <Printer data-icon="inline-start" />
+              Blank forms
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuItem
+                render={<Link href={`/${slug}/sales/orders/forms?blank=1&perPage=2`} target="_blank" />}
+              >
+                2 / page
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                render={<Link href={`/${slug}/sales/orders/forms?blank=1&perPage=4`} target="_blank" />}
+              >
+                4 / page
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
         {perms.canAdd && (
           <Button

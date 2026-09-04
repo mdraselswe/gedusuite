@@ -21,6 +21,10 @@ import { Printer } from "lucide-react";
  * fraction of the paper it used to. Selecting a count that doesn't divide
  * evenly is fine and deliberate — the last sheet's remaining slots print as
  * blank forms to fill in by hand.
+ *
+ * `?blank=1` skips the order lookup entirely and renders one sheet's worth of
+ * nothing but blank forms — a paper copy for the packing table, wanted for
+ * exactly the situations where there's no order in the system yet to select.
  */
 
 /**
@@ -74,13 +78,14 @@ export default async function OrderFormsPage({
   searchParams,
 }: {
   params: Promise<{ workspace: string }>;
-  searchParams: Promise<{ ids?: string; perPage?: string }>;
+  searchParams: Promise<{ ids?: string; perPage?: string; blank?: string }>;
 }) {
   const { workspace: slug } = await params;
-  const { ids: idsParam, perPage: perPageParam } = await searchParams;
+  const { ids: idsParam, perPage: perPageParam, blank: blankParam } = await searchParams;
   // Only 2 and 4 are laid out for; anything else (a hand-edited URL) falls
   // back to the original two-to-a-sheet form rather than rendering nothing.
   const density: 2 | 4 = perPageParam === "4" ? 4 : 2;
+  const isBlank = blankParam === "1";
 
   const access = await workspaceAccess(slug);
   if (!access) redirect("/");
@@ -88,7 +93,10 @@ export default async function OrderFormsPage({
     redirect(`/${slug}/dashboard`);
   }
 
-  const requestedIds = [...new Set((idsParam ?? "").split(",").map((s) => s.trim()).filter(Boolean))];
+  // A blank run names no orders, so there's nothing to look up.
+  const requestedIds = isBlank
+    ? []
+    : [...new Set((idsParam ?? "").split(",").map((s) => s.trim()).filter(Boolean))];
   const ids = requestedIds.slice(0, MAX_ORDERS);
 
   const [orders, workspace] = await Promise.all([
@@ -167,16 +175,22 @@ export default async function OrderFormsPage({
   };
 
   // `density` to a sheet, with nulls filling out the last sheet's remaining
-  // slots when the count doesn't divide evenly.
-  const sheets: (SlipOrder | null)[][] = [];
+  // slots when the count doesn't divide evenly. A blank run is one sheet of
+  // nothing but those nulls — there's no order to chunk.
+  const sheets: (SlipOrder | null)[][] = isBlank
+    ? [Array.from({ length: density }, () => null)]
+    : [];
   for (let i = 0; i < slips.length; i += density) {
     const sheet: (SlipOrder | null)[] = [];
     for (let j = 0; j < density; j++) sheet.push(slips[i + j] ?? null);
     sheets.push(sheet);
   }
 
-  const filename =
-    slips.length === 1 ? `order-form-${slips[0].orderNumber}` : `order-forms-${slips.length}`;
+  const filename = isBlank
+    ? `blank-order-form-${density}up`
+    : slips.length === 1
+      ? `order-form-${slips[0].orderNumber}`
+      : `order-forms-${slips.length}`;
 
   return (
     <div className="space-y-4">
@@ -185,8 +199,16 @@ export default async function OrderFormsPage({
           ← Orders
         </Link>
         <div className="text-sm text-muted-foreground">
-          {slips.length} order{slips.length === 1 ? "" : "s"} · {sheets.length} A4 sheet
-          {sheets.length === 1 ? "" : "s"}
+          {isBlank ? (
+            <>
+              Blank form ({density}/page) · {sheets.length} A4 sheet{sheets.length === 1 ? "" : "s"}
+            </>
+          ) : (
+            <>
+              {slips.length} order{slips.length === 1 ? "" : "s"} · {sheets.length} A4 sheet
+              {sheets.length === 1 ? "" : "s"}
+            </>
+          )}
           {requestedIds.length > ids.length && (
             <span className="ml-2 text-destructive">
               (showing the first {MAX_ORDERS} of {requestedIds.length})
