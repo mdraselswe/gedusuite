@@ -70,7 +70,7 @@ export function GiftTag({ qr }: { qr: GiftTagQr }) {
   return (
     <div className="flex h-full min-w-0 flex-col overflow-hidden px-[6mm] pt-[7mm] pb-[5mm]" style={{ color: BODY }}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/gift-tags/gedushop-logo.png" alt="GeduShop" className="mx-auto mb-[4mm] block h-[12mm] w-auto" />
+      <img src="/branding/gedushop-logo.png" alt="GeduShop" className="mx-auto mb-[4mm] block h-[12mm] w-auto" />
 
       <p className="text-center text-[10px] leading-[1.65]">{LEAD}</p>
 
