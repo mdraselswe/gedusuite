@@ -220,7 +220,7 @@ function FilledBody({ order, compact }: { order: SlipOrder; compact: boolean }) 
         {/* Product names are dropped at this density — no room to read them
             at arm's length — but the address stays: it's what makes the
             parcel deliverable, just clamped tighter than the half-sheet. */}
-        <Value className="mt-[1mm] text-[10.5px] whitespace-pre-wrap" clampLines={3}>
+        <Value className="mt-[1mm] text-[10.5px] whitespace-pre-wrap" clampLines={4}>
           {order.address}
         </Value>
 
