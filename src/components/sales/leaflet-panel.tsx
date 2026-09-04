@@ -67,7 +67,7 @@ const CONTACT_ROWS: { key: keyof LeafletQr; icon: React.ReactNode; label: string
 export function LeafletPanel({ qr }: { qr: LeafletQr }) {
   return (
     <div
-      className={`${balooDa2.className} flex h-full flex-col justify-center overflow-hidden p-[20px]`}
+      className="flex h-full flex-col justify-center overflow-hidden p-[20px]"
       style={{ color: INK, fontFamily: "'Hind Siliguri', 'Noto Sans Bengali', sans-serif" }}
     >
       <div className="flex flex-col items-center gap-[4px]">
@@ -79,7 +79,7 @@ export function LeafletPanel({ qr }: { qr: LeafletQr }) {
       </div>
 
       <div className="flex flex-col items-center gap-[6px] pt-[9px] text-center">
-        <h1 className="m-0 text-[22px] leading-[1.3] font-extrabold" style={{ fontFamily: "inherit", color: INK }}>
+        <h1 className={`${balooDa2.className} m-0 text-[22px] leading-[1.3] font-extrabold`} style={{ color: INK }}>
           বাচ্চাদের খেলনা ও
           <br />
           বেবি কেয়ারের সবকিছু
@@ -112,23 +112,29 @@ export function LeafletPanel({ qr }: { qr: LeafletQr }) {
         </span>
       </div>
 
-      <div className="pt-[7px] text-center text-[17px] leading-[1.3] font-bold" style={{ fontFamily: "inherit", color: ACCENT_DARK }}>
-        ডেলিভারি ফ্রি! ডেলিভারি ফ্রি! ডেলিভারি ফ্রি!
-      </div>
-
-      <div className="flex items-center gap-[8px] pt-[12px]">
+      <div className="flex items-center gap-[8px] pt-[14px]">
         <div className="h-[1px] flex-grow" style={{ background: RULE }} />
-        <div className="text-[17px] font-bold" style={{ fontFamily: "inherit", color: INK_SOFT }}>
+        <div className={`${balooDa2.className} text-[17px] font-bold`} style={{ color: INK_SOFT }}>
           অর্ডার করবেন যেভাবে
         </div>
         <div className="h-[1px] flex-grow" style={{ background: RULE }} />
       </div>
 
-      <div className="pt-[6px] text-center text-[15px] leading-[1.4] text-balance" style={{ color: INK_SOFT }}>
+      {/* 14px, not the original design's halved 15px: at 15px this line's
+          canvas-measured width leaves under 4% margin against the panel's
+          content width, which is thin enough that ordinary font-metric
+          variance between environments could push it onto a second line —
+          14px keeps a real ~10% margin so whitespace-nowrap never has to
+          clip it instead. */}
+      <div className="pt-[6px] text-center text-[14px] leading-[1.4] whitespace-nowrap" style={{ color: INK_SOFT }}>
         পণ্য বাছুন → নাম, ফোন ও ঠিকানা দিন → হাতে পেয়ে টাকা দিন
       </div>
 
-      <div className="flex flex-col items-center gap-[7px] self-center pt-[9px]">
+      {/* Left-aligned as a block, not each row centered on its own: the three
+          rows are different widths (the Facebook link is the longest), and
+          centering each independently would stagger the QR codes instead of
+          lining them up under one another. */}
+      <div className="flex flex-col items-start gap-[7px] self-center pt-[11px]">
         {CONTACT_ROWS.map((row) => (
           <div key={row.key} className="flex items-center gap-[8px]">
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -136,11 +142,11 @@ export function LeafletPanel({ qr }: { qr: LeafletQr }) {
             <span className="flex min-w-0 flex-col gap-[1px]">
               <span className="flex items-center gap-[4.5px]">
                 {row.icon}
-                <span className="text-[16px] font-bold" style={{ fontFamily: "inherit", color: INK }}>
+                <span className={`${balooDa2.className} text-[16px] font-bold whitespace-nowrap`} style={{ color: INK }}>
                   {row.label}
                 </span>
               </span>
-              <span className="text-[16px] font-semibold" style={{ color: ACCENT_DARK }}>
+              <span className="text-[16px] font-semibold whitespace-nowrap" style={{ color: ACCENT_DARK }}>
                 {row.link}
               </span>
             </span>
