@@ -51,8 +51,12 @@ export function PrintSheetView({
     setCapturing(true);
     try {
       // Two frames: one for React to commit the un-zoomed render, one for the
-      // browser to lay it out before html2canvas measures anything.
+      // browser to lay it out before html2canvas measures anything. Fonts
+      // loaded specifically for a sheet (e.g. the leaflet's Baloo Da 2) can
+      // still be mid-fetch at that point — document.fonts.ready waits out
+      // the swap, so html2canvas never captures a fallback-font frame.
       await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      await document.fonts.ready;
 
       const html2canvas = (await import("html2canvas-pro")).default;
       const { jsPDF } = await import("jspdf");
