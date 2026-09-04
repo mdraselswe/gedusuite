@@ -196,28 +196,29 @@ html[lang="bn"] {
   }
 }
 
-/* ── Printed A4 order-form sheets ───────────────────────────────────── */
+/* ── Printed A4 sheets ───────────────────────────────────────────────── */
 
 /*
- * A sheet is a real A4 landscape page: the element is 297×210mm and its 0.2in
- * print margin is its own padding, so the on-screen preview and the captured
- * PDF are the same object at different scales rather than two layouts that
- * have to be kept in agreement.
+ * A sheet is a real A4 page — landscape 297×210mm for order forms, portrait
+ * 210×297mm for gift tags — and its 0.2in print margin is its own padding,
+ * so the on-screen preview and the captured PDF are the same object at
+ * different scales rather than two layouts that have to be kept in
+ * agreement. --sheet-w/--sheet-h/--sheet-zoom are set by PrintSheetView.
  *
  * The frame carries the SCALED size and the sheet inside it is transformed.
  * A transform alone doesn't change the layout box, so without the frame every
  * sheet after the first would sit under the un-scaled footprint of the one
- * before it. --sheet-zoom is set by OrderFormSheetView.
+ * before it.
  */
 .sheet-preview [data-sheet-frame] {
-  width: calc(297mm * var(--sheet-zoom, 1));
-  height: calc(210mm * var(--sheet-zoom, 1));
+  width: calc(var(--sheet-w, 297mm) * var(--sheet-zoom, 1));
+  height: calc(var(--sheet-h, 210mm) * var(--sheet-zoom, 1));
   flex: none;
 }
 
 .sheet-preview [data-sheet] {
-  width: 297mm;
-  height: 210mm;
+  width: var(--sheet-w, 297mm);
+  height: var(--sheet-h, 210mm);
   padding: 0.2in;
   box-sizing: border-box;
   background: #fff;
@@ -233,37 +234,49 @@ html[lang="bn"] {
   transform-origin: top left;
 }
 
-/* Four to a sheet: a second pinned row, same reasoning as the row above — a
-   slot a few millimetres too tall clips instead of pushing the sheet past
-   210mm. */
+/* Four to a sheet (order forms): a second pinned row, same reasoning as the
+   row above — a slot a few millimetres too tall clips instead of pushing the
+   sheet past its bounds. */
 .sheet-preview [data-sheet][data-density="4"] {
   grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
 }
 
-/* Whatever a slip contains, it can never spill onto the other half of the
-   sheet or off the page. Long addresses are clamped in the component; this is
-   the backstop for everything that isn't. */
+/* Six to a sheet (gift tags): a 3×2 grid on a portrait sheet. */
+.sheet-preview [data-sheet][data-density="6"] {
+  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+/* Whatever a slot contains, it can never spill onto its neighbour or off the
+   page. Long content is clamped in the component; this is the backstop for
+   everything that isn't. */
 .sheet-preview [data-sheet] > [data-slot] {
   min-height: 0;
   overflow: hidden;
 }
 
 /* The cut lines. Dashed rather than solid so they read as "cut here" and not
-   as a table border belonging to any one form. The vertical line lands at
-   exactly 148.5mm — the true half of A4 — because both columns are equal and
-   the sheet's padding is symmetric; four-up adds a matching horizontal line
-   at 105mm for the same reason. */
-.sheet-preview [data-sheet] [data-slot]:nth-child(2n) {
+   as a table border belonging to any one slot. For two- and four-up these
+   land at exactly the sheet's true half, because the columns/rows are equal
+   and the sheet's padding is symmetric; six-up adds the matching thirds. */
+.sheet-preview [data-sheet]:not([data-density="6"]) [data-slot]:nth-child(2n) {
   border-left: 1px dashed #9b96c0;
 }
 .sheet-preview [data-sheet][data-density="4"] [data-slot]:nth-child(-n + 2) {
   border-bottom: 1px dashed #9b96c0;
 }
+.sheet-preview [data-sheet][data-density="6"] [data-slot]:nth-child(3n+1),
+.sheet-preview [data-sheet][data-density="6"] [data-slot]:nth-child(3n+2) {
+  border-right: 1px dashed #9b96c0;
+}
+.sheet-preview [data-sheet][data-density="6"] [data-slot]:nth-child(-n + 3) {
+  border-bottom: 1px dashed #9b96c0;
+}
 
 @media print {
   .sheet-preview [data-sheet-frame] {
-    width: 297mm;
-    height: 210mm;
+    width: var(--sheet-w, 297mm);
+    height: var(--sheet-h, 210mm);
     break-after: page;
   }
   .sheet-preview [data-sheet] {

@@ -5,29 +5,33 @@ import { Minus, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 /**
- * Preview + PDF download for the printed order forms.
+ * Preview + PDF download for a page of printed A4 sheets — order forms,
+ * blank forms, gift tags, anything laid out as one or more `[data-sheet]`
+ * elements sized in `globals.css`'s "Printed A4 sheets" block.
  *
  * The sheets themselves are server-rendered and passed in as children — this
- * only wraps them in a zoomable preview and turns them into a real A4 PDF.
+ * only wraps them in a zoomable preview and turns them into a real PDF.
  *
- * Why an image capture rather than jsPDF's own text(): the form is mostly
- * Bangla, and jsPDF draws each codepoint as an isolated glyph with no script
- * shaping, so a matra that has to move in front of its consonant simply
- * doesn't. See the note on DownloadInvoicePdfButton — same reasoning, same fix.
+ * Why an image capture rather than jsPDF's own text(): these sheets are
+ * mostly Bangla, and jsPDF draws each codepoint as an isolated glyph with no
+ * script shaping, so a matra that has to move in front of its consonant
+ * simply doesn't. See the note on DownloadInvoicePdfButton — same reasoning,
+ * same fix.
  */
-
-/** A4 landscape, in mm. The sheet element is built to exactly this size. */
-const SHEET_W = 297;
-const SHEET_H = 210;
 
 const ZOOMS = [0.4, 0.5, 0.65, 0.8, 1] as const;
 
-export function OrderFormSheetView({
+export function PrintSheetView({
   children,
   filename,
+  /** Sheet size in mm. Defaults to A4 landscape — order forms' original size. */
+  widthMm = 297,
+  heightMm = 210,
 }: {
   children: React.ReactNode;
   filename: string;
+  widthMm?: number;
+  heightMm?: number;
 }) {
   const [zoomIdx, setZoomIdx] = useState(1);
   const [busy, setBusy] = useState(false);
@@ -38,6 +42,7 @@ export function OrderFormSheetView({
   const areaRef = useRef<HTMLDivElement>(null);
 
   const zoom = capturing ? 1 : ZOOMS[zoomIdx];
+  const orientation = widthMm >= heightMm ? "l" : "p";
 
   async function onDownload() {
     const area = areaRef.current;
@@ -55,9 +60,9 @@ export function OrderFormSheetView({
       const sheets = Array.from(area.querySelectorAll<HTMLElement>("[data-sheet]"));
       if (sheets.length === 0) return;
 
-      const doc = new jsPDF({ orientation: "l", unit: "mm", format: "a4" });
+      const doc = new jsPDF({ orientation, unit: "mm", format: "a4" });
       for (const [i, sheet] of sheets.entries()) {
-        if (i > 0) doc.addPage("a4", "l");
+        if (i > 0) doc.addPage("a4", orientation);
         const canvas = await html2canvas(sheet, {
           scale: 2,
           useCORS: true,
@@ -66,7 +71,7 @@ export function OrderFormSheetView({
         // Full-bleed: the 0.2in print margin is padding inside the sheet
         // element, so what was previewed is exactly what lands on the page —
         // there's no second margin calculation here to disagree with the CSS.
-        doc.addImage(canvas.toDataURL("image/png"), "PNG", 0, 0, SHEET_W, SHEET_H);
+        doc.addImage(canvas.toDataURL("image/png"), "PNG", 0, 0, widthMm, heightMm);
       }
       doc.save(`${filename}.pdf`);
     } finally {
@@ -109,7 +114,7 @@ export function OrderFormSheetView({
       <div
         ref={areaRef}
         className="sheet-preview overflow-x-auto print:overflow-visible"
-        style={{ "--sheet-zoom": zoom } as React.CSSProperties}
+        style={{ "--sheet-zoom": zoom, "--sheet-w": `${widthMm}mm`, "--sheet-h": `${heightMm}mm` } as React.CSSProperties}
       >
         <div className="flex flex-col items-start gap-6 print:gap-0">{children}</div>
       </div>

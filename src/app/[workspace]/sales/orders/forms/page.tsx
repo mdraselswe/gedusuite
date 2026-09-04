@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { computeOrderTotals, invoiceNumber } from "@/lib/orders";
 import { amountCollected, amountOutstanding } from "@/lib/order-cash";
 import { orderRecipient } from "@/lib/order-recipient";
-import { OrderFormSheetView } from "@/components/sales/order-form-sheet-view";
+import { PrintSheetView } from "@/components/ui/print-sheet-view";
 import { OrderFormSlip, type SlipOrder } from "@/components/sales/order-form-slip";
 import { variantFullName } from "@/lib/variants";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -224,7 +224,7 @@ export default async function OrderFormsPage({
           description="Select one or more orders from the list, then choose Print order forms."
         />
       ) : (
-        <OrderFormSheetView filename={filename}>
+        <PrintSheetView filename={filename}>
           {sheets.map((slots, i) => (
             <div key={i} data-sheet-frame>
               <div data-sheet data-density={density}>
@@ -236,7 +236,7 @@ export default async function OrderFormsPage({
               </div>
             </div>
           ))}
-        </OrderFormSheetView>
+        </PrintSheetView>
       )}
     </div>
   );

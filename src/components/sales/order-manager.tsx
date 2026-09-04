@@ -70,7 +70,7 @@ import { OrderSourceCell } from "@/components/sales/order-source-cell";
 import { OrderCampaignCell, type CampaignOption } from "@/components/sales/order-campaign-cell";
 import { ParcelBookingDialog } from "@/components/sales/parcel-booking-dialog";
 import { quoteCourier, breakEvenDeliveryCharge, type CourierRules } from "@/lib/courier";
-import { Columns3, Plus, Printer, Send, ShoppingCart, Trash2, MoreVertical, X } from "lucide-react";
+import { Columns3, Gift, Plus, Printer, Send, ShoppingCart, Trash2, MoreVertical, X } from "lucide-react";
 import { formatStock } from "@/lib/units";
 import { cn } from "@/lib/utils";
 import { Money } from "@/components/ui/money";
@@ -1726,6 +1726,17 @@ export function OrderManager({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+          {/* Also independent of the order list, for the same reason as
+              blank forms above — this sheet is identical every time, so
+              there's nothing to select before printing it. */}
+          <Link
+            href={`/${slug}/sales/gift-tags`}
+            target="_blank"
+            className={buttonVariants({ variant: "outline", size: "sm" })}
+          >
+            <Gift data-icon="inline-start" />
+            Gift tags
+          </Link>
         </div>
         {perms.canAdd && (
           <Button
