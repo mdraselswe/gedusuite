@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import {
   ResponsiveContainer,
   BarChart,
@@ -17,6 +18,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { orderSourceLabel } from "@/lib/order-source";
 import { cn } from "@/lib/utils";
@@ -24,8 +32,10 @@ import { Money } from "@/components/ui/money";
 import { InfoNote } from "@/components/ui/info-note";
 import { FigureList, FigureRow } from "@/components/ui/figure-list";
 import { formatMoney, toneForBalance } from "@/lib/money";
+import { DISTRICTS } from "@/lib/bd-locations";
 import { BarChart3, MapPin, Users, Wallet } from "lucide-react";
 import type { Report } from "@/lib/reports";
+import { setOrderShipDistrict } from "@/server/actions/report-districts";
 
 /**
  * Below this many settled parcels a district's cancel rate is one refusal away
@@ -33,6 +43,7 @@ import type { Report } from "@/lib/reports";
  * it is still real and still worth reading.
  */
 const MIN_SETTLED_FOR_RATE = 5;
+const PICK_DISTRICT = "__pick_district__";
 
 function formatMethod(value: string) {
   return value
@@ -51,6 +62,7 @@ export function ReportView({
   isAllTime,
   workspaceName,
   logoUrl,
+  untaggedOrders,
 }: {
   slug: string;
   report: Report;
@@ -59,10 +71,21 @@ export function ReportView({
   isAllTime: boolean;
   workspaceName: string;
   logoUrl: string | null;
+  untaggedOrders: {
+    id: string;
+    orderNo: string;
+    date: string;
+    status: string;
+    source: string | null;
+    recipient: string;
+    phone: string | null;
+    address: string | null;
+  }[];
 }) {
   const router = useRouter();
   const [f, setF] = useState(from);
   const [t, setT] = useState(to);
+  const [savingDistrictFor, setSavingDistrictFor] = useState<string | null>(null);
 
   // Do the partners' own percents already total 100? When they don't,
   // splitByShare normalizes and the table says so rather than showing two
@@ -78,6 +101,19 @@ export function ReportView({
   // Used in export filenames/headers — a real "from to" range normally, or a
   // plain label once "All time" is selected (actual dates would be misleading).
   const period = isAllTime ? "All time" : `${from} to ${to}`;
+
+  async function onDistrictChange(orderId: string, district: string) {
+    if (district === PICK_DISTRICT) return;
+    setSavingDistrictFor(orderId);
+    const res = await setOrderShipDistrict(slug, orderId, district);
+    setSavingDistrictFor(null);
+    if (!res.ok) {
+      toast.error(res.error);
+      return;
+    }
+    toast.success("District tagged");
+    router.refresh();
+  }
 
   function applyRange(e: React.FormEvent) {
     e.preventDefault();
@@ -795,6 +831,104 @@ export function ReportView({
           </p>
         </CardContent>
       </Card>
+
+      {untaggedOrders.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Not tagged orders to fix</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <DataTable
+              rows={untaggedOrders}
+              rowKey={(o) => o.id}
+              pageSize={25}
+              searchPlaceholder="Search order, name, phone or address..."
+              searchText={(o) =>
+                [o.orderNo, o.date, o.status, o.source ?? "", o.recipient, o.phone ?? "", o.address ?? ""].join(" ")
+              }
+              empty={{ icon: MapPin, title: "No untagged orders in this range" }}
+              columns={
+                [
+                  {
+                    key: "order",
+                    header: "Order",
+                    cardTitle: true,
+                    sortValue: (o) => o.orderNo,
+                    cell: (o) => (
+                      <Link href={`/${slug}/sales/orders?search=${encodeURIComponent(o.orderNo)}`} className="font-medium underline">
+                        {o.orderNo}
+                      </Link>
+                    ),
+                  },
+                  { key: "date", header: "Date", sortValue: (o) => o.date, cell: (o) => o.date },
+                  {
+                    key: "customer",
+                    header: "Customer",
+                    sortValue: (o) => o.recipient,
+                    cell: (o) => (
+                      <span className="block">
+                        <span className="block font-medium">{o.recipient}</span>
+                        {o.phone && <span className="block text-xs text-muted-foreground">{o.phone}</span>}
+                      </span>
+                    ),
+                  },
+                  {
+                    key: "address",
+                    header: "Address",
+                    wrap: true,
+                    cell: (o) => (
+                      <span className="whitespace-pre-wrap text-sm">
+                        {o.address || <span className="text-muted-foreground">No address</span>}
+                      </span>
+                    ),
+                  },
+                  {
+                    key: "source",
+                    header: "Source",
+                    sortValue: (o) => o.source ?? "",
+                    cell: (o) => (o.source ? orderSourceLabel(o.source) : "Not tagged"),
+                  },
+                  {
+                    key: "status",
+                    header: "Status",
+                    sortValue: (o) => o.status,
+                    cell: (o) => o.status,
+                  },
+                  {
+                    key: "district",
+                    header: "Set district",
+                    cell: (o) => (
+                      <Select
+                        value={PICK_DISTRICT}
+                        onValueChange={(value) => value && onDistrictChange(o.id, value)}
+                        disabled={savingDistrictFor === o.id}
+                      >
+                        <SelectTrigger className="h-8 w-40">
+                          <SelectValue placeholder={savingDistrictFor === o.id ? "Saving..." : "Choose"} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={PICK_DISTRICT} disabled>
+                            Choose
+                          </SelectItem>
+                          {DISTRICTS.map((district) => (
+                            <SelectItem key={district} value={district}>
+                              {district}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ),
+                  },
+                ] as Column<(typeof untaggedOrders)[number]>[]
+              }
+            />
+            <p className="mt-3 text-xs text-muted-foreground">
+              Pick a district after reading the address. The order is saved immediately and
+              leaves this list after the report refreshes.
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>

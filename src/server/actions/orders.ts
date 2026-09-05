@@ -32,10 +32,11 @@ import { syncOrderStatusToWoo } from "@/lib/woo-order-sync";
 import type { OrderStatus, PaymentStatus, Prisma, ReturnLeg } from "@prisma/client";
 import { checkboxField, failed, type ActionFailure } from "@/lib/form";
 import { diffFields, newActivityGroup, recordActivity } from "@/lib/activity";
-import { shipSnapshot } from "@/lib/order-recipient";
+import { orderRecipient, shipSnapshot } from "@/lib/order-recipient";
 import { dhakaDateField } from "@/lib/date-field";
 import { returnShortfalls } from "@/lib/returns";
 import { round2 } from "@/lib/money";
+import { detectDistrict } from "@/lib/bd-locations";
 
 /**
  * How an order reads in the history — the same short id the breakdown page
@@ -647,6 +648,12 @@ export async function createOrder(
     }
     amountPaid = round2(d.amountPaid);
   }
+  const recipient = orderRecipient({
+    shipName: d.shipName,
+    shipPhone: d.shipPhone,
+    shipAddress: d.shipAddress,
+    customer,
+  });
 
   const courierQuote = await quoteForOrder(workspaceId, {
     courierId: d.courierId || undefined,
@@ -699,6 +706,7 @@ export async function createOrder(
         paymentMethod: d.paymentMethod,
         paymentStatus: d.paymentStatus,
         amountPaid,
+        shipDistrict: detectDistrict(recipient.address),
         packagingCost: d.packagingCost,
         giftCost,
         discount,
