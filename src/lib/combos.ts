@@ -87,7 +87,15 @@ export function allocateComboPrice(
 ): AllocatedComponent[] {
   if (components.length === 0 || sets <= 0) return [];
 
-  const lines = components.map((c) => ({
+  const pieces = components.reduce((s, c) => s + c.quantity * sets, 0);
+  const target = round2(comboPrice * sets);
+  const rawListTotal = round2(components.reduce((s, c) => s + (c.salePrice ?? 0) * c.quantity * sets, 0));
+  const fallbackPrice = pieces > 0 ? Math.ceil((target / pieces) * 100) / 100 : 0;
+  const priced = rawListTotal < target
+    ? components.map((c) => ({ ...c, salePrice: fallbackPrice }))
+    : components;
+
+  const lines = priced.map((c) => ({
     productVariantId: c.productVariantId,
     quantity: c.quantity * sets,
     unitPrice: c.salePrice ?? 0,
@@ -95,11 +103,12 @@ export function allocateComboPrice(
   }));
 
   const listTotal = round2(lines.reduce((s, l) => s + l.lineValue, 0));
-  const target = round2(comboPrice * sets);
   // A combo priced at or above what its parts list for is not a discount, and
   // the customer still pays the combo price — so the components carry no
-  // saving and the difference simply is not one. Negative discounts would
-  // report as negative revenue somewhere downstream.
+  // saving and the difference simply is not one. When the recorded component
+  // prices cannot even cover the set price, the fallback above writes a plain
+  // per-piece price first; otherwise an unpriced combo would save as zero.
+  // Negative discounts would report as negative revenue somewhere downstream.
   const saving = round2(Math.max(0, listTotal - target));
 
   // Nothing to be proportional to: no component has a price, so the list total

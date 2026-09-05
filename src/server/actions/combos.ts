@@ -9,11 +9,11 @@ import { recordActivity, diffFields } from "@/lib/activity";
 import { variantCost, variantListPrice, variantStockMap } from "@/lib/inventory";
 import {
   allocateComboPrice,
-  comboBuildable,
   componentsTotal,
-  type ComboComponent,
 } from "@/lib/combos";
 import { variantFullName } from "@/lib/variants";
+import { loadFlexibleComboVariants } from "@/lib/combo-variants";
+import { allocateFlexiblePrice, recipeBuildable, withProductVariants, comboWebsiteRecipe, type RecipeComponent } from "@/lib/flexible-combos";
 import { round2 } from "@/lib/money";
 
 export type ActionResult = { ok: true; id?: string } | ActionFailure;
@@ -29,6 +29,7 @@ const ComboSchema = z.object({
   imageUrl: z.string().trim().optional().or(z.literal("")),
   price: z.coerce.number().positive("Set the combo's price"),
   freeDelivery: checkboxField,
+  flexibleVariants: checkboxField,
   active: checkboxField,
   // Typed by hand — combos are built separately in both places — so an empty
   // box has to mean "phone-only combo", not product id 0.
@@ -80,6 +81,7 @@ function parseCombo(formData: FormData) {
     imageUrl: formData.get("imageUrl") ?? undefined,
     price: formData.get("price"),
     freeDelivery: formData.get("freeDelivery"),
+    flexibleVariants: formData.get("flexibleVariants"),
     active: formData.get("active"),
     wooProductId: formData.get("wooProductId") ?? undefined,
     validFrom: formData.get("validFrom") ?? undefined,
@@ -147,6 +149,7 @@ export async function createCombo(slug: string, formData: FormData): Promise<Act
         imageUrl: d.imageUrl?.trim() || null,
         price: d.price,
         freeDelivery: d.freeDelivery,
+        flexibleVariants: d.flexibleVariants,
         active: d.active,
         wooProductId: d.wooProductId ?? null,
         validFrom: d.validFrom ?? null,
@@ -214,6 +217,7 @@ export async function updateCombo(
           imageUrl: d.imageUrl?.trim() || null,
           price: d.price,
           freeDelivery: d.freeDelivery,
+          flexibleVariants: d.flexibleVariants,
           active: d.active,
           wooProductId: d.wooProductId ?? null,
           validFrom: d.validFrom ?? null,
@@ -237,6 +241,7 @@ export async function updateCombo(
       name: existing.name,
       price: existing.price,
       freeDelivery: existing.freeDelivery,
+      flexibleVariants: existing.flexibleVariants,
       active: existing.active,
       wooProductId: existing.wooProductId,
       validFrom: existing.validFrom,
@@ -247,13 +252,14 @@ export async function updateCombo(
       name: d.name,
       price: d.price,
       freeDelivery: d.freeDelivery,
+      flexibleVariants: d.flexibleVariants,
       active: d.active,
       wooProductId: d.wooProductId ?? null,
       validFrom: d.validFrom ?? null,
       validTo: d.validTo ?? null,
       items: d.items.length,
     },
-    ["name", "price", "freeDelivery", "active", "wooProductId", "validFrom", "validTo", "items"],
+    ["name", "price", "flexibleVariants", "freeDelivery", "active", "wooProductId", "validFrom", "validTo", "items"],
   );
 
   await recordActivity(gate.access, {
@@ -339,12 +345,15 @@ export type ComboOptionForOrder = {
   sku: string | null;
   price: number;
   freeDelivery: boolean;
+  flexibleVariants: boolean;
   /** How many complete sets the shelf can make right now. */
   buildable: number;
   /** What the same goods list for bought separately. */
   listTotal: number;
   components: {
     productVariantId: string;
+    productId: string;
+    productName: string;
     label: string;
     quantity: number;
     salePrice: number | null;
@@ -352,7 +361,7 @@ export type ComboOptionForOrder = {
     /** One piece's shipping weight, so a combo parcel can be weighed like any other. */
     weightGrams: number | null;
   }[];
-  /** Exactly what one set writes onto the order, so the preview cannot drift. */
+  /** One set's recipe allocation; flexible sales resolve their actual mix separately. */
   allocation: { productVariantId: string; quantity: number; unitPrice: number; discount: number }[];
 };
 
@@ -374,6 +383,8 @@ export type ComboOptionForOrder = {
  * was reopened to edit — the same goods, two answers. Both sides now ask here.
  */
 export type ComponentFacts = {
+  productId: string;
+  alternatives: (RecipeComponent & { stock: number })[];
   /** Null when nobody has ever priced this piece on its own. */
   salePrice: number | null;
   unitCost: number;
@@ -389,26 +400,25 @@ export async function comboComponentFacts(
   if (variantIds.length === 0) return { ok: true, facts: {} };
 
   const ids = [...new Set(variantIds)];
-  const [variants, stock] = await Promise.all([
-    prisma.productVariant.findMany({
-      where: { id: { in: ids }, product: { workspaceId: gate.access.workspaceId } },
-      select: {
-        id: true,
-        salePrice: true,
-        unitCost: true,
-        purchases: {
-          orderBy: { date: "desc" },
-          take: 1,
-          select: { unitCost: true, salePrice: true },
-        },
-      },
-    }),
-    variantStockMap(gate.access.workspaceId, ids),
-  ]);
+  const variants = await prisma.productVariant.findMany({
+    where: { id: { in: ids }, product: { workspaceId: gate.access.workspaceId } },
+    select: {
+      id: true, productId: true, salePrice: true, unitCost: true,
+      purchases: { orderBy: { date: "desc" }, take: 1, select: { unitCost: true, salePrice: true } },
+      product: { select: { variants: { select: { id: true, productId: true, salePrice: true } } } },
+    },
+  });
+  const stock = await variantStockMap(gate.access.workspaceId,
+    [...new Set(variants.flatMap((v) => v.product.variants.map((s) => s.id)))]);
 
   const facts: Record<string, ComponentFacts> = {};
   for (const v of variants) {
     facts[v.id] = {
+      productId: v.productId,
+      alternatives: v.product.variants.map((s) => ({
+        productVariantId: s.id, productId: s.productId, quantity: 0,
+        salePrice: s.salePrice == null ? null : Number(s.salePrice), stock: stock.get(s.id) ?? 0,
+      })),
       salePrice: variantListPrice(v),
       unitCost: variantCost(v),
       stock: stock.get(v.id) ?? 0,
@@ -439,6 +449,7 @@ export async function listCombosForOrder(slug: string): Promise<ComboOptionForOr
           productVariant: {
             select: {
               id: true,
+              productId: true,
               attributes: true,
               salePrice: true,
               product: { select: { name: true, weightGrams: true } },
@@ -449,9 +460,10 @@ export async function listCombosForOrder(slug: string): Promise<ComboOptionForOr
     },
   });
   if (combos.length === 0) return [];
+  const siblings = await loadFlexibleComboVariants(workspaceId, combos);
 
   const variantIds = [
-    ...new Set(combos.flatMap((c) => c.items.map((i) => i.productVariantId))),
+    ...new Set([...combos.flatMap((c) => c.items.map((i) => i.productVariantId)), ...siblings.map((v) => v.productVariantId)]),
   ];
   // The per-variant figures are wanted anyway — a seller looking at "none
   // left" needs to see WHICH component is the bottleneck — so the buildable
@@ -460,28 +472,28 @@ export async function listCombosForOrder(slug: string): Promise<ComboOptionForOr
   const stock = await variantStockMap(workspaceId, variantIds);
 
   return combos.map((c) => {
-    const components: ComboComponent[] = c.items.map((i) => ({
+    const components = withProductVariants(c.items.map((i) => ({
       productVariantId: i.productVariantId,
+      productId: i.productVariant.productId,
+      productName: i.productVariant.product.name,
+      label: variantFullName(i.productVariant.product.name, i.productVariant.attributes),
       quantity: i.quantity,
       salePrice: i.productVariant.salePrice != null ? Number(i.productVariant.salePrice) : null,
-    }));
+      weightGrams: i.productVariant.product.weightGrams,
+    })), siblings, c.flexibleVariants);
     return {
       id: c.id,
       name: c.name,
       sku: c.sku,
       price: Number(c.price),
       freeDelivery: c.freeDelivery,
-      buildable: comboBuildable(c.items, stock),
+      flexibleVariants: c.flexibleVariants,
+      buildable: recipeBuildable(components, stock, c.flexibleVariants),
       listTotal: componentsTotal(components),
-      components: c.items.map((i) => ({
-        productVariantId: i.productVariantId,
-        label: variantFullName(i.productVariant.product.name, i.productVariant.attributes),
-        quantity: i.quantity,
-        salePrice: i.productVariant.salePrice != null ? Number(i.productVariant.salePrice) : null,
-        stock: stock.get(i.productVariantId) ?? 0,
-        weightGrams: i.productVariant.product.weightGrams,
-      })),
-      allocation: allocateComboPrice(components, Number(c.price), 1),
+      components: components.map((c) => ({ ...c, stock: stock.get(c.productVariantId) ?? 0 })),
+      allocation: c.flexibleVariants
+        ? allocateFlexiblePrice(components, Number(c.price))
+        : allocateComboPrice(components, Number(c.price), 1),
     };
   });
 }
@@ -515,14 +527,14 @@ export async function checkComboDrift(slug: string, id: string): Promise<ComboDr
 
   const combo = await prisma.comboSet.findFirst({
     where: { id, workspaceId: gate.access.workspaceId },
-    include: { items: { select: { quantity: true } } },
+    include: { items: { select: { productVariantId: true, quantity: true, productVariant: { select: { productId: true, wooProductId: true, product: { select: { name: true } } } } } } },
   });
   if (!combo?.wooProductId) return unchecked;
 
   const base = (process.env.WP_URL || "https://wp.gedushop.com").replace(/\/$/, "");
   let remote: {
     prices?: { price?: string; currency_minor_unit?: number };
-    extensions?: { gedushop?: { combo?: { items?: { qty?: number }[] } } };
+    extensions?: { gedushop?: { combo?: { flexible_variants?: boolean; items?: { id?: number; qty?: number }[] } } };
   } | null = null;
   try {
     const res = await fetch(`${base}/wp-json/wc/store/v1/products/${combo.wooProductId}`, {
@@ -549,10 +561,23 @@ export async function checkComboDrift(slug: string, id: string): Promise<ComboDr
   const localPrice = round2(Number(combo.price));
   const wooLines = wooCombo.items.length;
   const wooPieces = wooCombo.items.reduce((s, i) => s + (i.qty ?? 0), 0);
-  const localLines = combo.items.length;
+  const siblings = await loadFlexibleComboVariants(gate.access.workspaceId, [combo]);
+  let localRecipe: { id: number; qty: number }[];
+  try {
+    localRecipe = comboWebsiteRecipe(combo.items.map((i) => ({
+      productVariantId: i.productVariantId, productId: i.productVariant.productId,
+      productName: i.productVariant.product.name, quantity: i.quantity,
+      wooProductId: i.productVariant.wooProductId,
+    })), siblings, combo.flexibleVariants);
+  } catch (error) {
+    return { checked: true, matches: false, message: error instanceof Error ? error.message : "Website links differ" };
+  }
+  const localLines = localRecipe.length;
   const localPieces = combo.items.reduce((s, i) => s + i.quantity, 0);
 
   const problems: string[] = [];
+  if (Boolean(wooCombo.flexible_variants) !== combo.flexibleVariants) problems.push("variant mode differs");
+  if (localRecipe.some((i) => !wooCombo.items!.some((r) => r.id === i.id && r.qty === i.qty))) problems.push("component products or quantities differ");
   if (wooPrice !== localPrice) {
     problems.push(`price ${wooPrice} there vs ${localPrice} here`);
   }

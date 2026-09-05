@@ -92,10 +92,9 @@ const MUTED = "#6b6785"; // field labels on a filled slip
  * The same document, but the two sides of a sheet are doing different jobs and
  * one shared layout served neither well.
  *
- * A blank form is something a person writes on. It keeps every field — including
- * the two the shop decides rather than the customer, delivery area and payment
- * method — plus the ruled boxes and the red required marks: the box is where
- * the pen goes and the asterisk says the line can't be left out.
+ * A blank form is something a person writes on. It keeps the fields the packing
+ * table fills by hand, plus the ruled boxes and the red required marks: the box
+ * is where the pen goes and the asterisk says the line can't be left out.
  *
  * A filled slip is a record that travels taped to a parcel, read by a packer
  * and a courier at arm's length. So it drops what neither of them acts on
@@ -126,7 +125,7 @@ export function OrderFormSlip({
   return (
     <div
       className={`flex h-full flex-col overflow-hidden leading-tight ${
-        compact ? "px-[6mm] py-[3mm]" : "px-[8mm] py-[6mm]"
+        compact ? "px-[6mm] py-[2.5mm]" : "px-[8mm] py-[6mm]"
       }`}
       style={{ color: BODY }}
     >
@@ -138,13 +137,13 @@ export function OrderFormSlip({
             alt={workspace.name}
             className={
               compact
-                ? "mb-[0.5mm] h-[8mm] w-auto max-w-[40mm] object-contain"
+                ? "mb-[0.5mm] h-[11mm] w-auto max-w-[50mm] object-contain"
                 : "mb-[1.5mm] h-[17mm] w-auto max-w-[70mm] object-contain"
             }
           />
         )}
         <h1
-          className={compact ? "text-[13px] font-bold" : "text-[22px] font-bold"}
+          className={compact ? "text-[17px] font-bold" : "text-[22px] font-bold"}
           style={{ color: INK }}
         >
           {workspace.name}
@@ -162,7 +161,7 @@ export function OrderFormSlip({
           hunted for halfway down. */}
       <div
         className={`flex items-end justify-between gap-[4mm] border-b-2 ${
-          compact ? "mt-[1.5mm] pb-[1mm]" : "mt-[3.5mm] pb-[1.5mm]"
+          compact ? "mt-[1mm] pb-[1mm]" : "mt-[3.5mm] pb-[1.5mm]"
         }`}
         style={{ borderColor: INK }}
       >
@@ -213,31 +212,24 @@ function FilledBody({ order, compact }: { order: SlipOrder; compact: boolean }) 
       <>
         {/* Name shrinks to a caption; the phone is the field a courier
             actually dials, so it keeps most of its size. */}
-        <Value className="mt-[1.5mm] text-[11px] font-semibold">{order.customerName}</Value>
-        <Value className="mt-[0.5mm] text-[16px] font-bold tracking-wide tabular-nums">
+        <Value className="mt-[2mm] text-[14px] font-semibold">{order.customerName}</Value>
+        <Value className="mt-[0.75mm] text-[19px] font-bold tracking-wide tabular-nums">
           {order.phone}
         </Value>
         {/* Product names are dropped at this density — no room to read them
             at arm's length — but the address stays: it's what makes the
             parcel deliverable, just clamped tighter than the half-sheet. */}
-        <Value className="mt-[1mm] text-[10.5px] whitespace-pre-wrap" clampLines={4}>
+        <Value className="mt-[1.5mm] min-h-[15mm] text-[13px] leading-snug whitespace-pre-wrap" clampLines={3}>
           {order.address}
         </Value>
 
-        <div className="mt-auto flex items-baseline justify-between text-[10px]" style={{ color: MUTED }}>
-          <span>মোট পিস (Qty)</span>
-          <span className="text-[13px] font-bold tabular-nums" style={{ color: BODY }}>
-            {order.totalQty}
-          </span>
-        </div>
-
         {/* The one figure the shop can be argued with about, boxed the way
             every courier's own COD label boxes it. */}
-        <div className="mt-[1.5mm] border-2 px-[2.5mm] py-[1.5mm]" style={{ borderColor: INK }}>
-          <div className="text-[9px]" style={{ color: MUTED }}>
+        <div className="mt-auto border-2 px-[3mm] py-[2mm]" style={{ borderColor: INK }}>
+          <div className="text-[11px]" style={{ color: MUTED }}>
             সংগ্রহ করতে হবে (ডেলিভারি সহ)
           </div>
-          <div className="text-[22px] leading-none font-bold tabular-nums" style={{ color: INK }}>
+          <div className="text-[26px] leading-none font-bold tabular-nums" style={{ color: INK }}>
             {formatMoney(order.collect)}
           </div>
           {settledNote(order) && (
@@ -308,21 +300,17 @@ function FilledBody({ order, compact }: { order: SlipOrder; compact: boolean }) 
 }
 
 /**
- * The compact blank form drops the numbered sections and ruled write-in
- * boxes of the half-sheet version — there isn't room for either at a quarter
- * page — down to the same fields a filled slip shows at this density, plus
- * the two the shop (not the customer) decides, so nothing that needs an
- * answer is silently missing from the fill-by-hand copy.
+ * The compact blank form keeps only what has to be written on a quarter page:
+ * customer name, mobile, address and the amount collected.
  */
 function BlankBody({ compact }: { compact: boolean }) {
   if (compact) {
     return (
       <BlankGroup>
-        <BlankField label="কাস্টমার ও মোবাইল" height="12mm" />
-        <BlankField label="ঠিকানা" height="14mm" />
-        <BlankField label="পরিমাণ (Qty) ও সংগ্রহ করতে হবে" height="10mm" />
-        <BlankField label="এরিয়া" ticks={["ভিতরে", "বাইরে"]} />
-        <BlankField label="পেমেন্ট" ticks={["COD", "বিকাশ/নগদ"]} />
+        <BlankField label="কাস্টমারের নাম" height="10mm" />
+        <BlankField label="মোবাইল নম্বর" height="10mm" />
+        <BlankField label="পূর্ণাঙ্গ ঠিকানা" height="24mm" />
+        <BlankField label="সংগ্রহ করতে হবে (ডেলিভারি সহ)" height="12mm" />
       </BlankGroup>
     );
   }

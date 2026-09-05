@@ -7,7 +7,9 @@ import type { ActionFailure } from "@/lib/form";
 import { recordActivity } from "@/lib/activity";
 import { variantFullName } from "@/lib/variants";
 import { round2 } from "@/lib/money";
-import { comboPricePayload, mergeByWebsiteProduct } from "@/lib/combos";
+import { loadFlexibleComboVariants } from "@/lib/combo-variants";
+import { comboWebsiteRecipe } from "@/lib/flexible-combos";
+import { comboPricePayload } from "@/lib/combos";
 import {
   clearWooCatalogCache,
   fetchWooCatalog,
@@ -217,7 +219,7 @@ export async function pushComboToWebsite(slug: string, comboId: string): Promise
       items: {
         include: {
           productVariant: {
-            select: { id: true, attributes: true, wooProductId: true, product: { select: { name: true } } },
+            select: { id: true, productId: true, attributes: true, wooProductId: true, product: { select: { name: true } } },
           },
         },
       },
@@ -226,24 +228,18 @@ export async function pushComboToWebsite(slug: string, comboId: string): Promise
   if (!combo) return { ok: false, error: "Combo not found" };
   if (combo.items.length === 0) return { ok: false, error: "Add products to the combo first" };
 
-  // One pass so the guard below and the recipe agree by construction: every
-  // item is either reported as unlinked or carries a website id the types know
-  // about, with no cast standing in for the check.
-  const recipe: { wooProductId: number; quantity: number }[] = [];
-  const unlinked: typeof combo.items = [];
-  for (const i of combo.items) {
-    const wooProductId = i.productVariant.wooProductId;
-    if (wooProductId == null) unlinked.push(i);
-    else recipe.push({ wooProductId, quantity: i.quantity });
-  }
-  if (unlinked.length > 0) {
-    const names = unlinked
-      .map((i) => variantFullName(i.productVariant.product.name, i.productVariant.attributes))
-      .join(", ");
-    return {
-      ok: false,
-      error: `Link ${unlinked.length > 1 ? "these products" : "this product"} to the website first: ${names}.`,
-    };
+  const siblings = await loadFlexibleComboVariants(gate.access.workspaceId, [combo]);
+  let recipe: { id: number; qty: number }[];
+  try {
+    recipe = comboWebsiteRecipe(combo.items.map((i) => ({
+      productVariantId: i.productVariantId,
+      productId: i.productVariant.productId,
+      productName: i.productVariant.product.name,
+      quantity: i.quantity,
+      wooProductId: i.productVariant.wooProductId,
+    })), siblings, combo.flexibleVariants);
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Cannot link combo to the website" };
   }
 
   const price = round2(Number(combo.price));
@@ -255,12 +251,13 @@ export async function pushComboToWebsite(slug: string, comboId: string): Promise
     // the last set would keep selling after the shelf was empty.
     manage_stock: true,
     meta_data: [
+      { key: "_gedu_combo_flexible_variants", value: combo.flexibleVariants ? "yes" : "no" },
       {
         key: ITEMS_META,
         // Merged, because several variants here can be one product there. Two
         // rows naming one listing would let the website work out a larger
         // buildable count than the shelf can actually fill.
-        value: mergeByWebsiteProduct(recipe),
+        value: recipe,
       },
       { key: FREE_SHIPPING_META, value: combo.freeDelivery ? "yes" : "no" },
       { key: PRICE_META, value: String(price) },

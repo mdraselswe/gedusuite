@@ -9,7 +9,9 @@ import {
   variantListPrice,
   variantStockMap,
 } from "@/lib/inventory";
-import { comboBuildable, componentsTotal } from "@/lib/combos";
+import { loadFlexibleComboVariants } from "@/lib/combo-variants";
+import { recipeBuildable, withProductVariants } from "@/lib/flexible-combos";
+import { componentsTotal } from "@/lib/combos";
 import { round2 } from "@/lib/money";
 import { variantFullName, variantAttributes } from "@/lib/variants";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -88,6 +90,7 @@ export default async function ProductsPage({
             productVariant: {
               select: {
                 id: true,
+                productId: true,
                 attributes: true,
                 salePrice: true,
                 unitCost: true,
@@ -137,9 +140,12 @@ export default async function ProductsPage({
 
   const hasVariants = products.some((p) => p.variants.length > 0);
 
+  const siblings = await loadFlexibleComboVariants(access.workspaceId, combos);
   const comboRows: ComboRow[] = combos.map((c) => {
     const components = c.items.map((i) => ({
       productVariantId: i.productVariantId,
+      productId: i.productVariant.productId,
+      productName: i.productVariant.product.name,
       label: variantFullName(i.productVariant.product.name, i.productVariant.attributes),
       quantity: i.quantity,
       // Same rule the combo form uses, so opening a combo to edit it can't show
@@ -155,13 +161,14 @@ export default async function ProductsPage({
       sku: c.sku,
       price: Number(c.price),
       freeDelivery: c.freeDelivery,
+      flexibleVariants: c.flexibleVariants,
       active: c.active,
       wooProductId: c.wooProductId,
       validFrom: c.validFrom?.toISOString() ?? null,
       validTo: c.validTo?.toISOString() ?? null,
       // Derived from the same stock map the variant rows above are showing, so
       // "12 sets" and the pieces it counted can never tell different stories.
-      buildable: comboBuildable(c.items, stock),
+      buildable: recipeBuildable(withProductVariants(components, siblings, c.flexibleVariants), stock, c.flexibleVariants),
       listTotal: componentsTotal(components),
       costTotal: round2(components.reduce((s, k) => s + k.unitCost * k.quantity, 0)),
       components,

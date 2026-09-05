@@ -77,7 +77,9 @@ import { Money } from "@/components/ui/money";
 import { Stamp } from "@/components/ui/stamp";
 import { toDhakaInputValue, type DhakaStamp } from "@/lib/dhaka-time";
 import { formatMoney, round2 } from "@/lib/money";
-import { stockShortfall } from "@/lib/combos";
+import { FlexibleComboAllocation } from "@/components/sales/flexible-combo-allocation";
+import { resolveComboPicks } from "@/lib/flexible-combos";
+import { stockShortfall, type StockDemand } from "@/lib/combos";
 import { goodsLikelyWithCourier, OVERDUE_RETURN_DAYS } from "@/lib/returns";
 import { Field } from "@/components/ui/field";
 import { MoneyInput } from "@/components/ui/money-input";
@@ -698,7 +700,7 @@ export function OrderManager({
    * server, which is the only one that counts. So the form sends "two Flight
    * Starter Combos" and the server writes the lines.
    */
-  const [comboPicks, setComboPicks] = useState<{ comboSetId: string; quantity: string }[]>([]);
+  const [comboPicks, setComboPicks] = useState<{ comboSetId: string; quantity: string; allocation?: StockDemand[] }[]>([]);
   const [gifts, setGifts] = useState<GiftDraft[]>([]);
   const [customer, setCustomer] = useState<ComboOption | null>(null);
   const [heldById, setHeldById] = useState(NONE);
@@ -1126,10 +1128,30 @@ export function OrderManager({
   const pickedCombos = useMemo(
     () =>
       comboPicks
-        .map((p) => ({ combo: comboById.get(p.comboSetId), quantity: parseInt(p.quantity) || 0 }))
-        .filter((p): p is { combo: ComboOptionForOrder; quantity: number } => !!p.combo && p.quantity > 0),
+        .map((p) => ({ combo: comboById.get(p.comboSetId), quantity: parseInt(p.quantity) || 0, allocation: p.allocation }))
+        .filter((p): p is { combo: ComboOptionForOrder; quantity: number; allocation: StockDemand[] | undefined } => !!p.combo && p.quantity > 0),
     [comboPicks, comboById],
   );
+
+  const comboPreview = useMemo(() => {
+    const stock = new Map(combos.flatMap((c) => c.components.map((k) => [k.productVariantId, k.stock] as const)));
+    const reserved = items.filter((i) => i.variant).map((i) => ({
+      productVariantId: i.variant!.value,
+      quantity: (parseInt(i.quantity) || 0) * (i.unit === "PACK" ? uppOf(i) ?? 1 : 1),
+    }));
+    for (const g of gifts) if (g.mode === "PRODUCT" && g.variant) reserved.push({ productVariantId: g.variant.value, quantity: parseInt(g.quantity) || 0 });
+    try {
+      const resolved = resolveComboPicks(combos, pickedCombos.map((p) => ({ comboSetId: p.combo.id, quantity: p.quantity, allocation: p.allocation })), stock, reserved);
+      const allocations = resolved.map((sets) => {
+        const totals = new Map<string, number>();
+        for (const c of sets.flat()) totals.set(c.productVariantId, (totals.get(c.productVariantId) ?? 0) + c.quantity);
+        return [...totals].map(([productVariantId, quantity]) => ({ productVariantId, quantity }));
+      });
+      return { allocations, error: null };
+    } catch (error) {
+      return { allocations: [] as StockDemand[][], error: error instanceof Error ? error.message : "Cannot allocate combo" };
+    }
+  }, [combos, pickedCombos, items, gifts]);
 
   /** Does anything on this order carry free delivery as part of the offer? */
   const comboFreeDelivery = pickedCombos.some((p) => p.combo.freeDelivery);
@@ -1313,10 +1335,12 @@ export function OrderManager({
           discount: parseFloat(it.discount) || 0,
         };
       });
-    const cleanCombos = pickedCombos.map((p) => ({
+    const cleanCombos = pickedCombos.map((p, i) => ({
       comboSetId: p.combo.id,
       quantity: p.quantity,
+      allocation: p.combo.flexibleVariants ? p.allocation ?? comboPreview.allocations[i] : undefined,
     }));
+    if (comboPreview.error) { toast.error(comboPreview.error); return; }
     if (cleanItems.length === 0 && cleanCombos.length === 0) {
       toast.error("Add at least one item or combo");
       return;
@@ -1376,12 +1400,7 @@ export function OrderManager({
         ...cleanGifts
           .filter((g) => g.productVariantId)
           .map((g) => ({ productVariantId: g.productVariantId, quantity: g.quantity })),
-        ...pickedCombos.flatMap((p) =>
-          p.combo.components.map((k) => ({
-            productVariantId: k.productVariantId,
-            quantity: k.quantity * p.quantity,
-          })),
-        ),
+        ...comboPreview.allocations.flat(),
       ],
       new Map([...known].map(([id, k]) => [id, k.stock])),
     );
@@ -2311,7 +2330,7 @@ export function OrderManager({
                                     onValueChange={(v) =>
                                       setComboPicks((prev) =>
                                         prev.map((p, j) =>
-                                          j === i ? { ...p, comboSetId: v ?? NONE } : p,
+                                          j === i ? { ...p, comboSetId: v ?? NONE, allocation: undefined } : p,
                                         ),
                                       )
                                     }
@@ -2340,7 +2359,7 @@ export function OrderManager({
                                     onChange={(e) =>
                                       setComboPicks((prev) =>
                                         prev.map((p, j) =>
-                                          j === i ? { ...p, quantity: e.target.value } : p,
+                                          j === i ? { ...p, quantity: e.target.value, allocation: undefined } : p,
                                         ),
                                       )
                                     }
@@ -2361,8 +2380,20 @@ export function OrderManager({
 
                               {combo && (
                                 <>
+                                  {combo.flexibleVariants && (
+                                    <FlexibleComboAllocation
+                                      combo={combo}
+                                      sets={Math.max(qty, 1)}
+                                      allocation={pick.allocation ?? comboPreview.allocations[
+                                        comboPicks.slice(0, i).filter((p) => comboById.has(p.comboSetId) && (parseInt(p.quantity) || 0) > 0).length
+                                      ] ?? []}
+                                      error={comboPreview.error}
+                                      onChange={(allocation) => setComboPicks((prev) => prev.map((p, j) => j === i ? { ...p, allocation } : p))}
+                                      onReset={() => setComboPicks((prev) => prev.map((p, j) => j === i ? { ...p, allocation: undefined } : p))}
+                                    />
+                                  )}
                                   <ul className="mt-3 space-y-0.5 text-xs text-muted-foreground">
-                                    {combo.components.map((k) => (
+                                    {!combo.flexibleVariants && combo.components.map((k) => (
                                       <li
                                         key={k.productVariantId}
                                         className="flex justify-between gap-3"
@@ -2385,10 +2416,14 @@ export function OrderManager({
                                       }
                                     >
                                       {overBuildable
-                                        ? `Only ${combo.buildable} can be made — ${shortest?.label ?? "a component"} is short`
+                                        ? combo.flexibleVariants
+                                          ? `Only ${combo.buildable} sets can be made from this product's variants`
+                                          : `Only ${combo.buildable} can be made — ${shortest?.label ?? "a component"} is short`
                                         : combo.freeDelivery
                                           ? "Free delivery with this combo"
-                                          : `Saves ${formatMoney(Math.max(0, combo.listTotal - combo.price))} against buying separately`}
+                                          : combo.flexibleVariants
+                                            ? "Combo price stays the same for any variant mix"
+                                            : `Saves ${formatMoney(Math.max(0, combo.listTotal - combo.price))} against buying separately`}
                                     </span>
                                     <span className="font-medium tabular-nums">
                                       Line total {formatMoney(combo.price * Math.max(qty, 0))}

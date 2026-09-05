@@ -96,11 +96,19 @@ describe("allocateComboPrice", () => {
       { productVariantId: "a", quantity: 1, salePrice: null },
       { productVariantId: "b", quantity: 3, salePrice: null },
     ];
-    // Nothing lists for anything, so there is no saving either — but the split
-    // must still not divide by zero.
+    // Nothing lists for anything, so the set price becomes the only reliable
+    // source of invoice value.
     const lines = allocateComboPrice(unpriced, 500);
+    expect(lines.map((l) => l.unitPrice)).toEqual([125, 125]);
+    expect(lines.reduce((s, l) => s + l.unitPrice * l.quantity - l.discount, 0)).toBe(500);
     expect(lines.map((l) => l.discount)).toEqual([0, 0]);
     expect(lines.map((l) => l.quantity)).toEqual([1, 3]);
+  });
+
+  it("keeps the set price when catalogue prices are below it", () => {
+    const lines = allocateComboPrice([{ productVariantId: "toy", quantity: 3, salePrice: 0 }], 200);
+    expect(lines).toEqual([{ productVariantId: "toy", quantity: 3, unitPrice: 66.67, discount: 0.01 }]);
+    expect(lines.reduce((s, l) => s + l.unitPrice * l.quantity - l.discount, 0)).toBeCloseTo(200, 2);
   });
 
   it("never returns a negative discount", () => {

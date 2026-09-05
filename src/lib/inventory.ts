@@ -1,7 +1,8 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { variantSuffix } from "@/lib/variants";
-import { comboBuildable } from "@/lib/combos";
+import { loadFlexibleComboVariants } from "@/lib/combo-variants";
+import { recipeBuildable, withProductVariants } from "@/lib/flexible-combos";
 import { round2 } from "@/lib/money";
 
 /** Enough of a Prisma client to derive stock — the real one or a transaction. */
@@ -214,23 +215,24 @@ export async function inTransitReturnMap(
 export async function comboStockMap(
   workspaceId: string,
   comboIds?: string[],
-  client: StockClient & Pick<Prisma.TransactionClient, "comboSet"> = prisma,
+  client: StockClient & Pick<Prisma.TransactionClient, "comboSet" | "productVariant"> = prisma,
 ): Promise<Map<string, number>> {
   const combos = await client.comboSet.findMany({
     where: { workspaceId, ...(comboIds ? { id: { in: comboIds } } : {}) },
-    select: { id: true, items: { select: { productVariantId: true, quantity: true } } },
+    select: { id: true, flexibleVariants: true, items: { select: { productVariantId: true, quantity: true, productVariant: { select: { productId: true } } } } },
   });
   if (combos.length === 0) return new Map();
+  const siblings = await loadFlexibleComboVariants(workspaceId, combos, client);
 
   // One stock query for every component of every combo asked about, rather
   // than one per combo: a shop with twenty combos over forty variants would
   // otherwise run twenty aggregations of five tables each.
   const variantIds = [
-    ...new Set(combos.flatMap((c) => c.items.map((i) => i.productVariantId))),
+    ...new Set([...combos.flatMap((c) => c.items.map((i) => i.productVariantId)), ...siblings.map((v) => v.productVariantId)]),
   ];
   const stock = await variantStockMap(workspaceId, variantIds, client);
 
-  return new Map(combos.map((c) => [c.id, comboBuildable(c.items, stock)]));
+  return new Map(combos.map((c) => [c.id, recipeBuildable(withProductVariants(c.items.map((i) => ({ ...i, productId: i.productVariant.productId, salePrice: null })), siblings, c.flexibleVariants), stock, c.flexibleVariants)]));
 }
 
 /**

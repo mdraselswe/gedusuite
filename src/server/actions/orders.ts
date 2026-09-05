@@ -22,7 +22,9 @@ import {
   syncOrderCashEntry,
 } from "@/lib/order-cash";
 import { computeOrderTotals, goodsDiscount } from "@/lib/orders";
-import { allocateComboPrice, type ComboComponent } from "@/lib/combos";
+import { loadFlexibleComboVariants } from "@/lib/combo-variants";
+import { resolveComboPicks, allocateFlexiblePrice, withProductVariants, type ComboPick } from "@/lib/flexible-combos";
+import { allocateComboPrice, type StockDemand } from "@/lib/combos";
 import { isOrderSource } from "@/lib/order-source";
 import { codFeeOn, quoteCourier } from "@/lib/courier";
 import { syncCourierStatuses } from "@/lib/courier-status-sync";
@@ -189,6 +191,7 @@ const OrderSchema = z.object({
       z.object({
         comboSetId: z.string().min(1),
         quantity: z.coerce.number().int().positive(),
+        allocation: z.array(z.object({ productVariantId: z.string().min(1), quantity: z.number().int().nonnegative() })).optional(),
       }),
     )
     .default([]),
@@ -382,7 +385,8 @@ function newComboKey(): string {
  */
 async function expandCombos(
   workspaceId: string,
-  picked: { comboSetId: string; quantity: number }[],
+  picked: ComboPick[],
+  reserved: StockDemand[],
 ): Promise<{ ok: true; items: ExpandedItem[] } | ActionFailure> {
   if (picked.length === 0) return { ok: true, items: [] };
 
@@ -391,7 +395,7 @@ async function expandCombos(
     where: { workspaceId, id: { in: picked.map((c) => c.comboSetId) } },
     include: {
       items: {
-        include: { productVariant: { select: { salePrice: true } } },
+        include: { productVariant: { select: { salePrice: true, productId: true } } },
       },
     },
   });
@@ -413,19 +417,35 @@ async function expandCombos(
     if (combo.items.length === 0) {
       return { ok: false, error: `${combo.name} has no products in it` };
     }
-
-    const components: ComboComponent[] = combo.items.map((i) => ({
+  }
+  const siblings = await loadFlexibleComboVariants(workspaceId, combos);
+  const recipes = combos.map((c) => ({
+    id: c.id,
+    flexibleVariants: c.flexibleVariants,
+    components: withProductVariants(c.items.map((i) => ({
       productVariantId: i.productVariantId,
+      productId: i.productVariant.productId,
       quantity: i.quantity,
-      salePrice: i.productVariant.salePrice != null ? Number(i.productVariant.salePrice) : null,
-    }));
-
-    for (let n = 0; n < want.quantity; n++) {
-      const comboKey = newComboKey();
-      for (const line of allocateComboPrice(components, Number(combo.price), 1)) {
-        items.push({ ...line, comboSetId: combo.id, comboKey });
+      salePrice: i.productVariant.salePrice == null ? null : Number(i.productVariant.salePrice),
+    })), siblings, c.flexibleVariants),
+  }));
+  const stock = recipes.some((c) => c.flexibleVariants)
+    ? await variantStockMap(workspaceId)
+    : new Map<string, number>();
+  try {
+    const resolved = resolveComboPicks(recipes, picked, stock, reserved);
+    for (let i = 0; i < picked.length; i++) {
+      const combo = byId.get(picked[i].comboSetId)!;
+      for (const components of resolved[i]) {
+        const comboKey = newComboKey();
+        const lines = combo.flexibleVariants
+          ? allocateFlexiblePrice(components, Number(combo.price))
+          : allocateComboPrice(components, Number(combo.price));
+        for (const line of lines) items.push({ ...line, comboSetId: combo.id, comboKey });
       }
     }
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Cannot allocate combo variants" };
   }
   return { ok: true, items };
 }
@@ -492,7 +512,10 @@ export async function createOrder(
   // stock, cost, totals and the notification below all treat them as the
   // products they are. Everything from here down reads `orderItems`, never
   // `d.items`.
-  const expanded = await expandCombos(workspaceId, d.combos);
+  const expanded = await expandCombos(workspaceId, d.combos, [
+    ...d.items,
+    ...d.gifts.filter((g) => g.productVariantId).map((g) => ({ productVariantId: g.productVariantId!, quantity: g.quantity })),
+  ]);
   if (!expanded.ok) return expanded;
   const orderItems: ExpandedItem[] = [
     ...d.items.map((it) => ({ ...it, comboSetId: null, comboKey: null })),

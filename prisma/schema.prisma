@@ -286,6 +286,8 @@ model ProductVariant {
  * already understand.
  */
 model ComboSet {
+  /// Pool all variants of each recipe product; quantities become product totals.
+  flexibleVariants Boolean @default(false)
   id           String    @id @default(cuid())
   workspaceId  String
   name         String

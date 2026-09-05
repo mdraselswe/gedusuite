@@ -1,0 +1,1 @@
+ALTER TABLE "ComboSet" ADD COLUMN "flexibleVariants" BOOLEAN NOT NULL DEFAULT false;

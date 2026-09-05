@@ -50,7 +50,8 @@ import {
   type ComboDrift,
   type ComponentFacts,
 } from "@/server/actions/combos";
-import { allocateComboPrice, comboBuildable, componentsTotal } from "@/lib/combos";
+import { allocateComboPrice, componentsTotal } from "@/lib/combos";
+import { allocateFlexiblePrice, recipeBuildable, withProductVariants } from "@/lib/flexible-combos";
 import { round2 } from "@/lib/money";
 
 /** A combo as the products page hands it over — already costed and counted. */
@@ -60,6 +61,7 @@ export type ComboRow = {
   sku: string | null;
   price: number;
   freeDelivery: boolean;
+  flexibleVariants: boolean;
   active: boolean;
   wooProductId: number | null;
   validFrom: string | null;
@@ -72,6 +74,8 @@ export type ComboRow = {
   costTotal: number;
   components: {
     productVariantId: string;
+    productId: string;
+    productName: string;
     label: string;
     quantity: number;
     salePrice: number | null;
@@ -250,6 +254,7 @@ export function ComboManager({
   const [name, setName] = useState("");
   const [sku, setSku] = useState("");
   const [price, setPrice] = useState("");
+  const [flexibleVariants, setFlexibleVariants] = useState(false);
   const [freeDelivery, setFreeDelivery] = useState(false);
   const [active, setActive] = useState(true);
   const [wooProductId, setWooProductId] = useState("");
@@ -266,6 +271,7 @@ export function ComboManager({
     setSku("");
     setPrice("");
     setFreeDelivery(false);
+    setFlexibleVariants(false);
     setActive(true);
     setWooProductId("");
     setValidFrom("");
@@ -281,6 +287,7 @@ export function ComboManager({
     setSku(c.sku ?? "");
     setPrice(String(c.price));
     setFreeDelivery(c.freeDelivery);
+    setFlexibleVariants(c.flexibleVariants);
     setActive(c.active);
     setWooProductId(c.wooProductId != null ? String(c.wooProductId) : "");
     setValidFrom(dateInputValue(c.validFrom));
@@ -377,6 +384,7 @@ export function ComboManager({
       const f = facts[productVariantId];
       return {
         productVariantId,
+        productId: f?.productId ?? productVariantId,
         quantity,
         salePrice: f?.salePrice ?? null,
         unitCost: f?.unitCost ?? 0,
@@ -391,7 +399,9 @@ export function ComboManager({
     const comboPrice = parseFloat(price) || 0;
     const listTotal = componentsTotal(picked);
     const costTotal = round2(picked.reduce((s, c) => s + c.unitCost * c.quantity, 0));
-    const stockMap = new Map(picked.map((c) => [c.productVariantId, c.stock]));
+    const available = withProductVariants(picked,
+      picked.flatMap((c) => facts[c.productVariantId]?.alternatives ?? []), flexibleVariants);
+    const stockMap = new Map(available.map((c) => [c.productVariantId, c.stock]));
     const margin = round2(comboPrice - costTotal);
     return {
       picked,
@@ -404,13 +414,15 @@ export function ComboManager({
       saving: round2(Math.max(0, listTotal - comboPrice)),
       margin,
       marginPct: comboPrice > 0 ? Math.round((margin / comboPrice) * 100) : 0,
-      buildable: comboBuildable(picked, stockMap),
-      allocation: comboPrice > 0 ? allocateComboPrice(picked, comboPrice, 1) : [],
+      buildable: recipeBuildable(available, stockMap, flexibleVariants),
+      allocation: comboPrice > 0
+        ? flexibleVariants ? allocateFlexiblePrice(picked, comboPrice) : allocateComboPrice(picked, comboPrice, 1)
+        : [],
     };
     // pickedIds is derived from components; listing it too would only re-run
     // this on every keystroke that cannot change it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [components, price, facts]);
+  }, [components, price, facts, flexibleVariants]);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -420,8 +432,8 @@ export function ComboManager({
         productVariantId: c.variant!.value,
         quantity: parseInt(c.quantity) || 0,
       }));
-    if (picked.length < 2) {
-      return toast.error("A combo needs at least two products");
+    if (picked.reduce((n, c) => n + c.quantity, 0) < 2) {
+      return toast.error("A combo needs at least two pieces");
     }
 
     setSaving(true);
@@ -429,6 +441,7 @@ export function ComboManager({
     fd.set("name", name);
     fd.set("sku", sku);
     fd.set("price", price);
+    if (flexibleVariants) fd.set("flexibleVariants", "1");
     if (freeDelivery) fd.set("freeDelivery", "1");
     if (active) fd.set("active", "1");
     fd.set("wooProductId", wooProductId);
@@ -581,10 +594,16 @@ export function ComboManager({
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="font-medium">{c.name}</span>
             {!c.active && <Badge variant="outline">Off</Badge>}
+            {c.flexibleVariants && <Badge variant="secondary">Mixed variants</Badge>}
             {c.freeDelivery && <Badge variant="secondary">Free delivery</Badge>}
           </div>
           <p className="mt-0.5 truncate text-xs text-muted-foreground">
-            {c.components.map((k) => `${k.label} ×${k.quantity}`).join(" + ")}
+            {c.flexibleVariants
+              ? [...new Set(c.components.map((k) => k.productId))].map((id) => {
+                  const group = c.components.filter((k) => k.productId === id);
+                  return `${group[0].productName} ×${group.reduce((n, k) => n + k.quantity, 0)} (mixed variants)`;
+                }).join(" + ")
+              : c.components.map((k) => `${k.label} ×${k.quantity}`).join(" + ")}
           </p>
         </div>
       ),
@@ -599,7 +618,7 @@ export function ComboManager({
           <Money value={c.price} />
           {c.listTotal > c.price && (
             <p className="text-xs text-muted-foreground">
-              saves <Money value={round2(c.listTotal - c.price)} bare />
+              {c.flexibleVariants ? "est. saving " : "saves "}<Money value={round2(c.listTotal - c.price)} bare />
             </p>
           )}
         </div>
@@ -617,7 +636,7 @@ export function ComboManager({
           <div>
             <Money value={margin} tone={margin < 0 ? "negative" : "positive"} />
             <p className="text-xs text-muted-foreground">
-              cost <Money value={c.costTotal} bare />
+              {c.flexibleVariants ? "est. cost " : "cost "}<Money value={c.costTotal} bare />
             </p>
           </div>
         );
@@ -649,7 +668,9 @@ export function ComboManager({
           return (
             <span className="text-xs text-muted-foreground">
               Not on the website
-              {unlinked > 0 && (
+              {c.flexibleVariants ? (
+                <span className="block text-muted-foreground">Uses one shared website listing per product</span>
+              ) : unlinked > 0 && (
                 <span className="block text-amber-600 dark:text-amber-400">
                   {unlinked} product{unlinked > 1 ? "s" : ""} to link first
                 </span>
@@ -909,6 +930,17 @@ export function ComboManager({
 
             <div className="space-y-2">
               <label className="flex items-start gap-2 text-sm">
+                <Checkbox checked={flexibleVariants} onCheckedChange={(v) => setFlexibleVariants(v === true)} />
+                <span>
+                  Flexible variants / mixed colours
+                  <span className="block text-xs text-muted-foreground">
+                    Any colour/variant of each product can be sold, including colours added later.
+                    Yellow 5 + Blue 5 means any mix of that product totalling 10; Yellow 10 works too.
+                    Other products keep their own totals. Stock suggests the mix when selling; you can adjust it.
+                  </span>
+                </span>
+              </label>
+              <label className="flex items-start gap-2 text-sm">
                 <Checkbox
                   checked={freeDelivery}
                   onCheckedChange={(v) => setFreeDelivery(v === true)}
@@ -937,8 +969,11 @@ export function ComboManager({
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <h3 className="text-sm font-semibold">What&rsquo;s in the box</h3>
+                  {flexibleVariants && <p className="text-xs text-muted-foreground">Cost and savings below estimate the entered mix. Actual cost uses the variants sold. Push update after saving to show the mixed-variant note on the website.</p>}
                   <p className="text-xs text-muted-foreground">
-                    Pick the exact variant — the colour and size that actually go in.
+                    {flexibleVariants
+                      ? "Pick any variant to choose a product and set its total pieces. All of that product's variants are available when selling."
+                      : "Pick the exact variant — the colour and size that actually go in."}
                   </p>
                 </div>
                 <div className="flex gap-2">
