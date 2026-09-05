@@ -128,6 +128,8 @@ const STATUSES = [
   "PHONE_OFF",
   "WRONG_NUMBER",
   "CALL_LATER",
+  "WILL_CONFIRM",
+  "DUPLICATE",
   "CONFIRMED",
   "CANCELLED",
 ] as const;
@@ -138,6 +140,8 @@ const STATUS_LABEL: Record<string, string> = {
   PHONE_OFF: "Phone off",
   WRONG_NUMBER: "Wrong number",
   CALL_LATER: "Call later",
+  WILL_CONFIRM: "Will confirm",
+  DUPLICATE: "Duplicate",
   CONFIRMED: "Confirmed",
   // Named for who did it: the customer said no on the phone. An order
   // cancelled later is the order's own status, in the next column.
@@ -151,6 +155,8 @@ const STATUS_TONE: Record<string, string> = {
   PHONE_OFF: "border-orange-500/60 text-orange-700 dark:text-orange-400",
   WRONG_NUMBER: "border-red-500/60 text-red-700 dark:text-red-400",
   CALL_LATER: "border-sky-500/60 text-sky-700 dark:text-sky-400",
+  WILL_CONFIRM: "border-violet-500/60 text-violet-700 dark:text-violet-400",
+  DUPLICATE: "border-slate-500/60 text-slate-700 dark:text-slate-300",
   CONFIRMED: "border-emerald-500/60 text-emerald-700 dark:text-emerald-400",
   // Was muted grey and struck through — the look of a row already dealt with.
   // It is the one the caller most needs to see: somebody rang, and the answer
