@@ -4,6 +4,7 @@ import { workspaceAccess } from "@/lib/authz";
 import { can } from "@/lib/rbac";
 import { entityLabel } from "@/lib/activity";
 import { activityActors, activityEntities, readActivity } from "@/lib/activity-read";
+import { ACTIVITY_RETENTION_MONTHS } from "@/lib/activity-retention";
 import { ActivityEntries } from "@/components/activity/activity-entries";
 import { Card, CardContent } from "@/components/ui/card";
 import { Pagination, parsePage } from "@/components/ui/pagination";
@@ -73,6 +74,9 @@ export default async function ActivityPage({
   return (
     <div className="space-y-6">
       <PageHeader icon={<History />} color="slate" title="Activity" count={total} />
+      <p className="-mt-4 text-sm text-muted-foreground">
+        Showing the last {ACTIVITY_RETENTION_MONTHS} months. Older activity is removed automatically.
+      </p>
 
       <Card>
         <CardContent className="space-y-3 py-4">

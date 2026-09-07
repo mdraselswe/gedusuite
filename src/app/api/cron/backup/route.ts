@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { denyCron } from "@/lib/cron-auth";
 import { buildSnapshot } from "@/lib/backup";
+import { pruneOldActivity } from "@/lib/activity-retention";
 
 const KEEP = 10;
 
@@ -92,6 +93,13 @@ export async function GET(req: NextRequest) {
   const pruned = await prisma.processedMutation.deleteMany({
     where: { createdAt: { lt: cutoff } },
   });
+  const activityPruned = await pruneOldActivity();
 
-  return NextResponse.json({ ok: true, ran: results.length, results, pruned: pruned.count });
+  return NextResponse.json({
+    ok: true,
+    ran: results.length,
+    results,
+    pruned: pruned.count,
+    activityPruned,
+  });
 }
