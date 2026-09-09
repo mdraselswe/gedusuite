@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { SPEND_CATEGORIES, spendCategoryLabel, spendFundingLabel } from "@/lib/spending";
+import {
+  SPEND_CATEGORIES,
+  spendCategoryLabel,
+  spendFundingLabel,
+} from "@/lib/spending";
 
 /**
  * The rule that decides whether a treasury OUT row is its own spending event
@@ -68,7 +72,11 @@ describe("treasury rows that mirror something else", () => {
 });
 
 describe("funding state of a purchase", () => {
-  const base = { paidFromTreasury: false, paidByPartnerId: null, onCredit: false };
+  const base = {
+    paidFromTreasury: false,
+    paidByPartnerId: null,
+    onCredit: false,
+  };
 
   it("reads the four states apart", () => {
     expect(fundingOf({ ...base, paidFromTreasury: true })).toBe("TREASURY");
@@ -90,14 +98,19 @@ describe("funding state of a purchase", () => {
 
 describe("labels", () => {
   it("names every category and funding state", () => {
-    for (const c of SPEND_CATEGORIES) expect(spendCategoryLabel[c]).toBeTruthy();
+    for (const c of SPEND_CATEGORIES)
+      expect(spendCategoryLabel[c]).toBeTruthy();
     for (const f of ["TREASURY", "PARTNER", "CREDIT", "UNRECORDED"] as const) {
       expect(spendFundingLabel[f]).toBeTruthy();
     }
   });
 });
 
-import { summarizeRows, type SpendRow } from "@/lib/spending";
+import {
+  summarizeRows,
+  summarizeSuppliers,
+  type SpendRow,
+} from "@/lib/spending";
 
 const row = (over: Partial<SpendRow> & { amount: number }): SpendRow => ({
   id: Math.random().toString(36).slice(2),
@@ -110,6 +123,9 @@ const row = (over: Partial<SpendRow> & { amount: number }): SpendRow => ({
   detail: null,
   funding: "PARTNER",
   paidBy: "Rasel",
+  supplierId: null,
+  supplierName: null,
+  quantity: null,
   href: "#",
   ...over,
 });
@@ -187,5 +203,57 @@ describe("summarizeRows", () => {
       "INTERNAL_PURCHASE",
       "BOOSTING",
     ]);
+  });
+});
+
+describe("summarizeSuppliers", () => {
+  it("totals product/internal purchases by supplier and product", () => {
+    const suppliers = summarizeSuppliers([
+      row({
+        amount: 1000,
+        label: "Sticky Spider Yellow",
+        supplierId: "sup-1",
+        supplierName: "Dhaka Toys",
+        quantity: 5,
+      }),
+      row({
+        amount: 600,
+        label: "Sticky Spider Yellow",
+        supplierId: "sup-1",
+        supplierName: "Dhaka Toys",
+        quantity: 3,
+        funding: "CREDIT",
+      }),
+      row({
+        amount: 300,
+        category: "INTERNAL_PURCHASE",
+        label: "Packaging",
+        supplierName: "Box House",
+        quantity: 10,
+      }),
+      row({
+        amount: 250,
+        category: "BOOSTING",
+        label: "Ads",
+        supplierName: "Dhaka Toys",
+      }),
+    ]);
+
+    expect(suppliers).toHaveLength(2);
+    expect(suppliers[0]).toMatchObject({
+      supplierName: "Dhaka Toys",
+      amount: 1600,
+      paid: 1000,
+      onCredit: 600,
+      count: 2,
+      products: [
+        { label: "Sticky Spider Yellow", quantity: 8, amount: 1600, count: 2 },
+      ],
+    });
+    expect(suppliers[1]).toMatchObject({
+      supplierName: "Box House",
+      amount: 300,
+      products: [{ label: "Packaging", quantity: 10, amount: 300, count: 1 }],
+    });
   });
 });

@@ -44,7 +44,8 @@ export const spendCategoryLabel: Record<SpendCategory, string> = {
 };
 
 /** Whose money it was. The other half of "where did it go". */
-export type SpendFunding = "TREASURY" | "REIMBURSED" | "PARTNER" | "CREDIT" | "UNRECORDED";
+export type SpendFunding =
+  "TREASURY" | "REIMBURSED" | "PARTNER" | "CREDIT" | "UNRECORDED";
 
 export const spendFundingLabel: Record<SpendFunding, string> = {
   TREASURY: "From the treasury",
@@ -70,8 +71,30 @@ export type SpendRow = DhakaStamp & {
   /** Named partner, when one paid. */
   paidBy: string | null;
   amount: number;
+  /** Supplier metadata exists only for product/internal purchases. */
+  supplierId: string | null;
+  supplierName: string | null;
+  quantity: number | null;
   /** Where to go to see or edit it. */
   href: string;
+};
+
+export type SupplierProductSpend = {
+  label: string;
+  quantity: number;
+  amount: number;
+  count: number;
+};
+
+export type SupplierSpendSummary = {
+  key: string;
+  supplierId: string | null;
+  supplierName: string;
+  amount: number;
+  paid: number;
+  onCredit: number;
+  count: number;
+  products: SupplierProductSpend[];
 };
 
 /**
@@ -109,6 +132,7 @@ export type SpendTotals = {
 
 export type SpendingSummary = SpendTotals & {
   rows: SpendRow[];
+  bySupplier: SupplierSpendSummary[];
   payouts: PayoutRow[];
   payoutTotal: number;
 };
@@ -130,8 +154,93 @@ export const FUNDING_ORDER = [
  * server-side totals would mean subtracting one set of rounded figures from
  * another, and the breakdown would stop adding up to its own total.
  */
+const NO_SUPPLIER_KEY = "__none__";
+
+export function spendSupplierKey(
+  row: Pick<SpendRow, "supplierId" | "supplierName">,
+): string {
+  if (row.supplierId) return `id:${row.supplierId}`;
+  if (row.supplierName?.trim())
+    return `name:${row.supplierName.trim().toLowerCase()}`;
+  return NO_SUPPLIER_KEY;
+}
+
+function supplierNameOf(row: Pick<SpendRow, "supplierName">): string {
+  return row.supplierName?.trim() || "No supplier recorded";
+}
+
+function isSupplierSpendRow(row: SpendRow): boolean {
+  return (
+    row.category === "PRODUCT_PURCHASE" || row.category === "INTERNAL_PURCHASE"
+  );
+}
+
+export function summarizeSuppliers(rows: SpendRow[]): SupplierSpendSummary[] {
+  const suppliers = new Map<string, SupplierSpendSummary>();
+
+  for (const row of rows) {
+    if (!isSupplierSpendRow(row)) continue;
+
+    const key = spendSupplierKey(row);
+    let supplier = suppliers.get(key);
+    if (!supplier) {
+      supplier = {
+        key,
+        supplierId: row.supplierId,
+        supplierName: supplierNameOf(row),
+        amount: 0,
+        paid: 0,
+        onCredit: 0,
+        count: 0,
+        products: [],
+      };
+      suppliers.set(key, supplier);
+    }
+
+    supplier.amount += row.amount;
+    supplier.count += 1;
+    if (row.funding === "CREDIT") supplier.onCredit += row.amount;
+    else supplier.paid += row.amount;
+
+    const product = supplier.products.find((p) => p.label === row.label);
+    if (product) {
+      product.quantity += row.quantity ?? 0;
+      product.amount += row.amount;
+      product.count += 1;
+    } else {
+      supplier.products.push({
+        label: row.label,
+        quantity: row.quantity ?? 0,
+        amount: row.amount,
+        count: 1,
+      });
+    }
+  }
+
+  return [...suppliers.values()]
+    .map((supplier) => ({
+      ...supplier,
+      amount: round2(supplier.amount),
+      paid: round2(supplier.paid),
+      onCredit: round2(supplier.onCredit),
+      products: supplier.products
+        .map((product) => ({
+          ...product,
+          amount: round2(product.amount),
+        }))
+        .sort((a, b) => b.amount - a.amount || a.label.localeCompare(b.label)),
+    }))
+    .sort(
+      (a, b) =>
+        b.amount - a.amount || a.supplierName.localeCompare(b.supplierName),
+    );
+}
+
 export function summarizeRows(rows: SpendRow[]): SpendTotals {
-  const group = <K extends string>(keys: readonly K[], pick: (r: SpendRow) => K) => {
+  const group = <K extends string>(
+    keys: readonly K[],
+    pick: (r: SpendRow) => K,
+  ) => {
     const acc = new Map<K, { amount: number; count: number }>();
     for (const r of rows) {
       const k = pick(r);
@@ -144,13 +253,19 @@ export function summarizeRows(rows: SpendRow[]): SpendTotals {
     // row on a day nobody advertised is noise.
     return keys
       .filter((k) => acc.has(k))
-      .map((k) => ({ key: k, amount: round2(acc.get(k)!.amount), count: acc.get(k)!.count }));
+      .map((k) => ({
+        key: k,
+        amount: round2(acc.get(k)!.amount),
+        count: acc.get(k)!.count,
+      }));
   };
 
   const onCredit = rows.filter((r) => r.funding === "CREDIT");
   return {
     total: round2(
-      rows.filter((r) => r.funding !== "CREDIT").reduce((s, r) => s + r.amount, 0),
+      rows
+        .filter((r) => r.funding !== "CREDIT")
+        .reduce((s, r) => s + r.amount, 0),
     ),
     onCredit: round2(onCredit.reduce((s, r) => s + r.amount, 0)),
     byCategory: group(SPEND_CATEGORIES, (r) => r.category).map((x) => ({
@@ -186,64 +301,88 @@ export async function spendingForRange(
   slug: string,
 ): Promise<SpendingSummary> {
   const where = { workspaceId, date: { gte: range.from, lte: range.to } };
-  const partnerName = (p: { user: { name: string | null; email: string } } | null) =>
-    p ? (p.user.name ?? p.user.email) : null;
+  const partnerName = (
+    p: { user: { name: string | null; email: string } } | null,
+  ) => (p ? (p.user.name ?? p.user.email) : null);
 
-  const [purchases, internals, boosts, partnerExpenses, treasuryOut, distributions, withdrawals] =
-    await Promise.all([
-      prisma.purchase.findMany({
-        where,
-        include: {
-          supplier: { select: { name: true } },
-          paidByPartner: { include: { user: { select: { name: true, email: true } } } },
-          productVariant: {
-            select: { attributes: true, product: { select: { name: true } } },
+  const [
+    purchases,
+    internals,
+    boosts,
+    partnerExpenses,
+    treasuryOut,
+    distributions,
+    withdrawals,
+  ] = await Promise.all([
+    prisma.purchase.findMany({
+      where,
+      include: {
+        supplier: { select: { id: true, name: true } },
+        paidByPartner: {
+          include: { user: { select: { name: true, email: true } } },
+        },
+        productVariant: {
+          select: { attributes: true, product: { select: { name: true } } },
+        },
+      },
+      orderBy: { date: "asc" },
+    }),
+    prisma.internalPurchase.findMany({
+      where,
+      include: {
+        supplier: { select: { id: true, name: true } },
+        paidByPartner: {
+          include: { user: { select: { name: true, email: true } } },
+        },
+      },
+      orderBy: { date: "asc" },
+    }),
+    prisma.boostDailySpend.findMany({
+      where,
+      include: {
+        paidByPartner: {
+          include: { user: { select: { name: true, email: true } } },
+        },
+        adSet: {
+          select: {
+            name: true,
+            campaign: { select: { id: true, name: true } },
           },
         },
-        orderBy: { date: "asc" },
-      }),
-      prisma.internalPurchase.findMany({
-        where,
-        include: {
-          paidByPartner: { include: { user: { select: { name: true, email: true } } } },
-        },
-        orderBy: { date: "asc" },
-      }),
-      prisma.boostDailySpend.findMany({
-        where,
-        include: {
-          paidByPartner: { include: { user: { select: { name: true, email: true } } } },
-          adSet: { select: { name: true, campaign: { select: { id: true, name: true } } } },
-        },
-        orderBy: { date: "asc" },
-      }),
-      prisma.partnerTxn.findMany({
-        where: { ...where, type: "EXPENSE" },
-        include: { partner: { include: { user: { select: { name: true, email: true } } } } },
-        orderBy: { date: "asc" },
-      }),
-      // Hand-entered only. Every link here means the row mirrors something
-      // already counted above — including it would double the amount.
-      prisma.treasuryEntry.findMany({
-        where: {
-          ...where,
-          type: "OUT",
-          partnerTxnId: null,
-          orderId: null,
-          purchaseId: null,
-          internalPurchaseId: null,
-          distributionId: null,
-          boostSpendId: null,
-        },
-        orderBy: { date: "asc" },
-      }),
-      prisma.profitDistribution.findMany({ where, orderBy: { date: "asc" } }),
-      prisma.partnerTxn.findMany({
-        where: { ...where, type: "WITHDRAWAL", distributionId: null },
-        include: { partner: { include: { user: { select: { name: true, email: true } } } } },
-        orderBy: { date: "asc" },
-      }),
-    ]);
+      },
+      orderBy: { date: "asc" },
+    }),
+    prisma.partnerTxn.findMany({
+      where: { ...where, type: "EXPENSE" },
+      include: {
+        partner: { include: { user: { select: { name: true, email: true } } } },
+      },
+      orderBy: { date: "asc" },
+    }),
+    // Hand-entered only. Every link here means the row mirrors something
+    // already counted above — including it would double the amount.
+    prisma.treasuryEntry.findMany({
+      where: {
+        ...where,
+        type: "OUT",
+        partnerTxnId: null,
+        orderId: null,
+        purchaseId: null,
+        internalPurchaseId: null,
+        distributionId: null,
+        boostSpendId: null,
+      },
+      orderBy: { date: "asc" },
+    }),
+    prisma.profitDistribution.findMany({ where, orderBy: { date: "asc" } }),
+    prisma.partnerTxn.findMany({
+      where: { ...where, type: "WITHDRAWAL", distributionId: null },
+      include: {
+        partner: { include: { user: { select: { name: true, email: true } } } },
+      },
+      orderBy: { date: "asc" },
+    }),
+  ]);
 
   // The day in Dhaka, and the time the line was entered — both of which a
   // day's spending is read in the order of.
@@ -254,11 +393,19 @@ export async function spendingForRange(
       id: `pu-${p.id}`,
       ...stamp(p),
       category: "PRODUCT_PURCHASE" as const,
-      label: variantFullName(p.productVariant.product.name, p.productVariant.attributes),
-      detail: p.supplier?.name ? `${p.quantity} × from ${p.supplier.name}` : `${p.quantity} pcs`,
+      label: variantFullName(
+        p.productVariant.product.name,
+        p.productVariant.attributes,
+      ),
+      detail: p.supplier?.name
+        ? `${p.quantity} × from ${p.supplier.name}`
+        : `${p.quantity} pcs`,
       funding: fundingOf(p),
       paidBy: partnerName(p.paidByPartner),
       amount: round2(n(p.unitCost) * p.quantity),
+      supplierId: p.supplierId,
+      supplierName: p.supplier?.name ?? null,
+      quantity: p.quantity,
       href: `/${slug}/purchases`,
     })),
     ...internals.map((ip) => ({
@@ -266,10 +413,16 @@ export async function spendingForRange(
       ...stamp(ip),
       category: "INTERNAL_PURCHASE" as const,
       label: ip.itemName,
-      detail: ip.supplierName ?? (ip.quantity > 1 ? `${ip.quantity} pcs` : null),
+      detail:
+        ip.supplier?.name ??
+        ip.supplierName ??
+        (ip.quantity > 1 ? `${ip.quantity} pcs` : null),
       funding: fundingOf(ip),
       paidBy: partnerName(ip.paidByPartner),
       amount: round2(n(ip.cost) * ip.quantity),
+      supplierId: ip.supplierId,
+      supplierName: ip.supplier?.name ?? ip.supplierName,
+      quantity: ip.quantity,
       href: `/${slug}/internal-purchases`,
     })),
     ...boosts.map((b) => ({
@@ -283,6 +436,9 @@ export async function spendingForRange(
       funding: fundingOf(b),
       paidBy: partnerName(b.paidByPartner),
       amount: round2(n(b.amount)),
+      supplierId: null,
+      supplierName: null,
+      quantity: null,
       href: `/${slug}/boosting/${b.adSet.campaign.id}`,
     })),
     ...partnerExpenses.map((t) => ({
@@ -295,6 +451,9 @@ export async function spendingForRange(
       funding: "PARTNER" as const,
       paidBy: partnerName(t.partner),
       amount: round2(n(t.amount)),
+      supplierId: null,
+      supplierName: null,
+      quantity: null,
       href: `/${slug}/partners/${t.partnerId}`,
     })),
     ...treasuryOut.map((e) => ({
@@ -306,6 +465,9 @@ export async function spendingForRange(
       funding: "TREASURY" as const,
       paidBy: null,
       amount: round2(n(e.amount)),
+      supplierId: null,
+      supplierName: null,
+      quantity: null,
       href: `/${slug}/treasury`,
     })),
   ].sort((a, b) => a.date.localeCompare(b.date) || b.amount - a.amount);
@@ -329,6 +491,7 @@ export async function spendingForRange(
 
   return {
     rows,
+    bySupplier: summarizeSuppliers(rows),
     payouts,
     ...summarizeRows(rows),
     payoutTotal: round2(payouts.reduce((s, p) => s + p.amount, 0)),

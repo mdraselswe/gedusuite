@@ -3,7 +3,14 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, Coins, Wallet, X } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Coins,
+  Store,
+  Wallet,
+  X,
+} from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,6 +18,13 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Field } from "@/components/ui/field";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { FigureList, FigureRow } from "@/components/ui/figure-list";
 import { InfoNote } from "@/components/ui/info-note";
 import { Money } from "@/components/ui/money";
@@ -18,7 +32,9 @@ import { StatGrid, StatTile } from "@/components/ui/stat-tile";
 import {
   spendCategoryLabel,
   spendFundingLabel,
+  spendSupplierKey,
   summarizeRows,
+  summarizeSuppliers,
   type SpendCategory,
   type SpendFunding,
   type SpendRow,
@@ -58,6 +74,14 @@ const fundingTone: Record<SpendFunding, string> = {
   UNRECORDED: "text-muted-foreground",
 };
 
+const ALL_SUPPLIERS = "ALL";
+
+function isSupplierPurchaseRow(row: SpendRow): boolean {
+  return (
+    row.category === "PRODUCT_PURCHASE" || row.category === "INTERNAL_PURCHASE"
+  );
+}
+
 export function ExpensesView({
   slug,
   from,
@@ -84,10 +108,27 @@ export function ExpensesView({
   // means a fresh page shows the whole truth rather than an empty filter.
   const [excluded, setExcluded] = useState<Set<SpendCategory>>(new Set());
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [supplierFilter, setSupplierFilter] = useState(ALL_SUPPLIERS);
 
-  const visible = useMemo(
+  const categoryVisible = useMemo(
     () => summary.rows.filter((r) => !excluded.has(r.category)),
     [summary.rows, excluded],
+  );
+  const suppliersShown = useMemo(
+    () => summarizeSuppliers(categoryVisible),
+    [categoryVisible],
+  );
+  const supplierOptions = summary.bySupplier;
+  const selectedSupplier = suppliersShown.find((s) => s.key === supplierFilter);
+
+  const visible = useMemo(
+    () =>
+      categoryVisible.filter(
+        (r) =>
+          supplierFilter === ALL_SUPPLIERS ||
+          (isSupplierPurchaseRow(r) && spendSupplierKey(r) === supplierFilter),
+      ),
+    [categoryVisible, supplierFilter],
   );
   // Every figure on the page is recomputed from the rows on screen, not
   // adjusted from the server's totals — subtracting one set of rounded numbers
@@ -102,8 +143,10 @@ export function ExpensesView({
   );
   const picked = useMemo(() => summarizeRows(selectedRows), [selectedRows]);
 
-  const allVisibleSelected = visible.length > 0 && selectedRows.length === visible.length;
+  const allVisibleSelected =
+    visible.length > 0 && selectedRows.length === visible.length;
   const someSelected = selectedRows.length > 0;
+  const supplierFiltered = supplierFilter !== ALL_SUPPLIERS;
 
   function toggleCategory(c: SpendCategory) {
     setExcluded((prev) => {
@@ -139,13 +182,17 @@ export function ExpensesView({
       key: "pick",
       header: (
         <Checkbox
-          aria-label={allVisibleSelected ? "Clear selection" : "Select all rows"}
+          aria-label={
+            allVisibleSelected ? "Clear selection" : "Select all rows"
+          }
           checked={allVisibleSelected}
           // Half-picked reads as neither on nor off, which is exactly what it is.
           indeterminate={someSelected && !allVisibleSelected}
           onCheckedChange={() =>
             setSelected(
-              allVisibleSelected ? new Set() : new Set(visible.map((r) => r.id)),
+              allVisibleSelected
+                ? new Set()
+                : new Set(visible.map((r) => r.id)),
             )
           }
         />
@@ -176,7 +223,9 @@ export function ExpensesView({
           {
             key: "date",
             header: "Date",
-            cell: (r: SpendRow) => <Stamp date={r.date} time={r.time} entered={r.entered} />,
+            cell: (r: SpendRow) => (
+              <Stamp date={r.date} time={r.time} entered={r.entered} />
+            ),
           } as Column<SpendRow>,
         ]),
     {
@@ -197,7 +246,9 @@ export function ExpensesView({
           <Link href={r.href} className="font-medium hover:underline">
             {r.label}
           </Link>
-          {r.detail && <div className="text-xs text-muted-foreground">{r.detail}</div>}
+          {r.detail && (
+            <div className="text-xs text-muted-foreground">{r.detail}</div>
+          )}
         </div>
       ),
     },
@@ -205,7 +256,9 @@ export function ExpensesView({
       key: "funding",
       header: "Whose money",
       cell: (r) => (
-        <span className={cn("text-sm whitespace-nowrap", fundingTone[r.funding])}>
+        <span
+          className={cn("text-sm whitespace-nowrap", fundingTone[r.funding])}
+        >
           {r.paidBy ?? spendFundingLabel[r.funding]}
         </span>
       ),
@@ -247,13 +300,18 @@ export function ExpensesView({
                 </Button>
               </div>
             )}
-            <Field name="from" label={singleDay ? "Day" : "From"} className="w-40">
+            <Field
+              name="from"
+              label={singleDay ? "Day" : "From"}
+              className="w-40"
+            >
               <Input
                 type="date"
                 value={from}
                 max={today}
                 onChange={(e) =>
-                  e.target.value && go(e.target.value, singleDay ? e.target.value : to)
+                  e.target.value &&
+                  go(e.target.value, singleDay ? e.target.value : to)
                 }
               />
             </Field>
@@ -272,7 +330,9 @@ export function ExpensesView({
                 <Button
                   key={p.label}
                   size="sm"
-                  variant={from === p.from && to === p.to ? "secondary" : "ghost"}
+                  variant={
+                    from === p.from && to === p.to ? "secondary" : "ghost"
+                  }
                   onClick={() => go(p.from, p.to)}
                 >
                   {p.label}
@@ -281,7 +341,9 @@ export function ExpensesView({
             </div>
           </div>
           <p className="text-sm text-muted-foreground">
-            {singleDay ? prettyDay(from) : `${prettyDay(from)} — ${prettyDay(to)}`}
+            {singleDay
+              ? prettyDay(from)
+              : `${prettyDay(from)} — ${prettyDay(to)}`}
           </p>
         </CardContent>
       </Card>
@@ -289,52 +351,99 @@ export function ExpensesView({
       {/* Category toggles. Every category present in the range gets a chip;
           switching one off takes it out of every figure below, so "what did
           the day cost apart from the restock" is one click. */}
-      {summary.byCategory.length > 1 && (
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm text-muted-foreground">Include:</span>
-          {summary.byCategory.map((c) => {
-            const off = excluded.has(c.category);
-            return (
+      <div className="flex flex-wrap items-center gap-2">
+        {supplierOptions.length > 0 && (
+          <Field name="supplier" label="Supplier" className="w-full sm:w-72">
+            <Select
+              value={supplierFilter}
+              onValueChange={(value) => {
+                setSupplierFilter(value ?? ALL_SUPPLIERS);
+                setSelected(new Set());
+              }}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="All suppliers" />
+              </SelectTrigger>
+              <SelectContent align="start">
+                <SelectItem value={ALL_SUPPLIERS}>All suppliers</SelectItem>
+                {supplierOptions.map((supplier) => (
+                  <SelectItem key={supplier.key} value={supplier.key}>
+                    {supplier.supplierName} ·{" "}
+                    <Money value={supplier.amount} bare />
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+        )}
+        {summary.byCategory.length > 1 && (
+          <div className="flex flex-wrap items-center gap-2 self-end pb-0.5">
+            <span className="text-sm text-muted-foreground">Include:</span>
+            {summary.byCategory.map((c) => {
+              const off = excluded.has(c.category);
+              return (
+                <Button
+                  key={c.category}
+                  size="sm"
+                  variant={off ? "ghost" : "secondary"}
+                  onClick={() => toggleCategory(c.category)}
+                  className={cn(off && "text-muted-foreground line-through")}
+                  aria-pressed={!off}
+                >
+                  {spendCategoryLabel[c.category]}
+                  <span className="ml-1 tabular-nums opacity-70">
+                    <Money value={c.amount} bare />
+                  </span>
+                </Button>
+              );
+            })}
+            {excluded.size > 0 && (
               <Button
-                key={c.category}
                 size="sm"
-                variant={off ? "ghost" : "secondary"}
-                onClick={() => toggleCategory(c.category)}
-                className={cn(off && "text-muted-foreground line-through")}
-                aria-pressed={!off}
+                variant="ghost"
+                onClick={() => setExcluded(new Set())}
               >
-                {spendCategoryLabel[c.category]}
-                <span className="ml-1 tabular-nums opacity-70">
-                  <Money value={c.amount} bare />
-                </span>
+                <X /> Show all
               </Button>
-            );
-          })}
-          {excluded.size > 0 && (
-            <Button size="sm" variant="ghost" onClick={() => setExcluded(new Set())}>
-              <X /> Show all
-            </Button>
-          )}
-        </div>
-      )}
+            )}
+          </div>
+        )}
+        {supplierFiltered && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="self-end pb-0.5"
+            onClick={() => {
+              setSupplierFilter(ALL_SUPPLIERS);
+              setSelected(new Set());
+            }}
+          >
+            <X /> Clear supplier
+          </Button>
+        )}
+      </div>
 
       <StatGrid className="lg:grid-cols-3">
         <StatTile
-          label={excluded.size > 0 ? "Spent (filtered)" : "Money spent"}
+          label={
+            excluded.size > 0 || supplierFiltered
+              ? "Spent (filtered)"
+              : "Money spent"
+          }
           value={shown.total}
           icon={<Coins />}
           color="orange"
           sub={
             visible.length === 0
               ? "nothing to show"
-              : excluded.size > 0
+              : excluded.size > 0 || supplierFiltered
                 ? `${visible.length} of ${summary.rows.length} entries shown`
                 : `${shown.byCategory.length} categor${shown.byCategory.length === 1 ? "y" : "ies"} · ${visible.length} entries`
           }
           footer={
-            excluded.size > 0 || shown.onCredit > 0 ? (
+            excluded.size > 0 || supplierFiltered || shown.onCredit > 0 ? (
               <div className="space-y-0.5 text-xs text-muted-foreground">
-                {excluded.size > 0 && (
+                {(excluded.size > 0 || supplierFiltered) && (
                   <p>
                     Everything together: <Money value={summary.total} />
                   </p>
@@ -344,8 +453,8 @@ export function ExpensesView({
                     question is what left. */}
                 {shown.onCredit > 0 && (
                   <p>
-                    Plus <Money value={shown.onCredit} /> bought on credit — not paid
-                    for yet
+                    Plus <Money value={shown.onCredit} /> bought on credit — not
+                    paid for yet
                   </p>
                 )}
               </div>
@@ -354,7 +463,9 @@ export function ExpensesView({
         />
         <StatTile
           label="Out of the treasury"
-          value={shown.byFunding.find((f) => f.funding === "TREASURY")?.amount ?? 0}
+          value={
+            shown.byFunding.find((f) => f.funding === "TREASURY")?.amount ?? 0
+          }
           icon={<Wallet />}
           color="amber"
           sub="the rest came from partners, credit, or wasn't recorded"
@@ -375,7 +486,9 @@ export function ExpensesView({
           <CardContent className="py-8 text-center text-sm text-muted-foreground">
             {summary.rows.length === 0
               ? `Nothing was spent ${singleDay ? "on this day" : "in this range"}.`
-              : "Every category is switched off — turn one back on to see the entries."}
+              : supplierFiltered
+                ? "No purchase entries match this supplier filter."
+                : "Every category is switched off — turn one back on to see the entries."}
           </CardContent>
         </Card>
       ) : (
@@ -447,33 +560,118 @@ export function ExpensesView({
                   reports, which will disagree with it on purpose. */}
               <InfoNote title="This is money out, not profit lost">
                 <p>
-                  Stock bought to resell is spending on the day it&apos;s paid for, but
-                  it doesn&apos;t touch profit until it sells — so a{" "}
-                  <Money value={30000} /> restock shows here in full and as nothing at
-                  all on the reports page for the same day.
+                  Stock bought to resell is spending on the day it&apos;s paid
+                  for, but it doesn&apos;t touch profit until it sells — so a{" "}
+                  <Money value={30000} /> restock shows here in full and as
+                  nothing at all on the reports page for the same day.
                 </p>
                 <p>
-                  A cost set to spread over months is the other way round: the cash
-                  left once, on the day it appears here, while the reports charge a
-                  slice of it to each month it covers.
+                  A cost set to spread over months is the other way round: the
+                  cash left once, on the day it appears here, while the reports
+                  charge a slice of it to each month it covers.
                 </p>
                 <p>
                   Anything marked{" "}
                   <span className="font-medium text-amber-700 dark:text-amber-400">
                     on credit
                   </span>{" "}
-                  is counted here as spending on the day the goods arrived, but no
-                  money has left yet — it&apos;s owed to the supplier.
+                  is counted here as spending on the day the goods arrived, but
+                  no money has left yet — it&apos;s owed to the supplier.
                 </p>
               </InfoNote>
             </div>
           </div>
 
+          {suppliersShown.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Store className="size-4" />
+                  {selectedSupplier
+                    ? `Products from ${selectedSupplier.supplierName}`
+                    : "Spending by supplier"}
+                </CardTitle>
+                <p className="text-xs text-muted-foreground">
+                  Product purchases and internal purchases only. Credit rows are
+                  included in supplier totals and shown separately.
+                </p>
+              </CardHeader>
+              <CardContent>
+                {selectedSupplier ? (
+                  <FigureList>
+                    {selectedSupplier.products.map((product) => (
+                      <FigureRow
+                        key={product.label}
+                        label={product.label}
+                        hint={`${product.quantity || product.count} ${product.quantity ? "pcs" : "entries"}`}
+                        value={product.amount}
+                      />
+                    ))}
+                    {selectedSupplier.onCredit > 0 && (
+                      <FigureRow
+                        label="On credit"
+                        value={selectedSupplier.onCredit}
+                        tone="muted"
+                        sub
+                      />
+                    )}
+                    <FigureRow
+                      label="Supplier total"
+                      value={selectedSupplier.amount}
+                      total
+                    />
+                  </FigureList>
+                ) : (
+                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                    {suppliersShown.map((supplier) => (
+                      <button
+                        key={supplier.key}
+                        type="button"
+                        onClick={() => {
+                          setSupplierFilter(supplier.key);
+                          setSelected(new Set());
+                        }}
+                        className="rounded-xl border bg-card p-4 text-left transition-colors hover:border-primary/50 hover:bg-accent/40"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium">
+                              {supplier.supplierName}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {supplier.products.length} product
+                              {supplier.products.length === 1 ? "" : "s"} ·{" "}
+                              {supplier.count} entr
+                              {supplier.count === 1 ? "y" : "ies"}
+                            </p>
+                          </div>
+                          <Money
+                            value={supplier.amount}
+                            className="font-semibold"
+                          />
+                        </div>
+                        {supplier.onCredit > 0 && (
+                          <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
+                            <Money value={supplier.onCredit} /> on credit
+                          </p>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
           <Card>
             <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0">
               <CardTitle className="text-base">Every entry</CardTitle>
               {someSelected && (
-                <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setSelected(new Set())}
+                >
                   <X /> Clear {selectedRows.length} selected
                 </Button>
               )}
@@ -496,8 +694,8 @@ export function ExpensesView({
                       and the headline doesn't. */}
                   {picked.onCredit > 0 && (
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Plus <Money value={picked.onCredit} /> on credit, in the categories
-                      below but not in that figure
+                      Plus <Money value={picked.onCredit} /> on credit, in the
+                      categories below but not in that figure
                     </p>
                   )}
                   <div className="mt-2 grid gap-x-6 gap-y-1 sm:grid-cols-2">
@@ -516,7 +714,9 @@ export function ExpensesView({
                           key={f.funding}
                           label={spendFundingLabel[f.funding]}
                           value={f.amount}
-                          tone={f.funding === "UNRECORDED" ? "muted" : "neutral"}
+                          tone={
+                            f.funding === "UNRECORDED" ? "muted" : "neutral"
+                          }
                         />
                       ))}
                     </FigureList>
@@ -524,8 +724,10 @@ export function ExpensesView({
                   {picked.total !== shown.total && (
                     <p className="mt-2 text-xs text-muted-foreground">
                       The other {visible.length - selectedRows.length} entr
-                      {visible.length - selectedRows.length === 1 ? "y" : "ies"} come to{" "}
-                      <Money value={shown.total - picked.total} />.
+                      {visible.length - selectedRows.length === 1
+                        ? "y"
+                        : "ies"}{" "}
+                      come to <Money value={shown.total - picked.total} />.
                     </p>
                   )}
                 </div>
@@ -548,9 +750,9 @@ export function ExpensesView({
               Paid out to partners — <Money value={summary.payoutTotal} />
             </CardTitle>
             <p className="text-xs text-muted-foreground">
-              Money that left, and deliberately not in the totals above: a partner
-              taking their profit or their capital back is not a cost the business
-              bore.
+              Money that left, and deliberately not in the totals above: a
+              partner taking their profit or their capital back is not a cost
+              the business bore.
             </p>
           </CardHeader>
           <CardContent>
