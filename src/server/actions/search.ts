@@ -2,7 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { requireAccess } from "@/lib/authz";
-import { variantStockMap } from "@/lib/inventory";
+import { comboStockMap, variantStockMap } from "@/lib/inventory";
 import { variantFullName } from "@/lib/variants";
 import type { ActionFailure } from "@/lib/form";
 
@@ -30,6 +30,11 @@ export type VariantOption = ComboOption & {
   // Shipping weight of one piece. Lets the order form total a parcel's weight
   // instead of asking for it — null when the product hasn't been weighed.
   weightGrams: number | null;
+};
+export type LeadComboOption = ComboOption & {
+  price: number;
+  freeDelivery: boolean;
+  buildable: number;
 };
 export type SearchResult<T> =
   | { ok: true; items: T[]; next: number | null }
@@ -113,6 +118,63 @@ export async function searchVariants(
       wooProductId: r.wooProductId,
     };
   });
+
+  return {
+    ok: true,
+    items,
+    next: rows.length === SEARCH_PAGE_SIZE ? cursor + SEARCH_PAGE_SIZE : null,
+  };
+}
+
+/** Search active combo sets by combo name / sku for the call-list item picker. */
+export async function searchCombos(
+  slug: string,
+  query: string,
+  cursor = 0,
+): Promise<SearchResult<LeadComboOption>> {
+  const gate = await requireAccess(slug, "products", "view");
+  if (!gate.ok) return gate;
+  const workspaceId = gate.access.workspaceId;
+
+  const q = query.trim();
+  const now = new Date();
+  const rows = await prisma.comboSet.findMany({
+    where: {
+      workspaceId,
+      active: true,
+      AND: [
+        { OR: [{ validFrom: null }, { validFrom: { lte: now } }] },
+        { OR: [{ validTo: null }, { validTo: { gte: now } }] },
+      ],
+      ...(q
+        ? {
+            OR: [
+              { name: { contains: q, mode: "insensitive" as const } },
+              { sku: { contains: q, mode: "insensitive" as const } },
+            ],
+          }
+        : {}),
+    },
+    orderBy: { name: "asc" },
+    skip: cursor,
+    take: SEARCH_PAGE_SIZE,
+    select: {
+      id: true,
+      name: true,
+      sku: true,
+      price: true,
+      freeDelivery: true,
+    },
+  });
+
+  const stock = await comboStockMap(workspaceId, rows.map((r) => r.id));
+  const items = rows.map((r) => ({
+    value: r.id,
+    label: r.sku ? `${r.name} (${r.sku})` : r.name,
+    price: Number(r.price),
+    freeDelivery: r.freeDelivery,
+    buildable: stock.get(r.id) ?? 0,
+  }));
 
   return {
     ok: true,

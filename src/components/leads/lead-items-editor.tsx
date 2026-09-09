@@ -2,7 +2,12 @@
 
 import { Plus, Trash2 } from "lucide-react";
 import { AsyncCombobox } from "@/components/ui/async-combobox";
-import { searchVariants, type VariantOption } from "@/server/actions/search";
+import {
+  searchCombos,
+  searchVariants,
+  type LeadComboOption,
+  type VariantOption,
+} from "@/server/actions/search";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,21 +19,22 @@ import { round2 } from "@/lib/money";
  * One row per item, because a website order routinely has several and typing
  * them into a single box invites a different wording every time.
  *
- * A row is either a catalogue product or a free-typed name: the call list also
- * receives orders for things that were never added as products, and refusing
- * those would make the form useless exactly when someone is on the phone.
- * Either way the rows compose into the same one-line string the WooCommerce
- * sync writes, so a hand-typed order and an imported one read alike.
+ * A row is either a catalogue product, a combo set, or a free-typed name: the
+ * call list also receives orders for things that were never added as products,
+ * and refusing those would make the form useless exactly when someone is on
+ * the phone. Either way the rows compose into the same one-line string the
+ * WooCommerce sync writes, so a hand-typed order and an imported one read alike.
  */
 
 export type ItemRow = {
   id: number;
-  /** A typed name rather than a catalogue pick. Carried on the row itself so
-   *  an existing order can be loaded back into the form for editing — its
-   *  items are stored as text and which product they were isn't recoverable. */
+  mode: "VARIANT" | "COMBO" | "FREE";
+  /** Kept for older callers that only knew product/free rows. */
   free: boolean;
-  /** Set when picked from the catalogue; null for a free-typed row. */
+  /** Set when picked from the catalogue; null for combo/free rows. */
   option: VariantOption | null;
+  /** Set when picked from the combo catalogue; null for product/free rows. */
+  combo: LeadComboOption | null;
   /** Used only by free-typed rows. */
   text: string;
   qty: string;
@@ -37,8 +43,20 @@ export type ItemRow = {
 let nextId = 1;
 export const newItemRow = (free = false): ItemRow => ({
   id: nextId++,
+  mode: free ? "FREE" : "VARIANT",
   free,
   option: null,
+  combo: null,
+  text: "",
+  qty: "1",
+});
+
+export const newComboRow = (): ItemRow => ({
+  id: nextId++,
+  mode: "COMBO",
+  free: false,
+  option: null,
+  combo: null,
   text: "",
   qty: "1",
 });
@@ -47,20 +65,32 @@ export const newItemRow = (free = false): ItemRow => ({
 export function rowsFromItemsText(text: string): ItemRow[] {
   const rows = splitLeadItems(text).map((entry) => {
     const { name, qty } = parseLeadItem(entry);
-    return { id: nextId++, free: true, option: null, text: name, qty: String(qty) };
+    return {
+      id: nextId++,
+      mode: "FREE" as const,
+      free: true,
+      option: null,
+      combo: null,
+      text: name,
+      qty: String(qty),
+    };
   });
   return rows.length ? rows : [newItemRow()];
 }
 
-/** What the rows add up to, when every picked product has a price. */
+/** What the rows add up to, when every picked product/combo has a price. */
 export function itemsTotal(rows: ItemRow[]): number | null {
-  const priced = rows.filter((r) => r.option?.salePrice != null);
-  if (priced.length === 0 || priced.length !== rows.filter((r) => rowName(r)).length) return null;
-  const sum = priced.reduce((s, r) => s + (r.option!.salePrice ?? 0) * qtyOf(r), 0);
+  const filled = rows.filter((r) => rowName(r));
+  if (filled.length === 0) return null;
+  if (filled.some((r) => rowPrice(r) == null)) return null;
+  const sum = filled.reduce((s, r) => s + (rowPrice(r) ?? 0) * qtyOf(r), 0);
   return round2(sum);
 }
 
-export const rowName = (r: ItemRow) => (r.option ? r.option.label : r.text.trim());
+export const rowName = (r: ItemRow) =>
+  r.mode === "COMBO" ? (r.combo?.label ?? "") : r.option ? r.option.label : r.text.trim();
+const rowPrice = (r: ItemRow) =>
+  r.mode === "COMBO" ? (r.combo?.price ?? null) : (r.option?.salePrice ?? null);
 const qtyOf = (r: ItemRow) => Math.max(1, Math.trunc(Number(r.qty)) || 1);
 
 /** The single string that goes to the server. */
@@ -81,6 +111,7 @@ export function LeadItemsEditor({
     onChange(rows.map((r) => (r.id === id ? { ...r, ...next } : r)));
   const remove = (id: number) => onChange(rows.filter((r) => r.id !== id));
   const add = (free: boolean) => onChange([...rows, newItemRow(free)]);
+  const addCombo = () => onChange([...rows, newComboRow()]);
 
   return (
     <div className="grid gap-2">
@@ -89,12 +120,31 @@ export function LeadItemsEditor({
       {rows.map((row) => (
         <div key={row.id} className="flex items-start gap-2">
           <div className="min-w-0 flex-1">
-            {row.free ? (
+            {row.mode === "FREE" || row.free ? (
               <Input
                 placeholder="Item name"
                 value={row.text}
                 maxLength={200}
                 onChange={(e) => patch(row.id, { text: e.target.value })}
+              />
+            ) : row.mode === "COMBO" ? (
+              <AsyncCombobox<LeadComboOption>
+                value={row.combo}
+                onChange={(o) => patch(row.id, { combo: o })}
+                fetchPage={async (q, cursor) => {
+                  const res = await searchCombos(slug, q, cursor);
+                  return res.ok ? { items: res.items, next: res.next } : { items: [], next: null };
+                }}
+                placeholder="Search combo…"
+                renderItem={(o) => (
+                  <>
+                    <span className="truncate">{o.label}</span>
+                    <span className="shrink-0 text-xs text-muted-foreground">
+                      ৳{o.price.toLocaleString("en-BD")} · {o.buildable} set{o.buildable === 1 ? "" : "s"} left
+                      {o.freeDelivery ? " · free delivery" : ""}
+                    </span>
+                  </>
+                )}
               />
             ) : (
               <AsyncCombobox<VariantOption>
@@ -136,7 +186,7 @@ export function LeadItemsEditor({
             onClick={() =>
               rows.length > 1
                 ? remove(row.id)
-                : patch(row.id, { option: null, text: "", qty: "1" })
+                : patch(row.id, { option: null, combo: null, text: "", qty: "1" })
             }
           >
             <Trash2 className="size-4" />
@@ -148,6 +198,10 @@ export function LeadItemsEditor({
         <Button type="button" variant="outline" size="sm" onClick={() => add(false)}>
           <Plus data-icon="inline-start" />
           Add item
+        </Button>
+        <Button type="button" variant="outline" size="sm" onClick={addCombo}>
+          <Plus data-icon="inline-start" />
+          Add combo
         </Button>
         <Button type="button" variant="ghost" size="sm" onClick={() => add(true)}>
           Not in the catalogue — type it

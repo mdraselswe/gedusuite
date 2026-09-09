@@ -13,6 +13,7 @@ import { OrderManager } from "@/components/sales/order-manager";
 import { PendingReturns } from "@/components/sales/pending-returns";
 import { listCombosForOrder } from "@/server/actions/combos";
 import { wooLineProductIds } from "@/lib/woo";
+import { parseLeadItem, splitLeadItems } from "@/lib/lead-items";
 import { STOCK_CONSUMING_STATUSES } from "@/lib/inventory";
 import { variantFullName } from "@/lib/variants";
 import { Pagination, parsePage } from "@/components/ui/pagination";
@@ -29,6 +30,10 @@ const PAGE_SIZE = 50;
 function daysSince(d: Date | null): number {
   if (!d) return 0;
   return Math.max(0, Math.floor((Date.now() - d.getTime()) / 86_400_000));
+}
+
+function leadComboNameKey(name: string): string {
+  return name.trim().replace(/\s+/g, " ").toLowerCase();
 }
 
 const ORDER_STATUSES =["PENDING", "CONFIRMED", "PACKED", "SHIPPED", "DELIVERED", "CANCELLED"] as const;
@@ -375,30 +380,59 @@ export default async function OrdersPage({
         },
       })
     : null;
-  // Combos this website order actually bought.
+  // Combos this lead actually bought.
   //
-  // The only part of a lead that can be filled in for somebody rather than
-  // read out to them. `itemsText` is prose and matching it to variants by name
-  // is the guess this form has always refused to make — but a combo carries a
-  // product id on both sides, so it maps exactly, and one id brings its whole
-  // component list with it.
+  // Website leads map by Woo product id. Manual call-list entries can now pick
+  // a combo by name; that text is safe to match back because the seller picked
+  // the combo row explicitly, while ordinary product prose is still left for a
+  // person to choose in the form.
   const leadCombos = leadRow
     ? await (async () => {
+        const found = new Map<string, number>();
         const wanted = wooLineProductIds(leadRow.rawPayload);
-        if (wanted.length === 0) return [];
-        const matches = await prisma.comboSet.findMany({
-          where: {
-            workspaceId,
-            active: true,
-            wooProductId: { in: wanted.map((w) => w.productId) },
-          },
-          select: { id: true, wooProductId: true },
-        });
-        const qtyByWooId = new Map(wanted.map((w) => [w.productId, w.quantity]));
-        return matches.map((m) => ({
-          comboSetId: m.id,
-          quantity: qtyByWooId.get(m.wooProductId!) ?? 1,
-        }));
+        if (wanted.length > 0) {
+          const matches = await prisma.comboSet.findMany({
+            where: {
+              workspaceId,
+              active: true,
+              wooProductId: { in: wanted.map((w) => w.productId) },
+            },
+            select: { id: true, wooProductId: true },
+          });
+          const qtyByWooId = new Map(wanted.map((w) => [w.productId, w.quantity]));
+          for (const match of matches) {
+            found.set(match.id, (found.get(match.id) ?? 0) + (qtyByWooId.get(match.wooProductId!) ?? 1));
+          }
+        }
+
+        const leadItems = splitLeadItems(leadRow.itemsText).map(parseLeadItem);
+        if (leadItems.length > 0) {
+          const combosByName = await prisma.comboSet.findMany({
+            where: {
+              workspaceId,
+              active: true,
+              OR: leadItems.flatMap((item) => {
+                const sku = /^.*\((.*)\)$/.exec(item.name)?.[1]?.trim();
+                return [
+                  { name: { equals: item.name, mode: "insensitive" as const } },
+                  ...(sku ? [{ sku: { equals: sku, mode: "insensitive" as const } }] : []),
+                ];
+              }),
+            },
+            select: { id: true, name: true, sku: true },
+          });
+          const byName = new Map<string, string>();
+          for (const combo of combosByName) {
+            byName.set(leadComboNameKey(combo.name), combo.id);
+            if (combo.sku) byName.set(leadComboNameKey(`${combo.name} (${combo.sku})`), combo.id);
+          }
+          for (const item of leadItems) {
+            const id = byName.get(leadComboNameKey(item.name));
+            if (id) found.set(id, (found.get(id) ?? 0) + item.qty);
+          }
+        }
+
+        return [...found].map(([comboSetId, quantity]) => ({ comboSetId, quantity }));
       })()
     : [];
 
