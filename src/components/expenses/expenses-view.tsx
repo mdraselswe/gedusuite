@@ -119,6 +119,16 @@ export function ExpensesView({
     [categoryVisible],
   );
   const supplierOptions = summary.bySupplier;
+  const supplierSelectItems = useMemo(
+    () => [
+      { value: ALL_SUPPLIERS, label: "All suppliers" },
+      ...supplierOptions.map((supplier) => ({
+        value: supplier.key,
+        label: supplier.supplierName,
+      })),
+    ],
+    [supplierOptions],
+  );
   const selectedSupplier = suppliersShown.find((s) => s.key === supplierFilter);
 
   const visible = useMemo(
@@ -360,6 +370,7 @@ export function ExpensesView({
                 setSupplierFilter(value ?? ALL_SUPPLIERS);
                 setSelected(new Set());
               }}
+              items={supplierSelectItems}
             >
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="All suppliers" />
