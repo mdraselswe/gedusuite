@@ -137,7 +137,7 @@ export function AppShell({
           inside its own box. The top bar is `sticky`, which only pins
           vertically, so it slides off with everything else and the sideways
           scroll looks like a broken header rather than a wide table. */}
-      <div className="flex min-w-0 flex-1 flex-col md:pl-64">
+      <div className="flex min-w-0 flex-1 flex-col overflow-x-hidden md:pl-64">
         {/* Top bar: full nav trigger on mobile, just the bell on desktop */}
         <header className="sticky top-0 z-20 flex items-center justify-between gap-2 border-b bg-background px-4 py-3 md:justify-end print:hidden">
           <div className="flex items-center gap-1 md:hidden">
@@ -162,10 +162,13 @@ export function AppShell({
             {notifBadge}
           </Link>
         </header>
-        <main className="flex-1 p-4 sm:p-6">
+        <main className="min-w-0 flex-1 overflow-x-hidden p-4 sm:p-6">
           {/* key={pathname} forces a remount on route change so the enter
               animation re-triggers per page instead of firing only once. */}
-          <div key={pathname} className="animate-in fade-in-0 slide-in-from-bottom-1 duration-200">
+          <div
+            key={pathname}
+            className="min-w-0 animate-in fade-in-0 slide-in-from-bottom-1 duration-200"
+          >
             {children}
           </div>
         </main>

@@ -12,7 +12,7 @@ function Table({
   return (
     <div
       data-slot="table-container"
-      className={cn("relative w-full overflow-x-auto", containerClassName)}
+      className={cn("relative max-w-full min-w-0 overflow-x-auto", containerClassName)}
     >
       <table
         data-slot="table"

@@ -118,7 +118,7 @@ export function LeadItemsEditor({
       <Label>Items</Label>
 
       {rows.map((row) => (
-        <div key={row.id} className="flex items-start gap-2">
+        <div key={row.id} className="grid grid-cols-[minmax(0,1fr)_5rem_auto] items-start gap-2">
           <div className="min-w-0 flex-1">
             {row.mode === "FREE" || row.free ? (
               <Input
@@ -194,7 +194,7 @@ export function LeadItemsEditor({
         </div>
       ))}
 
-      <div className="flex flex-wrap gap-2">
+      <div className="grid gap-2 sm:flex sm:flex-wrap">
         <Button type="button" variant="outline" size="sm" onClick={() => add(false)}>
           <Plus data-icon="inline-start" />
           Add item

@@ -244,7 +244,7 @@ function FilterPanel<T>({
             {active > 0 && (
               <button
                 type="button"
-                className="ml-auto text-xs text-muted-foreground underline"
+                className="sm:ml-auto text-xs text-muted-foreground underline"
                 onClick={onClear}
               >
                 Clear filters
@@ -276,7 +276,7 @@ function Control<T>({
         onValueChange={(v) => onSet(def.key, v ?? ANY_VALUE)}
         items={options}
       >
-        <SelectTrigger className={compact ? "h-9 w-44" : "w-full"}>
+        <SelectTrigger className={compact ? "h-9 w-full sm:w-44" : "w-full"}>
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -292,7 +292,7 @@ function Control<T>({
 
   const isDate = def.kind === "dateRange";
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-1.5">
       <Input
         type={isDate ? "date" : "number"}
         step={isDate ? undefined : (def.step ?? "0.01")}

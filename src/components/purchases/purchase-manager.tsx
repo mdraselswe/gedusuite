@@ -494,7 +494,7 @@ export function PurchaseManager({
                   </Field>
                 )}
                 <div className="sm:col-span-2">
-                  <Button type="submit" disabled={loading}>
+                  <Button type="submit" disabled={loading} className="w-full sm:w-auto">
                     {loading ? "Saving…" : "Record purchase"}
                   </Button>
                 </div>
@@ -506,8 +506,8 @@ export function PurchaseManager({
 
       <div>
         <h2 className="mb-3 text-lg font-semibold">Recent purchases</h2>
-        <div className="mb-3 flex flex-wrap items-center gap-2">
-          <div className="relative w-full max-w-xs">
+        <div className="mb-3 grid gap-2 sm:flex sm:flex-wrap sm:items-center">
+          <div className="relative w-full sm:max-w-xs">
             <Input
               placeholder="Search product or supplier…"
               value={search}
@@ -539,7 +539,7 @@ export function PurchaseManager({
               ...suppliers.map((s) => ({ value: s.id, label: s.name })),
             ]}
           >
-            <SelectTrigger className="w-48">
+            <SelectTrigger className="w-full sm:w-48">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -552,7 +552,7 @@ export function PurchaseManager({
             </SelectContent>
           </Select>
           <Select value={sort} onValueChange={(v) => v && pushListParams(search, v)} items={SORT_OPTIONS}>
-            <SelectTrigger className="w-60">
+            <SelectTrigger className="w-full sm:w-60">
               <span className="shrink-0 text-muted-foreground">Sort:</span>
               <SelectValue />
             </SelectTrigger>
@@ -565,7 +565,7 @@ export function PurchaseManager({
             </SelectContent>
           </Select>
           <DropdownMenu>
-            <DropdownMenuTrigger render={<Button variant="outline" size="sm" />}>
+            <DropdownMenuTrigger render={<Button variant="outline" size="sm" className="w-full sm:w-auto" />}>
               <Columns3 data-icon="inline-start" />
               Columns
             </DropdownMenuTrigger>

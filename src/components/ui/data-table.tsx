@@ -300,7 +300,7 @@ export function DataTable<T>({
       ) : (
         <>
           {/* Desktop / tablet: table */}
-          <div className="hidden md:block">
+          <div className="hidden min-w-0 max-w-full overflow-hidden md:block">
             {/* The height is what makes sideways scrolling reachable, not just
                 possible. A wide table overflows this box and the box scrolls —
                 but its horizontal scrollbar sits along its bottom edge, and at
@@ -314,9 +314,10 @@ export function DataTable<T>({
                 below the chrome" on shorter screens, so the scrollbar is
                 always on screen when the table is. */}
             <Table
+              className="min-w-max"
               containerClassName={
                 stickyHeader
-                  ? "max-h-[min(75vh,calc(100dvh_-_17rem))] overflow-auto"
+                  ? "max-h-[min(75vh,calc(100dvh_-_14rem))] overflow-auto"
                   : undefined
               }
             >
@@ -394,7 +395,7 @@ export function DataTable<T>({
                 key={rowKey(row)}
                 data-selected={selection?.selected.has(rowKey(row)) || undefined}
                 className={cn(
-                  "rounded-lg border border-l-4 border-l-transparent p-3",
+                  "min-w-0 rounded-lg border border-l-4 border-l-transparent p-3",
                   colorClassFor(row),
                   rowTone?.(row),
                   "data-selected:bg-primary/10",
@@ -414,14 +415,14 @@ export function DataTable<T>({
                   const value = c.cell(row);
                   if (c.cardFullWidth) {
                     return (
-                      <div key={c.key} className="mt-3 flex flex-wrap gap-2 border-t pt-3">
+                      <div key={c.key} className="mt-3 flex min-w-0 flex-wrap gap-2 border-t pt-3">
                         {value}
                       </div>
                     );
                   }
                   if (c.cardTitle) {
                     return (
-                      <div key={c.key} className="mb-1 font-medium">
+                      <div key={c.key} className="mb-1 min-w-0 wrap-break-word font-medium">
                         {value}
                       </div>
                     );
@@ -429,14 +430,14 @@ export function DataTable<T>({
                   return (
                     <div
                       key={c.key}
-                      className="flex items-center justify-between gap-3 py-0.5 text-sm"
+                      className="grid min-w-0 grid-cols-[7rem_minmax(0,1fr)] items-start gap-3 py-0.5 text-sm"
                     >
-                      <span className="shrink-0 text-muted-foreground">{c.header}</span>
+                      <span className="min-w-0 wrap-break-word text-muted-foreground">{c.header}</span>
                       {/* wrap-break-word: a long unbroken value (URL, error text)
                           must fold inside the card, not widen the page. */}
                       <span
                         className={cn(
-                          "min-w-0 wrap-break-word",
+                          "min-w-0 wrap-break-word justify-self-end",
                           c.align === "right" && "text-right",
                         )}
                       >

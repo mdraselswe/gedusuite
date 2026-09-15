@@ -219,7 +219,7 @@ html[lang="bn"] {
 .sheet-preview [data-sheet] {
   width: var(--sheet-w, 297mm);
   height: var(--sheet-h, 210mm);
-  padding: 0.2in;
+  padding: 0.1in;
   box-sizing: border-box;
   background: #fff;
   display: grid;
@@ -274,6 +274,10 @@ html[lang="bn"] {
 }
 
 @media print {
+  @page {
+    margin: 0;
+  }
+
   .sheet-preview [data-sheet-frame] {
     width: var(--sheet-w, 297mm);
     height: var(--sheet-h, 210mm);

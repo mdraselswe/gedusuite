@@ -986,7 +986,7 @@ export function OrderManager({
   // layout (unchanged); 4 fits more per run at the cost of dropping the item
   // list and shrinking everything but order id, phone and the collect amount
   // — see OrderFormSlip's `density` prop.
-  const [printDensity, setPrintDensity] = useState<2 | 4>(2);
+  const [printDensity, setPrintDensity] = useState<2 | 4 | 6>(2);
   useEffect(() => {
     const visible = new Set(orders.map((o) => o.id));
     setSelectedIds((prev) => {
@@ -1638,8 +1638,8 @@ export function OrderManager({
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="relative w-full max-w-xs">
+        <div className="flex flex-wrap items-center gap-2 max-sm:w-full">
+          <div className="relative w-full max-w-xs max-sm:max-w-none">
             <Input
               placeholder="Search name, phone, order ID or courier ID…"
               value={search}
@@ -1665,7 +1665,7 @@ export function OrderManager({
             value={statusFilter || "__all__"}
             onValueChange={(v) => pushListParams({ status: v === "__all__" ? "" : (v ?? "") })}
           >
-            <SelectTrigger className="w-44">
+            <SelectTrigger className="w-44 max-sm:w-full">
               <span className="shrink-0 text-muted-foreground">Status:</span>
               <SelectValue />
             </SelectTrigger>
@@ -1682,7 +1682,7 @@ export function OrderManager({
             value={payFilter || "__all__"}
             onValueChange={(v) => pushListParams({ pay: v === "__all__" ? "" : (v ?? "") })}
           >
-            <SelectTrigger className="w-40">
+            <SelectTrigger className="w-40 max-sm:w-full">
               <span className="shrink-0 text-muted-foreground">Payment:</span>
               <SelectValue />
             </SelectTrigger>
@@ -1696,7 +1696,7 @@ export function OrderManager({
             </SelectContent>
           </Select>
           <Select value={sort} onValueChange={(v) => v && pushListParams({ sort: v })}>
-            <SelectTrigger className="w-44">
+            <SelectTrigger className="w-44 max-sm:w-full">
               <span className="shrink-0 text-muted-foreground">Sort:</span>
               <SelectValue />
             </SelectTrigger>
@@ -1706,7 +1706,7 @@ export function OrderManager({
             </SelectContent>
           </Select>
           <DropdownMenu>
-            <DropdownMenuTrigger render={<Button variant="outline" size="sm" />}>
+            <DropdownMenuTrigger render={<Button variant="outline" size="sm" className="max-sm:w-full" />}>
               <Columns3 data-icon="inline-start" />
               Columns
             </DropdownMenuTrigger>
@@ -1728,7 +1728,7 @@ export function OrderManager({
               selecting (or even having) any orders the way "Print order
               forms" below does. */}
           <DropdownMenu>
-            <DropdownMenuTrigger render={<Button variant="outline" size="sm" />}>
+            <DropdownMenuTrigger render={<Button variant="outline" size="sm" className="max-sm:w-full" />}>
               <Printer data-icon="inline-start" />
               Blank forms
             </DropdownMenuTrigger>
@@ -1743,6 +1743,11 @@ export function OrderManager({
               >
                 4 / page
               </DropdownMenuItem>
+              <DropdownMenuItem
+                render={<Link href={`/${slug}/sales/orders/forms?blank=1&perPage=6`} target="_blank" />}
+              >
+                6 / page
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
           {/* Also independent of the order list, for the same reason as
@@ -1751,7 +1756,7 @@ export function OrderManager({
           <Link
             href={`/${slug}/sales/gift-tags`}
             target="_blank"
-            className={buttonVariants({ variant: "outline", size: "sm" })}
+            className={buttonVariants({ variant: "outline", size: "sm", className: "max-sm:w-full" })}
           >
             <Gift data-icon="inline-start" />
             Gift tags
@@ -1759,7 +1764,7 @@ export function OrderManager({
           <Link
             href={`/${slug}/sales/leaflet`}
             target="_blank"
-            className={buttonVariants({ variant: "outline", size: "sm" })}
+            className={buttonVariants({ variant: "outline", size: "sm", className: "max-sm:w-full" })}
           >
             <Newspaper data-icon="inline-start" />
             Leaflet
@@ -1768,6 +1773,7 @@ export function OrderManager({
         {perms.canAdd && (
           <Button
             size="sm"
+            className="max-sm:w-full"
             onClick={() => {
               resetForm();
               setOpen(true);
@@ -2198,7 +2204,7 @@ export function OrderManager({
                   OrderFormSlip's `density` prop — so it's picked here, before
                   the sheets are generated, rather than after. */}
               <div className="flex items-center rounded-md border p-0.5">
-                {([2, 4] as const).map((n) => (
+                {([2, 4, 6] as const).map((n) => (
                   <button
                     key={n}
                     type="button"
@@ -2308,7 +2314,7 @@ export function OrderManager({
                               key={i}
                               className="rounded-xl bg-background p-3 ring-1 ring-border sm:p-4"
                             >
-                              <div className="grid grid-cols-[minmax(0,1fr)_5rem_2.25rem] items-end gap-2">
+                              <div className="grid grid-cols-[minmax(0,1fr)_5rem_auto] items-end gap-2">
                                 <div className="space-y-2">
                                   <Label>Combo</Label>
                                   <Select
@@ -2499,8 +2505,8 @@ export function OrderManager({
                             </Button>
                           </div>
 
-                          <div className="grid grid-cols-3 gap-3 lg:grid-cols-[minmax(16rem,1fr)_8rem_6rem_8rem]">
-                            <div className="col-span-3 space-y-2 lg:col-span-1">
+                          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-[minmax(16rem,1fr)_8rem_6rem_8rem]">
+                            <div className="col-span-2 space-y-2 sm:col-span-3 lg:col-span-1">
                               <Label>Product</Label>
                               <AsyncCombobox
                                 value={it.variant}
@@ -2648,8 +2654,8 @@ export function OrderManager({
                                 <Trash2 />
                               </Button>
                             </div>
-                            <div className="grid grid-cols-2 gap-3 lg:grid-cols-[8rem_minmax(14rem,1fr)_6rem_8rem]">
-                              <div className="col-span-2 space-y-2 lg:col-span-1">
+                            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-[8rem_minmax(14rem,1fr)_6rem_8rem]">
+                              <div className="col-span-2 space-y-2 sm:col-span-1">
                                 <Label>Type</Label>
                                 <Select
                                   value={g.mode}
@@ -2667,7 +2673,7 @@ export function OrderManager({
                                 </Select>
                               </div>
                               {g.mode === "PRODUCT" ? (
-                                <div className="col-span-2 space-y-2 lg:col-span-1">
+                                <div className="col-span-2 space-y-2">
                                   <Label>Product</Label>
                                   <AsyncCombobox
                                     value={g.variant}
@@ -2698,7 +2704,7 @@ export function OrderManager({
                                   />
                                 </div>
                               ) : (
-                                <div className="col-span-2 space-y-2 lg:col-span-1">
+                                <div className="col-span-2 space-y-2">
                                   <Label>Gift name</Label>
                                   <Input
                                     placeholder="e.g. Keychain, wrapping…"
@@ -3236,7 +3242,7 @@ export function OrderManager({
             <Field name="name" label="Name" required>
               <Input id="nc-name" name="name" required autoFocus />
             </Field>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-3 sm:grid-cols-2">
               <Field name="phone" label="Phone">
                 <Input id="nc-phone" name="phone" />
               </Field>
@@ -3525,7 +3531,7 @@ export function OrderManager({
                   </SelectContent>
                 </Select>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="r-qty">Quantity</Label>
                   <Input id="r-qty" name="quantity" type="number" min="1" required defaultValue="1" />
@@ -3598,7 +3604,7 @@ export function OrderManager({
                 />
                 <ShipFields value={editShip} onChange={setEditShip} />
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-3 sm:grid-cols-2">
                 <Field name="date" label="Date" required>
                   <Input
                     id="eo-date"
@@ -3621,7 +3627,7 @@ export function OrderManager({
                   </Select>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-3 sm:grid-cols-2">
                 <Field name="deliveryCharge" label="Delivery charge (customer pays)" required>
                   <Input
                     id="eo-charge"
@@ -3830,7 +3836,7 @@ export function OrderManager({
                     that needs correcting now is a stock adjustment.
                   </p>
                 ))}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label>Payment method</Label>
                   <Select value={editPaymentMethod} onValueChange={(v) => setEditPaymentMethod(v ?? "CASH")}>
@@ -3877,7 +3883,7 @@ export function OrderManager({
                   </label>
                 </Field>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-3 sm:grid-cols-2">
                 <PackagingCostField
                   id="eo-packaging"
                   value={editPackaging}

@@ -79,7 +79,7 @@ export function ProductImportDialog({ slug }: { slug: string }) {
 
   return (
     <>
-      <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
+      <Button variant="outline" size="sm" onClick={() => setOpen(true)} className="w-full sm:w-auto">
         Import JSON
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
@@ -144,7 +144,13 @@ export function ProductImportDialog({ slug }: { slug: string }) {
             <div className="space-y-2">
               {/* Same content as the example above, as a file — edit the values
                   and upload it straight back. */}
-              <Button type="button" variant="outline" size="sm" onClick={downloadSample}>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={downloadSample}
+                className="w-full sm:w-auto"
+              >
                 <Download data-icon="inline-start" />
                 Download sample file
               </Button>

@@ -45,6 +45,13 @@ export type Consignment = {
   updated_at: string;
 };
 
+export type FraudCheck = {
+  total_parcels: number;
+  total_delivered: number;
+  total_cancelled: number;
+  total_fraud_reports: unknown[];
+};
+
 export type SteadfastResult<T> =
   | { ok: true; data: T }
   | { ok: false; error: string; fieldErrors?: Record<string, string[]> };
@@ -140,6 +147,12 @@ async function request<T>(
 
     // Steadfast answers HTTP 200 with its real status in the body, and 401 with
     // nothing useful in it, so both have to be checked.
+    if (res.status === 429) {
+      return {
+        ok: false,
+        error: "Steadfast rate limit hit. Wait a minute, then open this fraud check again.",
+      };
+    }
     if (res.status === 401 || body.status === 401) {
       return { ok: false, error: "Steadfast rejected the API key — check the credentials in Settings → Couriers" };
     }
@@ -203,6 +216,24 @@ export async function getBalance(
   return request(creds, "/get_balance", { method: "GET" });
 }
 
+
+/**
+ * A phone number's Steadfast history across merchants.
+ *
+ * Read live because another shop can ship to the same number after this lead
+ * was created; the caller needs the courier's current answer before sending a
+ * COD parcel.
+ */
+export async function fraudCheck(
+  creds: SteadfastCredentials,
+  phone: string,
+): Promise<SteadfastResult<FraudCheck>> {
+  const normalized = normalizePhone(phone);
+  if (!normalized) return { ok: false, error: "Enter a valid Bangladeshi mobile number" };
+  return request<FraudCheck>(creds, `/fraud_check/${encodeURIComponent(normalized)}`, {
+    method: "GET",
+  });
+}
 
 /** One line of Steadfast's payment history — a payout it has made, or is making. */
 export type SteadfastPayment = {

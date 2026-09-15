@@ -509,13 +509,13 @@ export function ProductManager({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2">
+      <div className="grid gap-3 sm:flex sm:flex-wrap sm:items-center sm:justify-between">
+        <div className="grid min-w-0 gap-2 sm:flex sm:flex-wrap sm:items-center">
           <Input
             placeholder="Search products…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            className="max-w-xs"
+            className="w-full sm:max-w-xs"
           />
           {bar}
           {/* Only once something is actually narrowing the list — the plain
@@ -529,9 +529,9 @@ export function ProductManager({
           )}
         </div>
         {perms.canAdd && (
-          <div className="flex items-center gap-2">
+          <div className="grid gap-2 sm:flex sm:items-center">
             <ProductImportDialog slug={slug} />
-            <Button size="sm" onClick={openNew}>
+            <Button size="sm" onClick={openNew} className="w-full sm:w-auto">
               + Add product
             </Button>
           </div>
@@ -551,8 +551,8 @@ export function ProductManager({
       ) : (
         <div className="space-y-3">
           {shown.map((p) => (
-            <div key={p.id} className="rounded-lg border p-3 sm:p-4">
-              <div className="flex items-start gap-3 sm:gap-4">
+            <div key={p.id} className="min-w-0 rounded-lg border p-3 sm:p-4">
+              <div className="flex min-w-0 items-start gap-3 sm:gap-4">
                 {p.imageUrl ? (
                   <Image
                     src={p.imageUrl}
@@ -596,9 +596,9 @@ export function ProductManager({
                       return (
                         <span
                           key={v.id}
-                          className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs"
+                          className="inline-flex min-w-0 max-w-full items-center gap-1 rounded-md border px-2 py-1 text-xs"
                         >
-                          <span className="font-medium">{variantChip(v.attributes)}</span>
+                          <span className="min-w-0 wrap-break-word font-medium">{variantChip(v.attributes)}</span>
                           {v.salePrice != null && (
                             <span className="text-muted-foreground">· {money(v.salePrice)}</span>
                           )}
@@ -650,7 +650,7 @@ export function ProductManager({
               </div>
               {/* Mobile: action row under the content, full card width */}
               {perms.canEdit && (
-                <div className="mt-3 flex gap-1 border-t pt-2 sm:hidden">
+                <div className="mt-3 grid grid-cols-2 gap-1 border-t pt-2 sm:hidden">
                   <Button variant="ghost" size="sm" className="flex-1" onClick={() => openEdit(p)}>
                     Edit
                   </Button>
@@ -820,7 +820,7 @@ export function ProductManager({
 
             {!hasVariants ? (
               // Simple product: pricing for its single (default) variant.
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="p-sale">Selling price</Label>
                   <Input
@@ -844,7 +844,7 @@ export function ProductManager({
                     onChange={(e) => updateDraft(0, { unitCost: e.target.value })}
                   />
                 </Field>
-                <p className="col-span-2 text-xs text-muted-foreground">
+                <p className="text-xs text-muted-foreground sm:col-span-2">
                   Used as the default price when buying or selling this product. Leave blank to fill
                   it in at purchase/sale time.
                 </p>
@@ -854,11 +854,11 @@ export function ProductManager({
                 {/* Attribute-name columns */}
                 <div className="space-y-2">
                   <Label>Attributes</Label>
-                  <div className="flex flex-wrap items-center gap-2">
+                  <div className="grid gap-2 sm:flex sm:flex-wrap sm:items-center">
                     {attrNames.map((n, i) => (
-                      <div key={i} className="flex items-center gap-1">
+                      <div key={i} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-1">
                         <Input
-                          className="h-8 w-28"
+                          className="h-8 w-full sm:w-28"
                           placeholder={`Attribute ${i + 1}`}
                           value={n}
                           onChange={(e) => renameAttr(i, e.target.value)}
@@ -883,8 +883,8 @@ export function ProductManager({
                 <Label>Variants</Label>
                 {draftVariants.map((d, i) => (
                   <div key={i} className="space-y-2 rounded-md border p-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="grid flex-1 grid-cols-2 gap-2 sm:grid-cols-3">
+                    <div className="flex min-w-0 items-start justify-between gap-2">
+                      <div className="grid min-w-0 flex-1 gap-2 sm:grid-cols-3">
                         {attrNames.map((n, ai) => (
                           <div key={ai} className="space-y-1">
                             <Label className="text-xs text-muted-foreground">{n || `Attr ${ai + 1}`}</Label>
@@ -907,7 +907,7 @@ export function ProductManager({
                         </button>
                       )}
                     </div>
-                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    <div className="grid gap-2 sm:grid-cols-4">
                       <div className="space-y-1">
                         <Label className="text-xs text-muted-foreground">Selling price</Label>
                         <Input
@@ -966,7 +966,7 @@ export function ProductManager({
                         />
                       </div>
                     </div>
-                    <div className="flex items-center gap-3">
+                    <div className="grid gap-3 sm:flex sm:items-center">
                       <div className="flex-1 space-y-1">
                         <Label className="text-xs text-muted-foreground">Image</Label>
                         <Input
@@ -1016,7 +1016,7 @@ export function ProductManager({
             <DialogTitle>Add variant to {variantFor?.name}</DialogTitle>
           </DialogHeader>
           <form onSubmit={onAddVariant} className="space-y-4">
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            <div className="grid gap-2 sm:grid-cols-3">
               {(variantFor?.attributeNames ?? []).map((n, ai) => (
                 <div key={ai} className="space-y-1">
                   <Label className="text-xs">{n}</Label>
@@ -1032,7 +1032,7 @@ export function ProductManager({
                 </div>
               ))}
             </div>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid gap-2 sm:grid-cols-2">
               <div className="space-y-1">
                 <Label className="text-xs">Selling price</Label>
                 <Input

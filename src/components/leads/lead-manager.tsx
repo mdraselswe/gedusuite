@@ -4,12 +4,14 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "@/lib/live-router";
 import { toast } from "sonner";
 import {
+  AlertTriangle,
   Check,
   Copy,
   MoreVertical,
   PhoneCall,
   RefreshCw,
   Repeat2,
+  ShieldCheck,
   UserCheck,
   X,
 } from "lucide-react";
@@ -111,6 +113,14 @@ type Lead = DhakaStamp & {
   fulfilment: LeadFulfilment;
   /** What this phone number ordered before. null when it's a first-time buyer. */
   history: BuyerHistory | null;
+  /** Steadfast's cross-merchant COD record, when a page already has it. */
+  fraudCheck: FraudCheckSummary | null;
+};
+type FraudCheckSummary = {
+  total_parcels: number;
+  total_delivered: number;
+  total_cancelled: number;
+  total_fraud_reports: unknown[];
 };
 type Perms = {
   canAdd: boolean;
@@ -693,11 +703,12 @@ export function LeadManager({
       wrap: true,
       sortValue: (l) => l.customerName.toLowerCase(),
       cell: (l) => (
-        <span className="block max-w-56 space-y-0.5">
+        <span className="block max-w-full space-y-0.5 md:max-w-56">
           <span className="flex flex-wrap items-center gap-1">
             <span className="whitespace-normal">{l.customerName}</span>
             <CopyButton value={l.customerName} label="name" />
             <RepeatBadge history={l.history} />
+            <FraudCheckBadge slug={slug} phone={l.phone} summary={l.fraudCheck} />
             {/* Was a "Customer added" line in the actions column. It's a fact
                 about this person, so it sits with their name — and it costs a
                 badge here instead of a column's worth of width there. */}
@@ -733,7 +744,7 @@ export function LeadManager({
         const items = splitLeadItems(l.itemsText);
         if (items.length === 0) return <span className="text-sm">—</span>;
         return (
-          <span className="block max-w-56 space-y-0.5 text-sm">
+          <span className="block max-w-full space-y-0.5 text-sm md:max-w-56">
             {items.map((it, i) => (
               <span key={i} className="block whitespace-normal">
                 {it}
@@ -922,7 +933,7 @@ export function LeadManager({
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-start gap-2">
-        <div className="relative w-full max-w-xs">
+        <div className="relative w-full max-w-xs max-sm:max-w-none">
           <Input
             placeholder="Search name, phone, order…"
             value={search}
@@ -944,14 +955,20 @@ export function LeadManager({
             </button>
           )}
         </div>
-        <div className="min-w-0 flex-1">{bar}</div>
+        <div className="min-w-0 flex-1 max-sm:basis-full">{bar}</div>
         {perms.canAdd && (
-          <Button size="sm" onClick={openNew}>
+          <Button size="sm" onClick={openNew} className="max-sm:w-full">
             + Add order
           </Button>
         )}
         {perms.canAdd && (
-          <Button size="sm" variant="outline" onClick={onRefresh} disabled={syncing}>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={onRefresh}
+            disabled={syncing}
+            className="max-sm:w-full"
+          >
             <RefreshCw data-icon="inline-start" className={cn(syncing && "animate-spin")} />
             {syncing ? "Checking…" : "Refresh"}
           </Button>
@@ -1197,7 +1214,7 @@ export function LeadManager({
                   e.preventDefault();
                   void loadLinkResults(linkingFor, linkQuery);
                 }}
-                className="flex gap-2"
+                className="grid gap-2 sm:flex"
               >
                 <Input
                   value={linkQuery}
@@ -1336,5 +1353,55 @@ function RepeatBadge({ history }: { history: BuyerHistory | null }) {
         </Badge>
       )}
     </span>
+  );
+}
+
+function FraudCheckBadge({
+  slug,
+  phone,
+  summary,
+}: {
+  slug: string;
+  phone: string;
+  summary: FraudCheckSummary | null;
+}) {
+  const total = Math.max(0, Number(summary?.total_parcels) || 0);
+  const delivered = Math.max(0, Number(summary?.total_delivered) || 0);
+  const cancelled = Math.max(0, Number(summary?.total_cancelled) || 0);
+  const reports = Array.isArray(summary?.total_fraud_reports)
+    ? summary.total_fraud_reports.length
+    : 0;
+  const successRate = total > 0 ? Math.round((delivered / total) * 100) : null;
+  const risky = reports > 0 || (total >= 3 && successRate !== null && successRate < 60);
+  const title = summary
+    ? [
+        successRate === null ? "No Steadfast parcel history" : `${successRate}% delivered`,
+        `${delivered} delivered`,
+        `${cancelled} cancelled`,
+        reports > 0 ? `${reports} fraud report${reports === 1 ? "" : "s"}` : null,
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : "Open Steadfast fraud check";
+
+  return (
+    <a
+      href={`/${slug}/leads/fraud/${encodeURIComponent(phone)}`}
+      title={`${title} · open details`}
+      className="inline-flex"
+    >
+      <Badge
+        variant={risky ? "destructive" : summary ? "secondary" : "outline"}
+        className={cn(
+          "gap-1 tabular-nums",
+          !risky &&
+            summary &&
+            "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/15 dark:text-emerald-300",
+        )}
+      >
+        {risky ? <AlertTriangle className="size-3" aria-hidden /> : <ShieldCheck className="size-3" aria-hidden />}
+        {summary ? (successRate === null ? "SF new" : `${successRate}% SF`) : "SF check"}
+      </Badge>
+    </a>
   );
 }

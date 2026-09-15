@@ -84,7 +84,8 @@ export default async function OrderFormsPage({
   const { ids: idsParam, perPage: perPageParam, blank: blankParam } = await searchParams;
   // Only 2 and 4 are laid out for; anything else (a hand-edited URL) falls
   // back to the original two-to-a-sheet form rather than rendering nothing.
-  const density: 2 | 4 = perPageParam === "4" ? 4 : 2;
+  const density: 2 | 4 | 6 =
+    perPageParam === "6" ? 6 : perPageParam === "4" ? 4 : 2;
   const isBlank = blankParam === "1";
 
   const access = await workspaceAccess(slug);

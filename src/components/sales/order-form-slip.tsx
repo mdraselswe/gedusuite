@@ -119,13 +119,18 @@ export function OrderFormSlip({
    * and the collect amount shrinks — see FilledBody/BlankBody's `compact`
    * branches.
    */
-  density?: 2 | 4;
+  density?: 2 | 4 | 6;
 }) {
-  const compact = density === 4;
+  const compact = density !== 2;
+  const sixUp = density === 6;
   return (
     <div
       className={`flex h-full flex-col overflow-hidden leading-tight ${
-        compact ? "px-[6mm] py-[2.5mm]" : "px-[8mm] py-[6mm]"
+        sixUp
+          ? "px-[4.5mm] py-[1.8mm]"
+          : compact
+            ? "px-[6mm] py-[2.5mm]"
+            : "px-[8mm] py-[6mm]"
       }`}
       style={{ color: BODY }}
     >
@@ -136,14 +141,16 @@ export function OrderFormSlip({
             src={workspace.logoUrl}
             alt={workspace.name}
             className={
-              compact
+              sixUp
+                ? "mb-[0.2mm] h-[11mm] w-auto max-w-[50mm] object-contain"
+                : compact
                 ? "mb-[0.5mm] h-[11mm] w-auto max-w-[50mm] object-contain"
                 : "mb-[1.5mm] h-[17mm] w-auto max-w-[70mm] object-contain"
             }
           />
         )}
         <h1
-          className={compact ? "text-[17px] font-bold" : "text-[22px] font-bold"}
+          className={sixUp ? "text-[15px] font-bold" : compact ? "text-[17px] font-bold" : "text-[22px] font-bold"}
           style={{ color: INK }}
         >
           {workspace.name}
@@ -161,7 +168,7 @@ export function OrderFormSlip({
           hunted for halfway down. */}
       <div
         className={`flex items-end justify-between gap-[4mm] border-b-2 ${
-          compact ? "mt-[1mm] pb-[1mm]" : "mt-[3.5mm] pb-[1.5mm]"
+          sixUp ? "mt-[0.6mm] pb-[0.6mm]" : compact ? "mt-[1mm] pb-[1mm]" : "mt-[3.5mm] pb-[1.5mm]"
         }`}
         style={{ borderColor: INK }}
       >
@@ -171,7 +178,7 @@ export function OrderFormSlip({
           </div>
           {order ? (
             <div
-              className={`leading-tight font-bold tabular-nums ${compact ? "text-[19px]" : "text-[22px]"}`}
+              className={`leading-tight font-bold tabular-nums ${sixUp ? "text-[17px]" : compact ? "text-[19px]" : "text-[22px]"}`}
               style={{ color: INK }}
             >
               {order.orderNumber}
@@ -196,9 +203,9 @@ export function OrderFormSlip({
       </div>
 
       {order ? (
-        <FilledBody order={order} compact={compact} />
+        <FilledBody order={order} compact={compact} sixUp={sixUp} />
       ) : (
-        <BlankBody compact={compact} />
+        <BlankBody compact={compact} sixUp={sixUp} />
       )}
 
       <Footer workspace={workspace} compact={compact} />
@@ -206,34 +213,57 @@ export function OrderFormSlip({
   );
 }
 
-function FilledBody({ order, compact }: { order: SlipOrder; compact: boolean }) {
+function FilledBody({
+  order,
+  compact,
+  sixUp,
+}: {
+  order: SlipOrder;
+  compact: boolean;
+  sixUp: boolean;
+}) {
   if (compact) {
     return (
       <>
         {/* Name shrinks to a caption; the phone is the field a courier
             actually dials, so it keeps most of its size. */}
-        <Value className="mt-[2mm] text-[14px] font-semibold">{order.customerName}</Value>
-        <Value className="mt-[0.75mm] text-[19px] font-bold tracking-wide tabular-nums">
+        <Value className={sixUp ? "mt-[1mm] text-[12.5px] font-semibold" : "mt-[2mm] text-[14px] font-semibold"}>
+          {order.customerName}
+        </Value>
+        <Value className={sixUp ? "mt-[0.4mm] text-[17px] font-bold tracking-wide tabular-nums" : "mt-[0.75mm] text-[19px] font-bold tracking-wide tabular-nums"}>
           {order.phone}
         </Value>
         {/* Product names are dropped at this density — no room to read them
             at arm's length — but the address stays: it's what makes the
             parcel deliverable, just clamped tighter than the half-sheet. */}
-        <Value className="mt-[1.5mm] min-h-[15mm] text-[13px] leading-snug whitespace-pre-wrap" clampLines={3}>
+        <Value
+          className={
+            sixUp
+              ? "mt-[0.35mm] min-h-[16.5mm] text-[11.5px] leading-tight whitespace-pre-wrap"
+              : "mt-[1.5mm] min-h-[15mm] text-[13px] leading-snug whitespace-pre-wrap"
+          }
+          clampLines={sixUp ? 4 : 3}
+        >
           {order.address}
         </Value>
 
         {/* The one figure the shop can be argued with about, boxed the way
             every courier's own COD label boxes it. */}
-        <div className="mt-auto border-2 px-[3mm] py-[2mm]" style={{ borderColor: INK }}>
-          <div className="text-[11px]" style={{ color: MUTED }}>
+        <div
+          className={sixUp ? "mt-auto border-2 px-[2.25mm] py-[1.6mm]" : "mt-auto border-2 px-[3mm] py-[2mm]"}
+          style={{ borderColor: INK }}
+        >
+          <div className={sixUp ? "text-[9.5px]" : "text-[11px]"} style={{ color: MUTED }}>
             সংগ্রহ করতে হবে (ডেলিভারি সহ)
           </div>
-          <div className="text-[26px] leading-none font-bold tabular-nums" style={{ color: INK }}>
+          <div
+            className={sixUp ? "text-[23px] leading-none font-bold tabular-nums" : "text-[26px] leading-none font-bold tabular-nums"}
+            style={{ color: INK }}
+          >
             {formatMoney(order.collect)}
           </div>
           {settledNote(order) && (
-            <div className="mt-[1mm] text-[9px]" style={{ color: MUTED }}>
+            <div className={sixUp ? "mt-[0.75mm] text-[8.5px]" : "mt-[1mm] text-[9px]"} style={{ color: MUTED }}>
               {settledNote(order)}
             </div>
           )}
@@ -303,14 +333,14 @@ function FilledBody({ order, compact }: { order: SlipOrder; compact: boolean }) 
  * The compact blank form keeps only what has to be written on a quarter page:
  * customer name, mobile, address and the amount collected.
  */
-function BlankBody({ compact }: { compact: boolean }) {
+function BlankBody({ compact, sixUp }: { compact: boolean; sixUp: boolean }) {
   if (compact) {
     return (
       <BlankGroup>
-        <BlankField label="কাস্টমারের নাম" height="10mm" />
-        <BlankField label="মোবাইল নম্বর" height="10mm" />
-        <BlankField label="পূর্ণাঙ্গ ঠিকানা" height="24mm" />
-        <BlankField label="সংগ্রহ করতে হবে (ডেলিভারি সহ)" height="12mm" />
+        <BlankField label="কাস্টমারের নাম" height={sixUp ? "8mm" : "10mm"} />
+        <BlankField label="মোবাইল নম্বর" height={sixUp ? "8mm" : "10mm"} />
+        <BlankField label="পূর্ণাঙ্গ ঠিকানা" height={sixUp ? "32mm" : "24mm"} />
+        <BlankField label="সংগ্রহ করতে হবে (ডেলিভারি সহ)" height={sixUp ? "9mm" : "12mm"} />
       </BlankGroup>
     );
   }
@@ -355,7 +385,7 @@ function settledNote(order: SlipOrder): string | null {
   // a completely different reason and the figures alone can't tell them apart.
   if (order.cancelled) return "অর্ডার বাতিল (Cancelled) — সংগ্রহ করার কিছু নেই";
   if (order.paid <= 0) return null;
-  if (order.collect <= 0) return `সম্পূর্ণ পরিশোধিত (${formatMoney(order.total)}) — কিছু নিতে হবে না`;
+  if (order.collect <= 0) return "সম্পূর্ণ পরিশোধিত — কিছু নিতে হবে না";
   return `বিল ${formatMoney(order.total)} · পরিশোধিত ${formatMoney(order.paid)}`;
 }
 

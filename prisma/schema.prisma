@@ -63,6 +63,7 @@ model Workspace {
   courierZones          CourierZone[]
   courierRateBands      CourierRateBand[]
   courierPayouts        CourierPayout[]
+  courierFraudChecks    CourierFraudCheck[]
   activity              ActivityLog[]
 }
 
@@ -1488,6 +1489,33 @@ model ProcessedMutation {
   createdAt   DateTime @default(now())
 
   @@index([createdAt])
+}
+
+/**
+ * Cached Steadfast fraud-check answers by phone number.
+ *
+ * Steadfast rate-limits aggressively. The call list must never fan out 50 live
+ * checks, and even a details page refresh should not ask again when a fresh
+ * answer is already known. Errors are cached briefly too, so reload loops do
+ * not keep the account locked out.
+ */
+model CourierFraudCheck {
+  id                String   @id @default(cuid())
+  workspaceId       String
+  phone             String
+  totalParcels      Int      @default(0)
+  totalDelivered    Int      @default(0)
+  totalCancelled    Int      @default(0)
+  totalFraudReports Json     @default("[]")
+  checkedAt         DateTime?
+  lastError         String?
+  errorAt           DateTime?
+  updatedAt         DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, phone])
+  @@index([workspaceId, updatedAt])
 }
 
 // Remembers when the call list last pulled from WooCommerce, so opening the

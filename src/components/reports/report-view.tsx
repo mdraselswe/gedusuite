@@ -467,8 +467,8 @@ export function ReportView({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-3 print:hidden">
-        <form onSubmit={applyRange} className="flex items-end gap-2">
+      <div className="grid gap-3 print:hidden sm:flex sm:flex-wrap sm:items-end sm:justify-between">
+        <form onSubmit={applyRange} className="grid gap-2 sm:flex sm:items-end">
           <div className="space-y-1">
             <Label htmlFor="from">From</Label>
             <Input id="from" type="date" value={f} onChange={(e) => setF(e.target.value)} />
@@ -477,28 +477,29 @@ export function ReportView({
             <Label htmlFor="to">To</Label>
             <Input id="to" type="date" value={t} onChange={(e) => setT(e.target.value)} />
           </div>
-          <Button type="submit" variant={isAllTime ? "outline" : "default"}>
+          <Button type="submit" variant={isAllTime ? "outline" : "default"} className="w-full sm:w-auto">
             Apply
           </Button>
           <Button
             type="button"
             variant={isAllTime ? "default" : "outline"}
             onClick={viewAllTime}
+            className="w-full sm:w-auto"
           >
             All time
           </Button>
         </form>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={exportExcel}>
+        <div className="grid gap-2 sm:flex">
+          <Button variant="outline" onClick={exportExcel} className="w-full sm:w-auto">
             Export Excel
           </Button>
-          <Button variant="outline" onClick={exportPdf}>
+          <Button variant="outline" onClick={exportPdf} className="w-full sm:w-auto">
             Export PDF
           </Button>
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {kpis.map(([label, val]) => (
           <Card key={label}>
             <CardHeader className="pb-2">
@@ -523,7 +524,7 @@ export function ReportView({
               No sales in this range.
             </p>
           ) : (
-            <div className="h-72 w-full">
+            <div className="h-72 min-w-0 w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={report.series}>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
@@ -835,7 +836,7 @@ export function ReportView({
       {untaggedOrders.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Not tagged orders to fix</CardTitle>
+            <CardTitle className="text-base">Not tagged district parcels</CardTitle>
           </CardHeader>
           <CardContent>
             <DataTable
@@ -903,7 +904,7 @@ export function ReportView({
                         onValueChange={(value) => value && onDistrictChange(o.id, value)}
                         disabled={savingDistrictFor === o.id}
                       >
-                        <SelectTrigger className="h-8 w-40">
+                        <SelectTrigger className="h-8 w-full sm:w-40">
                           <SelectValue placeholder={savingDistrictFor === o.id ? "Saving..." : "Choose"} />
                         </SelectTrigger>
                         <SelectContent>
@@ -923,8 +924,8 @@ export function ReportView({
               }
             />
             <p className="mt-3 text-xs text-muted-foreground">
-              Pick a district after reading the address. The order is saved immediately and
-              leaves this list after the report refreshes.
+              Pick a district after reading the parcel address. The order is saved immediately,
+              the district report updates, and the parcel leaves this list after refresh.
             </p>
           </CardContent>
         </Card>

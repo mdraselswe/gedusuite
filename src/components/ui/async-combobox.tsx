@@ -106,7 +106,7 @@ export function AsyncCombobox<T extends ComboOption>({
           id={id}
           placeholder={placeholder}
           disabled={disabled}
-          className="flex h-10 w-full items-center rounded-lg border border-input bg-transparent py-2 pr-8 pl-2.5 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-input/30"
+          className="flex h-10 w-full min-w-0 items-center rounded-lg border border-input bg-transparent py-2 pr-8 pl-2.5 text-base outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm dark:bg-input/30"
         />
         <Combobox.Icon className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 text-muted-foreground">
           <ChevronDownIcon className="size-4" />
@@ -120,14 +120,14 @@ export function AsyncCombobox<T extends ComboOption>({
             onScroll={onScroll}
             // max-w-md caps the popup on wide anchors — a full-width form field
             // would otherwise make the dropdown span the whole page.
-            className="max-h-64 w-(--anchor-width) max-w-md min-w-48 overflow-y-auto rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10 outline-none"
+            className="max-h-64 w-(--anchor-width) max-w-[calc(100vw-2rem)] min-w-48 overflow-y-auto rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10 outline-none sm:max-w-md"
           >
             <Combobox.List>
               {(option: T) => (
                 <Combobox.Item
                   key={option.value}
                   value={option}
-                  className="flex cursor-default items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm outline-hidden select-none data-highlighted:bg-accent data-highlighted:text-accent-foreground"
+                  className="flex min-w-0 cursor-default items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm outline-hidden select-none data-highlighted:bg-accent data-highlighted:text-accent-foreground"
                 >
                   {renderItem ? renderItem(option) : option.label}
                 </Combobox.Item>

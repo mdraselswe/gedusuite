@@ -178,6 +178,7 @@ export default async function LeadsPage({
       l.orderId,
       (l.orderId ? orderById.get(l.orderId)?.status : null) ?? null,
     ),
+    fraudCheck: null,
   }));
 
   return (
