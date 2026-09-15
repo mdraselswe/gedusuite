@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
@@ -21,7 +22,7 @@ import {
 } from "@/components/ui/dialog";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { useFilterBar, type FilterDef } from "@/components/ui/filter-bar";
-import { Users, AlertTriangle, X } from "lucide-react";
+import { Users, AlertTriangle, X, PhoneCall } from "lucide-react";
 import { Money } from "@/components/ui/money";
 import { Field, FormError, type FieldError } from "@/components/ui/field";
 
@@ -32,6 +33,10 @@ type Customer = {
   altPhone: string | null;
   address: string | null;
   notes: string | null;
+  reengageEnabled: boolean;
+  reengageNote: string | null;
+  reengageLastReachedInput: string | null;
+  reengageNextReachInput: string | null;
   orderCount: number;
   /** Parcels they refused. Kept out of orderCount and spend, counted here. */
   cancelledCount: number;
@@ -42,6 +47,10 @@ type Customer = {
   daysSinceOrder: number | null;
 };
 type Perms = { canAdd: boolean; canEdit: boolean };
+
+function dayFromInput(value: string | null) {
+  return value ? value.slice(0, 10) : null;
+}
 
 export function CustomerManager({
   slug,
@@ -62,6 +71,7 @@ export function CustomerManager({
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Customer | null>(null);
   const [loading, setLoading] = useState(false);
+  const [reengageChecked, setReengageChecked] = useState(false);
   // The last refusal, kept so the Field it names can show it. A toast alone
   // left the message hovering over a form with no sign of which box it meant.
   const [formError, setFormError] = useState<FieldError>(null);
@@ -124,6 +134,16 @@ export function CustomerManager({
         { value: "no", label: "Never ordered" },
       ],
       match: (c, v) => (v === "yes" ? c.orderCount > 0 : c.orderCount === 0),
+    },
+    {
+      key: "reengage",
+      label: "Marked for reach",
+      kind: "select",
+      options: [
+        { value: "yes", label: "Marked" },
+        { value: "no", label: "Not marked" },
+      ],
+      match: (c, v) => (v === "yes" ? c.reengageEnabled : !c.reengageEnabled),
     },
     {
       key: "outstanding",
@@ -241,17 +261,29 @@ export function CustomerManager({
           </div>
           {bar}
         </div>
-        {perms.canAdd && (
+        <div className="flex flex-wrap items-center gap-2">
           <Button
+            variant="outline"
             size="sm"
-            onClick={() => {
-              setEditing(null);
-              setOpen(true);
-            }}
+            nativeButton={false}
+            render={<Link href={`/${slug}/customers/follow-ups`} />}
           >
-            + Add customer
+            <PhoneCall data-icon="inline-start" />
+            Follow-ups
           </Button>
-        )}
+          {perms.canAdd && (
+            <Button
+              size="sm"
+              onClick={() => {
+                setEditing(null);
+                setReengageChecked(false);
+                setOpen(true);
+              }}
+            >
+              + Add customer
+            </Button>
+          )}
+        </div>
       </div>
 
       <DataTable
@@ -281,6 +313,11 @@ export function CustomerManager({
                   {c.orderCount > 1 && (
                     <Badge variant="secondary" className="ml-2">
                       Repeat
+                    </Badge>
+                  )}
+                  {c.reengageEnabled && (
+                    <Badge variant="outline" className="ml-2 border-sky-400/60 text-sky-700 dark:text-sky-400">
+                      Follow up
                     </Badge>
                   )}
                   {/* Worth seeing before packing another parcel for them: a
@@ -355,6 +392,25 @@ export function CustomerManager({
                 ),
             },
             {
+              key: "nextReach",
+              header: "Next reach",
+              hideable: true,
+              sortValue: (c) => c.reengageNextReachInput ?? "9999-12-31",
+              cell: (c) =>
+                c.reengageEnabled ? (
+                  <span>
+                    {dayFromInput(c.reengageNextReachInput) ?? "not set"}
+                    {c.reengageLastReachedInput && (
+                      <span className="block text-xs font-normal text-muted-foreground">
+                        last {dayFromInput(c.reengageLastReachedInput)}
+                      </span>
+                    )}
+                  </span>
+                ) : (
+                  <span className="text-muted-foreground">—</span>
+                ),
+            },
+            {
               key: "outstanding",
               header: "Outstanding",
               align: "right",
@@ -387,6 +443,7 @@ export function CustomerManager({
                         size="sm"
                         onClick={() => {
                           setEditing(c);
+                          setReengageChecked(c.reengageEnabled);
                           setOpen(true);
                         }}
                       >
@@ -452,6 +509,45 @@ export function CustomerManager({
             <Field name="notes" error={formError} label="Notes">
               <Textarea id="c-notes" name="notes" defaultValue={editing?.notes ?? ""} />
             </Field>
+            <div className="space-y-3 rounded-md border p-3">
+              <label className="flex items-center gap-2 text-sm font-medium">
+                <Checkbox
+                  checked={reengageChecked}
+                  onCheckedChange={(checked) => setReengageChecked(checked === true)}
+                />
+                {reengageChecked && <input type="hidden" name="reengageEnabled" value="on" />}
+                Mark for future product reach
+              </label>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="c-reengage-last">Last reached</Label>
+                  <Input
+                    id="c-reengage-last"
+                    name="reengageLastReachedAt"
+                    type="datetime-local"
+                    defaultValue={editing?.reengageLastReachedInput ?? ""}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="c-reengage-next">Next reach</Label>
+                  <Input
+                    id="c-reengage-next"
+                    name="reengageNextReachAt"
+                    type="datetime-local"
+                    defaultValue={editing?.reengageNextReachInput ?? ""}
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="c-reengage-note">Follow-up note</Label>
+                <Textarea
+                  id="c-reengage-note"
+                  name="reengageNote"
+                  defaultValue={editing?.reengageNote ?? ""}
+                  placeholder="Interested products, preferred call time, objections..."
+                />
+              </div>
+            </div>
             <FormError error={formError} />
             <DialogFooter>
               <Button type="submit" disabled={loading}>

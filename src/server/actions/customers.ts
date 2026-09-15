@@ -5,6 +5,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAccess } from "@/lib/authz";
 import { normalizePhone } from "@/lib/phone";
+import { dhakaInputToDate } from "@/lib/dhaka-time";
 import { failed, type ActionFailure } from "@/lib/form";
 import { diffFields, recordActivity } from "@/lib/activity";
 
@@ -16,6 +17,10 @@ const CustomerSchema = z.object({
   altPhone: z.string().trim().max(40).optional().or(z.literal("")),
   address: z.string().trim().max(300).optional().or(z.literal("")),
   notes: z.string().trim().max(500).optional().or(z.literal("")),
+  reengageEnabled: z.coerce.boolean().default(false),
+  reengageNote: z.string().trim().max(700).optional().or(z.literal("")),
+  reengageLastReachedAt: z.string().trim().optional().or(z.literal("")),
+  reengageNextReachAt: z.string().trim().optional().or(z.literal("")),
 });
 
 function parse(formData: FormData) {
@@ -25,10 +30,15 @@ function parse(formData: FormData) {
     altPhone: formData.get("altPhone") ?? undefined,
     address: formData.get("address") ?? undefined,
     notes: formData.get("notes") ?? undefined,
+    reengageEnabled: formData.get("reengageEnabled") === "on",
+    reengageNote: formData.get("reengageNote") ?? undefined,
+    reengageLastReachedAt: formData.get("reengageLastReachedAt") ?? undefined,
+    reengageNextReachAt: formData.get("reengageNextReachAt") ?? undefined,
   });
 }
 
 const clean = (s?: string) => (s && s.trim() ? s.trim() : null);
+const cleanDate = (s?: string) => (s && s.trim() ? dhakaInputToDate(s) : null);
 
 // Stored normalised so the same person typed two different ways still matches.
 const cleanPhone = (s?: string) => normalizePhone(s);
@@ -52,6 +62,10 @@ export async function createCustomer(
       altPhone: cleanPhone(d.altPhone),
       address: clean(d.address),
       notes: clean(d.notes),
+      reengageEnabled: d.reengageEnabled,
+      reengageNote: d.reengageEnabled ? clean(d.reengageNote) : null,
+      reengageLastReachedAt: d.reengageEnabled ? cleanDate(d.reengageLastReachedAt) : null,
+      reengageNextReachAt: d.reengageEnabled ? cleanDate(d.reengageNextReachAt) : null,
     },
   });
   await recordActivity(gate.access, {
@@ -82,31 +96,50 @@ export async function updateCustomer(
   const d = parsed.data;
   const before = await prisma.customer.findFirst({
     where: { id, workspaceId: gate.access.workspaceId },
-    select: { name: true, phone: true, altPhone: true, address: true, notes: true },
+    select: {
+      name: true,
+      phone: true,
+      altPhone: true,
+      address: true,
+      notes: true,
+      reengageEnabled: true,
+      reengageNote: true,
+      reengageLastReachedAt: true,
+      reengageNextReachAt: true,
+    },
   });
+  const nextData = {
+    name: d.name,
+    phone: cleanPhone(d.phone),
+    altPhone: cleanPhone(d.altPhone),
+    address: clean(d.address),
+    notes: clean(d.notes),
+    reengageEnabled: d.reengageEnabled,
+    reengageNote: d.reengageEnabled ? clean(d.reengageNote) : null,
+    reengageLastReachedAt: d.reengageEnabled ? cleanDate(d.reengageLastReachedAt) : null,
+    reengageNextReachAt: d.reengageEnabled ? cleanDate(d.reengageNextReachAt) : null,
+  };
   const res = await prisma.customer.updateMany({
     where: { id, workspaceId: gate.access.workspaceId },
-    data: {
-      name: d.name,
-      phone: cleanPhone(d.phone),
-      altPhone: cleanPhone(d.altPhone),
-      address: clean(d.address),
-      notes: clean(d.notes),
-    },
+    data: nextData,
   });
   if (res.count === 0) return { ok: false, error: "Customer not found" };
 
   const changes = before
     ? diffFields(
         before,
-        {
-          name: d.name,
-          phone: cleanPhone(d.phone),
-          altPhone: cleanPhone(d.altPhone),
-          address: clean(d.address),
-          notes: clean(d.notes),
-        },
-        ["name", "phone", "altPhone", "address", "notes"],
+        nextData,
+        [
+          "name",
+          "phone",
+          "altPhone",
+          "address",
+          "notes",
+          "reengageEnabled",
+          "reengageNote",
+          "reengageLastReachedAt",
+          "reengageNextReachAt",
+        ],
       )
     : null;
   if (changes) {
@@ -123,6 +156,46 @@ export async function updateCustomer(
   }
 
   revalidatePath(`/${slug}/customers`);
+  revalidatePath(`/${slug}/customers/follow-ups`);
+  return { ok: true };
+}
+
+export async function markCustomerReached(
+  slug: string,
+  id: string,
+  daysUntilNext = 30,
+): Promise<ActionResult> {
+  const gate = await requireAccess(slug, "customers", "edit");
+  if (!gate.ok) return gate;
+  const before = await prisma.customer.findFirst({
+    where: { id, workspaceId: gate.access.workspaceId },
+    select: { name: true },
+  });
+  if (!before) return { ok: false, error: "Customer not found" };
+
+  const now = new Date();
+  const cleanDays = Number.isFinite(daysUntilNext)
+    ? Math.min(365, Math.max(1, Math.round(daysUntilNext)))
+    : 30;
+  const next = new Date(now.getTime() + cleanDays * 86_400_000);
+  await prisma.customer.update({
+    where: { id },
+    data: {
+      reengageEnabled: true,
+      reengageLastReachedAt: now,
+      reengageNextReachAt: next,
+    },
+  });
+  await recordActivity(gate.access, {
+    action: "UPDATE",
+    entity: "Customer",
+    entityId: id,
+    entityLabel: before.name,
+    summary: `Reached for re-engagement; next in ${cleanDays} days`,
+  });
+  revalidatePath(`/${slug}/customers`);
+  revalidatePath(`/${slug}/customers/follow-ups`);
+  revalidatePath(`/${slug}/customers/${id}`);
   return { ok: true };
 }
 
@@ -180,6 +253,7 @@ export async function deleteCustomer(
     });
   }
   revalidatePath(`/${slug}/customers`);
+  revalidatePath(`/${slug}/customers/follow-ups`);
   return { ok: true };
 }
 

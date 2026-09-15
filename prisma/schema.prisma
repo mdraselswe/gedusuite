@@ -677,19 +677,24 @@ enum PaymentStatus {
 }
 
 model Customer {
-  id          String   @id @default(cuid())
-  workspaceId String
-  name        String
-  phone       String?
-  altPhone    String?
-  address     String?
-  notes       String?
-  createdAt   DateTime @default(now())
+  id                      String    @id @default(cuid())
+  workspaceId             String
+  name                    String
+  phone                   String?
+  altPhone                String?
+  address                 String?
+  notes                   String?
+  reengageEnabled         Boolean   @default(false)
+  reengageNote            String?
+  reengageLastReachedAt   DateTime?
+  reengageNextReachAt     DateTime?
+  createdAt               DateTime  @default(now())
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   orders    Order[]
 
   @@index([workspaceId])
+  @@index([workspaceId, reengageEnabled, reengageNextReachAt])
 }
 
 model Order {

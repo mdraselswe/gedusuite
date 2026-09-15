@@ -4,7 +4,7 @@ import { can } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
 import { computeOrderTotals } from "@/lib/orders";
 import { amountOutstanding } from "@/lib/order-cash";
-import { dhakaDayKey, dhakaToday } from "@/lib/dhaka-time";
+import { dhakaDayKey, dhakaToday, toDhakaInputValue } from "@/lib/dhaka-time";
 import { serverT } from "@/lib/session";
 import { phoneSearchTerms } from "@/lib/phone";
 import { CustomerManager } from "@/components/customers/customer-manager";
@@ -108,6 +108,10 @@ export default async function CustomersPage({
       altPhone: c.altPhone,
       address: c.address,
       notes: c.notes,
+      reengageEnabled: c.reengageEnabled,
+      reengageNote: c.reengageNote,
+      reengageLastReachedInput: c.reengageLastReachedAt ? toDhakaInputValue(c.reengageLastReachedAt) : null,
+      reengageNextReachInput: c.reengageNextReachAt ? toDhakaInputValue(c.reengageNextReachAt) : null,
       orderCount: live.length,
       cancelledCount: c.orders.length - live.length,
       outstanding: round2(outstanding),

@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CustomerOrdersTable } from "@/components/customers/customer-orders-table";
 import { Money } from "@/components/ui/money";
 import { RecordHistory } from "@/components/activity/record-history";
-import { dhakaRecordStamp } from "@/lib/dhaka-time";
+import { dhakaDayKey, dhakaRecordStamp } from "@/lib/dhaka-time";
 
 export default async function CustomerDetailPage({
   params,
@@ -77,6 +77,35 @@ export default async function CustomerDetailPage({
           {customer.address ? ` · ${customer.address}` : ""}
         </p>
       </div>
+
+      {customer.reengageEnabled && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Follow-up
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div>
+                <span className="text-muted-foreground">Last reached</span>
+                <div className="font-medium">
+                  {customer.reengageLastReachedAt ? dhakaDayKey(customer.reengageLastReachedAt) : "Never"}
+                </div>
+              </div>
+              <div>
+                <span className="text-muted-foreground">Next reach</span>
+                <div className="font-medium">
+                  {customer.reengageNextReachAt ? dhakaDayKey(customer.reengageNextReachAt) : "Not set"}
+                </div>
+              </div>
+            </div>
+            {customer.reengageNote && (
+              <p className="whitespace-pre-wrap text-muted-foreground">{customer.reengageNote}</p>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <div className={`grid gap-4 sm:grid-cols-3 ${canViewProfit ? "lg:grid-cols-4" : ""}`}>
         <Card>

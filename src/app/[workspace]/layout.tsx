@@ -133,6 +133,13 @@ async function WorkspaceChrome({
       show: can(role, "customers", "view"),
     }),
     navItem({
+      href: `/${slug}/customers/follow-ups`,
+      label: "Follow-ups",
+      icon: <PhoneCall className="size-4" />,
+      color: "sky",
+      show: can(role, "customers", "view"),
+    }),
+    navItem({
       href: `/${slug}/partners`,
       label: t("partners"),
       icon: <Handshake className="size-4" />,
