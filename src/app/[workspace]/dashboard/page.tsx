@@ -274,6 +274,27 @@ export default async function DashboardPage({
             href={`/${slug}/reports`}
           />
         )}
+        {canViewReports && (
+          <StatTile
+            icon={<Receipt />}
+            color="emerald"
+            label="Lifetime sales"
+            value={profit.revenue}
+            sub={`${profit.orderCount} total order${profit.orderCount === 1 ? "" : "s"}`}
+            href={`/${slug}/reports`}
+          />
+        )}
+        {canViewReports && (
+          <StatTile
+            icon={<TrendingUp />}
+            color="teal"
+            label="Lifetime net profit"
+            value={profit.netProfit}
+            sub={`${formatMoney(profit.tradingProfit)} trading − ${formatMoney(profit.operatingExpenses)} running costs`}
+            tone={toneForBalance(profit.netProfit)}
+            href={`/${slug}/reports`}
+          />
+        )}
         {canViewTreasury && (
           <StatTile
             icon={<Wallet />}

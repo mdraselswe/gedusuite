@@ -903,6 +903,10 @@ export async function operatingExpenses(
 }
 
 export type BusinessProfit = {
+  /** Revenue from every non-cancelled order, returns and discounts applied. */
+  revenue: number;
+  /** Every order ever recorded, including cancellations. */
+  orderCount: number;
   /** Order profit, returns-aware, less what cancelled orders cost. */
   tradingProfit: number;
   /** Advertising — every BoostDailySpend, whoever funded it. */
@@ -983,11 +987,18 @@ export async function totalBusinessProfit(workspaceId: string): Promise<Business
     }),
   ]);
 
-  const tradingProfit = orders.reduce((s, o) => s + orderNetProfit(o), 0);
+  let revenue = 0;
+  let tradingProfit = 0;
+  for (const order of orders) {
+    tradingProfit += orderNetProfit(order);
+    if (order.status !== "CANCELLED") revenue += computeOrderTotals(order).netRevenue;
+  }
   const netProfit = round2(tradingProfit - expenses.total);
   const distributed = round2(Number(distributedAgg._sum.totalAmount ?? 0));
 
   return {
+    revenue: round2(revenue),
+    orderCount: orders.length,
     tradingProfit: round2(tradingProfit),
     adSpend: expenses.adSpend,
     internalPurchaseSpend: expenses.internalPurchaseSpend,

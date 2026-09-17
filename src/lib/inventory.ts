@@ -365,7 +365,7 @@ export async function inventoryValue(workspaceId: string): Promise<InventoryValu
           where: { workspaceId },
           orderBy: { date: "desc" },
           take: 1,
-          select: { unitCost: true },
+          select: { unitCost: true, salePrice: true },
         },
       },
     }),
@@ -402,8 +402,9 @@ export async function inventoryValue(workspaceId: string): Promise<InventoryValu
     value += onHand * unitCost;
     // A missing catalogue price is unknown, not a reason to substitute cost:
     // doing that would present a made-up retail value as a business fact.
-    if (v.salePrice == null) unpricedUnits += onHand;
-    else saleValue += onHand * Number(v.salePrice);
+    const salePrice = variantListPrice(v);
+    if (salePrice == null) unpricedUnits += onHand;
+    else saleValue += onHand * salePrice;
     // Capped at what's actually on the shelf: pieces added by hand and since
     // sold aren't sitting in the value any more.
     fromCorrections += Math.min(onHand, addedByHand.get(v.id) ?? 0) * unitCost;
