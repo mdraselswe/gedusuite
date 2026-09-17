@@ -142,7 +142,7 @@ export function OrderFormSlip({
             alt={workspace.name}
             className={
               sixUp
-                ? "mb-[0.2mm] h-[11mm] w-auto max-w-[50mm] object-contain"
+                ? "mb-[0.2mm] h-[14mm] w-auto max-w-[55mm] object-contain"
                 : compact
                 ? "mb-[0.5mm] h-[11mm] w-auto max-w-[50mm] object-contain"
                 : "mb-[1.5mm] h-[17mm] w-auto max-w-[70mm] object-contain"
@@ -150,7 +150,7 @@ export function OrderFormSlip({
           />
         )}
         <h1
-          className={sixUp ? "text-[15px] font-bold" : compact ? "text-[17px] font-bold" : "text-[22px] font-bold"}
+          className={sixUp ? "text-[17px] font-bold" : compact ? "text-[17px] font-bold" : "text-[22px] font-bold"}
           style={{ color: INK }}
         >
           {workspace.name}
@@ -173,12 +173,12 @@ export function OrderFormSlip({
         style={{ borderColor: INK }}
       >
         <div>
-          <div className="text-[10px]" style={{ color: MUTED }}>
+          <div className={sixUp ? "text-[11px]" : "text-[10px]"} style={{ color: MUTED }}>
             অর্ডার আইডি (Order ID)
           </div>
           {order ? (
             <div
-              className={`leading-tight font-bold tabular-nums ${sixUp ? "text-[17px]" : compact ? "text-[19px]" : "text-[22px]"}`}
+              className={`leading-tight font-bold tabular-nums ${sixUp ? "text-[19px]" : compact ? "text-[19px]" : "text-[22px]"}`}
               style={{ color: INK }}
             >
               {order.orderNumber}
@@ -192,10 +192,10 @@ export function OrderFormSlip({
             day they fill it in, and the space is better spent on the boxes. */}
         {order && (
           <div className="text-right">
-            <div className="text-[10px]" style={{ color: MUTED }}>
+            <div className={sixUp ? "text-[11px]" : "text-[10px]"} style={{ color: MUTED }}>
               তারিখ (Date)
             </div>
-            <div className="text-[12px] font-medium" style={{ color: INK }}>
+            <div className={sixUp ? "text-[13px] font-medium" : "text-[12px] font-medium"} style={{ color: INK }}>
               {order.dateLabel}
             </div>
           </div>
@@ -227,10 +227,10 @@ function FilledBody({
       <>
         {/* Name shrinks to a caption; the phone is the field a courier
             actually dials, so it keeps most of its size. */}
-        <Value className={sixUp ? "mt-[1mm] text-[12.5px] font-semibold" : "mt-[2mm] text-[14px] font-semibold"}>
+        <Value className={sixUp ? "mt-[1mm] text-[14px] font-semibold" : "mt-[2mm] text-[14px] font-semibold"}>
           {order.customerName}
         </Value>
-        <Value className={sixUp ? "mt-[0.4mm] text-[17px] font-bold tracking-wide tabular-nums" : "mt-[0.75mm] text-[19px] font-bold tracking-wide tabular-nums"}>
+        <Value className={sixUp ? "mt-[0.4mm] text-[19px] font-bold tracking-wide tabular-nums" : "mt-[0.75mm] text-[19px] font-bold tracking-wide tabular-nums"}>
           {order.phone}
         </Value>
         {/* Product names are dropped at this density — no room to read them
@@ -239,7 +239,7 @@ function FilledBody({
         <Value
           className={
             sixUp
-              ? "mt-[0.35mm] min-h-[16.5mm] text-[11.5px] leading-tight whitespace-pre-wrap"
+              ? "mt-[0.5mm] min-h-[13mm] text-[13px] leading-tight whitespace-pre-wrap"
               : "mt-[1.5mm] min-h-[15mm] text-[13px] leading-snug whitespace-pre-wrap"
           }
           clampLines={sixUp ? 4 : 3}
@@ -253,11 +253,11 @@ function FilledBody({
           className={sixUp ? "mt-auto border-2 px-[2.25mm] py-[1.6mm]" : "mt-auto border-2 px-[3mm] py-[2mm]"}
           style={{ borderColor: INK }}
         >
-          <div className={sixUp ? "text-[9.5px]" : "text-[11px]"} style={{ color: MUTED }}>
+          <div className={sixUp ? "text-[10.5px]" : "text-[11px]"} style={{ color: MUTED }}>
             সংগ্রহ করতে হবে (ডেলিভারি সহ)
           </div>
           <div
-            className={sixUp ? "text-[23px] leading-none font-bold tabular-nums" : "text-[26px] leading-none font-bold tabular-nums"}
+            className={sixUp ? "text-[26px] leading-none font-bold tabular-nums" : "text-[26px] leading-none font-bold tabular-nums"}
             style={{ color: INK }}
           >
             {formatMoney(order.collect)}
@@ -337,10 +337,10 @@ function BlankBody({ compact, sixUp }: { compact: boolean; sixUp: boolean }) {
   if (compact) {
     return (
       <BlankGroup>
-        <BlankField label="কাস্টমারের নাম" height={sixUp ? "8mm" : "10mm"} />
-        <BlankField label="মোবাইল নম্বর" height={sixUp ? "8mm" : "10mm"} />
-        <BlankField label="পূর্ণাঙ্গ ঠিকানা" height={sixUp ? "32mm" : "24mm"} />
-        <BlankField label="সংগ্রহ করতে হবে (ডেলিভারি সহ)" height={sixUp ? "9mm" : "12mm"} />
+        <BlankField label="কাস্টমারের নাম" height={sixUp ? "8mm" : "10mm"} large={sixUp} />
+        <BlankField label="মোবাইল নম্বর" height={sixUp ? "8mm" : "10mm"} large={sixUp} />
+        <BlankField label="পূর্ণাঙ্গ ঠিকানা" height={sixUp ? "35mm" : "24mm"} large={sixUp} />
+        <BlankField label="সংগ্রহ করতে হবে (ডেলিভারি সহ)" height={sixUp ? "9mm" : "12mm"} large={sixUp} />
       </BlankGroup>
     );
   }
@@ -456,7 +456,7 @@ function Footer({ workspace, compact }: { workspace: SlipWorkspace; compact: boo
     // sibling would split the leftover space between the two instead of
     // letting the amount box sit flush just above this line.
     return (
-      <p className="mt-[1mm] text-center text-[12px] font-bold" style={{ color: ACCENT }}>
+      <p className="mt-[1mm] text-center text-[13px] font-bold" style={{ color: ACCENT }}>
         {workspace.websiteUrl}
       </p>
     );
@@ -554,15 +554,17 @@ function BlankField({
   label,
   ticks,
   height,
+  large = false,
 }: {
   label: string;
   ticks?: string[];
   height?: string;
+  large?: boolean;
 }) {
   return (
     <div className="flex border-b" style={{ borderColor: RULE, minHeight: height ?? "10mm" }}>
       <div
-        className="flex w-[38%] shrink-0 items-center border-r px-[2.5mm] py-[1.5mm] text-[12px]"
+        className={`flex w-[38%] shrink-0 items-center border-r px-[2.5mm] py-[1.5mm] ${large ? "text-[13px]" : "text-[12px]"}`}
         style={{ borderColor: RULE, color: INK }}
       >
         <span>
@@ -574,7 +576,7 @@ function BlankField({
         style={{ borderColor: RULE }}
       >
         {ticks && (
-          <span className="flex flex-wrap items-center gap-x-[4mm] text-[12px]">
+          <span className={`flex flex-wrap items-center gap-x-[4mm] ${large ? "text-[13px]" : "text-[12px]"}`}>
             {ticks.map((t) => (
               <span key={t} className="whitespace-nowrap">
                 {/* A fixed-width gap inside the brackets: a hand-drawn tick
