@@ -310,8 +310,8 @@ export default async function DashboardPage({
             icon={<Receipt />}
             color="violet"
             label="Lifetime internal purchases"
-            value={profit.internalPurchaseSpend}
-            sub="Internal operating purchases charged so far"
+            value={profit.internalPurchaseTotal}
+            sub={`${formatMoney(profit.internalPurchaseSpend)} charged to profit · ${formatMoney(profit.prepaidExpenses)} still prepaid`}
             href={`/${slug}/internal-purchases`}
           />
         )}

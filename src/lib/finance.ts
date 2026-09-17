@@ -812,6 +812,8 @@ export type OperatingExpenses = {
    * `prepaidExpenses`.
    */
   internalPurchaseSpend: number;
+  /** Full amount paid/owed for internal purchases, including prepaid portions. */
+  internalPurchaseTotal: number;
   /** Manual partner EXPENSE entries — anything with no dedicated record. */
   miscExpense: number;
   /** Stock written off as damaged or lost, valued at what it cost to buy. */
@@ -888,6 +890,9 @@ export async function operatingExpenses(
     range,
   );
   const internalPurchaseSpend = internal.recognized;
+  const internalPurchaseTotal = round2(
+    internalPurchases.reduce((sum, ip) => sum + Number(ip.cost) * ip.quantity, 0),
+  );
   const miscExpense = round2(Number(miscAgg._sum.amount ?? 0));
   const stockLoss = round2(
     writeOffs.reduce((s, a) => s + Math.abs(Math.min(0, a.delta)) * variantCost(a.productVariant), 0),
@@ -895,6 +900,7 @@ export async function operatingExpenses(
   return {
     adSpend,
     internalPurchaseSpend,
+    internalPurchaseTotal,
     miscExpense,
     stockLoss,
     prepaidExpenses: internal.prepaid,
@@ -916,6 +922,8 @@ export type BusinessProfit = {
    * set contributes only the part that has elapsed; the rest is `prepaid`.
    */
   internalPurchaseSpend: number;
+  /** Full lifetime internal-purchase total; differs from spend while costs are prepaid. */
+  internalPurchaseTotal: number;
   /** Manual partner EXPENSE entries — anything with no dedicated record. */
   miscExpense: number;
   /** Stock written off as damaged or lost, valued at what it cost to buy. */
@@ -1002,6 +1010,7 @@ export async function totalBusinessProfit(workspaceId: string): Promise<Business
     tradingProfit: round2(tradingProfit),
     adSpend: expenses.adSpend,
     internalPurchaseSpend: expenses.internalPurchaseSpend,
+    internalPurchaseTotal: expenses.internalPurchaseTotal,
     miscExpense: expenses.miscExpense,
     stockLoss: expenses.stockLoss,
     prepaidExpenses: expenses.prepaidExpenses,
