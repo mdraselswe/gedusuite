@@ -3,13 +3,16 @@ import { requireMembership, serverT } from "@/lib/session";
 import { workspaceAccess } from "@/lib/authz";
 import { can } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
-import { computeInventoryAlerts } from "@/lib/inventory";
+import { computeInventoryAlerts, inventoryValue } from "@/lib/inventory";
 import {
   operatingExpenses,
   overdueOrders,
+  paidNotDeposited,
+  totalDue,
   totalBusinessProfit,
   treasuryBalance,
 } from "@/lib/finance";
+import { businessMoneyPosition } from "@/lib/business-position";
 import { splitByShare } from "@/lib/profit-share";
 import { dhakaDayEnd, dhakaDayStart, dhakaMonthStart, dhakaToday } from "@/lib/dhaka-time";
 import { computeOrderTotals, orderNetProfit } from "@/lib/orders";
@@ -31,6 +34,12 @@ import {
   Plus,
   BarChart3,
   ArrowRight,
+  Banknote,
+  Boxes,
+  HandCoins,
+  Landmark,
+  Smartphone,
+  Truck,
 } from "lucide-react";
 
 
@@ -67,7 +76,19 @@ export default async function DashboardPage({
   // time of day, and a range ending at 14:07 would leave it out of the month
   // it plainly belongs to.
   const monthToDateEnd = dhakaDayEnd(dhakaToday());
-  const [memberCount, alerts, overdue, profit, treasury, monthExpenses, monthOrders, partners] =
+  const [
+    memberCount,
+    alerts,
+    overdue,
+    profit,
+    treasury,
+    monthExpenses,
+    monthOrders,
+    partners,
+    stockPosition,
+    unbankedMoney,
+    customerDue,
+  ] =
     await Promise.all([
       prisma.membership.count({ where: { workspaceId } }),
       computeInventoryAlerts(workspaceId),
@@ -95,6 +116,9 @@ export default async function DashboardPage({
             include: { user: { select: { name: true, email: true } } },
           })
         : Promise.resolve([]),
+      canViewReports ? inventoryValue(workspaceId) : Promise.resolve(null),
+      canViewTreasury ? paidNotDeposited(workspaceId) : Promise.resolve([]),
+      canViewTreasury ? totalDue(workspaceId) : Promise.resolve(null),
     ]);
   const monthAdSpend = monthExpenses.adSpend;
 
@@ -123,6 +147,14 @@ export default async function DashboardPage({
   const lowStock = alerts.filter((a) => a.type === "LOW_STOCK");
   const expiring = alerts.filter((a) => a.type === "EXPIRY");
   const totalOverdue = overdue.reduce((s, o) => s + o.amount, 0);
+  const moneyPosition = customerDue
+    ? businessMoneyPosition({
+        treasury,
+        unbanked: unbankedMoney,
+        dueGross: customerDue.gross,
+        dueNet: customerDue.net,
+      })
+    : null;
 
   // Partner profit-share breakdown (only for those who can view partners).
   let partnerShares: { name: string; percent: number; amount: number }[] = [];
@@ -270,6 +302,104 @@ export default async function DashboardPage({
           />
         )}
       </StatGrid>
+
+      {(stockPosition || moneyPosition) && (
+        <Card className="animate-in fade-in-0 slide-in-from-bottom-2 fill-mode-both duration-300">
+          <CardHeader className="space-y-1">
+            <CardTitle className="text-base">Current business position</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              What the business owns right now, without mixing stock value into cash.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            {stockPosition && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-sm font-medium">
+                  <Boxes className="size-4 text-emerald-600" /> Products currently in stock
+                </div>
+                <StatGrid>
+                  <StatTile
+                    label="Units on hand"
+                    value={<span>{stockPosition.units.toLocaleString("en-BD")}</span>}
+                    sub="Across all product variants"
+                    href={`/${slug}/products`}
+                  />
+                  <StatTile
+                    label="Stock at unit cost"
+                    value={stockPosition.value}
+                    sub={
+                      stockPosition.inTransitUnits > 0
+                        ? `On shelf; ${stockPosition.inTransitUnits.toLocaleString("en-BD")} returning unit(s) worth ${formatMoney(stockPosition.inTransitValue)} kept separate`
+                        : "Units × latest purchase/catalogue cost"
+                    }
+                    href={`/${slug}/products`}
+                  />
+                  <StatTile
+                    label="Stock at sale price"
+                    value={stockPosition.saleValue}
+                    sub={
+                      stockPosition.unpricedUnits > 0
+                        ? `${stockPosition.unpricedUnits.toLocaleString("en-BD")} unit(s) without a sale price excluded`
+                        : "Potential sales before discounts and returns"
+                    }
+                    href={`/${slug}/products`}
+                  />
+                  <StatTile
+                    label="Potential gross margin"
+                    value={
+                      stockPosition.unpricedUnits > 0
+                        ? <span className="text-muted-foreground">Incomplete</span>
+                        : round2(stockPosition.saleValue - stockPosition.value)
+                    }
+                    sub={
+                      stockPosition.unpricedUnits > 0
+                        ? "Add the missing sale prices to calculate this honestly"
+                        : "Sale value − stock cost; not realised profit"
+                    }
+                    tone={
+                      stockPosition.unpricedUnits > 0
+                        ? "neutral"
+                        : toneForBalance(stockPosition.saleValue - stockPosition.value)
+                    }
+                  />
+                </StatGrid>
+              </div>
+            )}
+
+            {moneyPosition && (
+              <div className="space-y-2 border-t pt-5">
+                <div className="flex items-center gap-2 text-sm font-medium">
+                  <HandCoins className="size-4 text-amber-600" /> Money and receivables
+                </div>
+                <StatGrid>
+                  <StatTile icon={<Landmark />} color="amber" label="In treasury" value={moneyPosition.treasury} href={`/${slug}/treasury`} />
+                  <StatTile icon={<Truck />} color="violet" label="With courier" value={moneyPosition.courier} tone={toneForBalance(moneyPosition.courier)} href={`/${slug}/couriers`} />
+                  <StatTile icon={<Banknote />} color="emerald" label="Cash not deposited" value={moneyPosition.cash} href={`/${slug}/treasury`} />
+                  <StatTile icon={<Smartphone />} color="pink" label="bKash not deposited" value={moneyPosition.bkash} href={`/${slug}/treasury`} />
+                  <StatTile label="Nagad not deposited" value={moneyPosition.nagad} href={`/${slug}/treasury`} />
+                  <StatTile label="Other not deposited" value={moneyPosition.other} href={`/${slug}/treasury`} />
+                  <StatTile
+                    label="Customer due"
+                    value={moneyPosition.dueNet}
+                    sub={
+                      moneyPosition.dueGross !== moneyPosition.dueNet
+                        ? `${formatMoney(moneyPosition.dueGross)} customers owe; ${formatMoney(moneyPosition.dueGross - moneyPosition.dueNet)} courier charges will be deducted`
+                        : "Still to be collected from customers"
+                    }
+                    href={`/${slug}/treasury`}
+                  />
+                  <StatTile
+                    label="Total excluding products"
+                    value={moneyPosition.totalExcludingStock}
+                    sub="Treasury + courier + cash + mobile money + net customer due"
+                    tone={toneForBalance(moneyPosition.totalExcludingStock)}
+                  />
+                </StatGrid>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {canViewPartners && partnerShares.length > 0 && (
         <Card className="animate-in fade-in-0 slide-in-from-bottom-2 fill-mode-both duration-300 delay-300">

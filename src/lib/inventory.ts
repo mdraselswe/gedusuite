@@ -309,6 +309,10 @@ export type InventoryValue = {
   units: number;
   /** What those pieces cost to buy. */
   value: number;
+  /** What the pieces currently on the shelf would sell for at catalogue prices. */
+  saleValue: number;
+  /** On-hand pieces with no catalogue sale price, excluded from saleValue. */
+  unpricedUnits: number;
   /**
    * How much of that value arrived through a hand-entered positive CORRECTION
    * rather than a purchase — stock somebody said was there, that no money is
@@ -356,6 +360,7 @@ export async function inventoryValue(workspaceId: string): Promise<InventoryValu
       select: {
         id: true,
         unitCost: true,
+        salePrice: true,
         purchases: {
           where: { workspaceId },
           orderBy: { date: "desc" },
@@ -378,6 +383,8 @@ export async function inventoryValue(workspaceId: string): Promise<InventoryValu
 
   let units = 0;
   let value = 0;
+  let saleValue = 0;
+  let unpricedUnits = 0;
   let fromCorrections = 0;
   let inTransitUnits = 0;
   let inTransitValue = 0;
@@ -393,6 +400,10 @@ export async function inventoryValue(workspaceId: string): Promise<InventoryValu
     if (onHand === 0) continue;
     units += onHand;
     value += onHand * unitCost;
+    // A missing catalogue price is unknown, not a reason to substitute cost:
+    // doing that would present a made-up retail value as a business fact.
+    if (v.salePrice == null) unpricedUnits += onHand;
+    else saleValue += onHand * Number(v.salePrice);
     // Capped at what's actually on the shelf: pieces added by hand and since
     // sold aren't sitting in the value any more.
     fromCorrections += Math.min(onHand, addedByHand.get(v.id) ?? 0) * unitCost;
@@ -400,6 +411,8 @@ export async function inventoryValue(workspaceId: string): Promise<InventoryValu
   return {
     units,
     value: round2(value),
+    saleValue: round2(saleValue),
+    unpricedUnits,
     fromCorrections: round2(fromCorrections),
     inTransitUnits,
     inTransitValue: round2(inTransitValue),
