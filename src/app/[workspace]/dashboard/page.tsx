@@ -295,6 +295,26 @@ export default async function DashboardPage({
             href={`/${slug}/reports`}
           />
         )}
+        {canViewReports && (
+          <StatTile
+            icon={<Megaphone />}
+            color="sky"
+            label="Lifetime ad spend"
+            value={profit.adSpend}
+            sub="All recorded boost and advertising spend"
+            href={`/${slug}/boosting`}
+          />
+        )}
+        {canViewReports && (
+          <StatTile
+            icon={<Receipt />}
+            color="violet"
+            label="Lifetime internal purchases"
+            value={profit.internalPurchaseSpend}
+            sub="Internal operating purchases charged so far"
+            href={`/${slug}/internal-purchases`}
+          />
+        )}
         {canViewTreasury && (
           <StatTile
             icon={<Wallet />}
