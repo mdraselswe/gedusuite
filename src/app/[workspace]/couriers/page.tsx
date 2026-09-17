@@ -48,14 +48,13 @@ export default async function CouriersPage({
       // reached the business. Payment status can't be used: an order goes PAID
       // the moment the customer hands cash to the rider, which is precisely
       // when the courier — not the shop — is holding it.
-      cashInTreasury: false,
       OR: [
-        { status: { not: "CANCELLED" } },
+        { cashInTreasury: false, status: { not: "CANCELLED" } },
         // A partial delivery: the customer paid the shipping and refused the
         // goods, and that money sits with the courier like any other
         // collection. Dropping those rows leaves a gap in the balance that can
         // never be explained.
-        { status: "CANCELLED", cancelledCollected: { gt: 0 } },
+        { cashInTreasury: false, status: "CANCELLED", cancelledCollected: { gt: 0 } },
         // A parcel that came back with nothing collected. It holds no money of
         // yours, but the courier still charged for the trip and takes that off
         // the next payout, so it belongs in the balance as a minus — leaving
@@ -64,7 +63,14 @@ export default async function CouriersPage({
         // recorded", the same rule deliveryCostCharged applies. This is the OR
         // that finance.ts's paidNotDeposited already had; the two pages
         // disagreed while only one of them knew about returns.
-        { status: "CANCELLED", deliveryCost: { gt: 0 } },
+        { cashInTreasury: false, status: "CANCELLED", deliveryCost: { gt: 0 } },
+        // Prepaid orders have their sale cash in the treasury, but the
+        // courier's delivery bill still comes out of its next payout.
+        {
+          cashInTreasury: true,
+          paymentMethod: { not: "COURIER_COLLECTION" },
+          deliveryCost: { gt: 0 },
+        },
       ],
     },
     orderBy: { date: "asc" },
@@ -86,6 +92,15 @@ export default async function CouriersPage({
       apiKeyEnc: true,
     },
   });
+
+  const settledConsignments = new Set(
+    (
+      await prisma.courierPayout.findMany({
+        where: { workspaceId },
+        select: { consignmentIds: true },
+      })
+    ).flatMap((p) => p.consignmentIds),
+  );
 
   // What each connected courier says it is holding, right now. Asked here so
   // the comparison is a fact on the page rather than a number somebody has to
@@ -128,6 +143,9 @@ export default async function CouriersPage({
   for (const c of couriers) account(c.id, c.name);
 
   for (const o of orders) {
+    if (o.cashInTreasury && o.courierTrackingId && settledConsignments.has(o.courierTrackingId)) {
+      continue;
+    }
     const t = computeOrderTotals(o);
     const cancelled = o.status === "CANCELLED";
     // What the courier's own ledger has against this parcel. A cancelled one

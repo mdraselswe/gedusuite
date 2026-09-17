@@ -417,9 +417,30 @@ export async function importCourierPayouts(
 
   const known = await prisma.courierPayout.findMany({
     where: { courierId: courier.id },
-    select: { externalId: true },
+    select: { externalId: true, consignmentIds: true },
   });
   const seen = new Set(known.map((k) => k.externalId));
+
+  // A payout can be imported before an order receives its final tracking id,
+  // or before the order is visible in the payout query. Keep the payout
+  // idempotent, but reconcile those orders now instead of leaving their
+  // cashInTreasury flag false forever.
+  for (const payout of known) {
+    const trackingIds = Array.isArray(payout.consignmentIds)
+      ? payout.consignmentIds.filter((id): id is string => typeof id === "string")
+      : [];
+    if (trackingIds.length === 0) continue;
+    const orders = (await prisma.order.findMany({
+      where: {
+        workspaceId,
+        courierTrackingId: { in: trackingIds },
+        cashInTreasury: false,
+      },
+      include: DEPOSIT_INCLUDE,
+    })) as unknown as DepositableOrder[];
+    for (const order of orders) await bankOrderCash(gate.access, order);
+  }
+  if (known.length > 0) revalidateCashPaths(slug);
 
   // Oldest first, so the parcels of an early payout are banked before a later
   // one is looked at — otherwise a parcel in two lists would land in the wrong
