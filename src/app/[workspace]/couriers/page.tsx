@@ -197,7 +197,10 @@ export default async function CouriersPage({
     };
     // Money is only with the courier once it has actually been collected —
     // which a delivered parcel has, and a partly-delivered one has too.
-    if (o.status === "DELIVERED" || cancelled) {
+    // The courier can report delivery before the app's order-status sync has
+    // applied DELIVERED locally. Its delivered answer is still the fact that
+    // money is now in the courier ledger, so count it in the holding balance.
+    if (o.status === "DELIVERED" || cancelled || o.courierStatus === "delivered") {
       acc.holding.push(row);
     } else {
       acc.inTransit.push(row);
