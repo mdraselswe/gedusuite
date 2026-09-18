@@ -141,8 +141,12 @@ export async function syncCourierStatuses(opts: {
      * already banked — that one would need its treasury entry recomputed, and
      * a background job is the wrong place to be moving money.
      */
+    // A status may have been synced after the order was already moved to
+    // DELIVERED by a webhook/manual action. In that case `applies` is false,
+    // but the courier still collected the COD and an UNPAID order would make
+    // dashboard/treasury calculations omit the money entirely.
     const settles =
-      applies &&
+      status === "delivered" &&
       order.paymentMethod === "COURIER_COLLECTION" &&
       order.paymentStatus === "UNPAID" &&
       !order.cashInTreasury;
