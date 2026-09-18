@@ -8,7 +8,7 @@ import {
   bankedSoFar,
   cashEntryNote,
   cashEntrySource,
-  codBaseFor,
+  codCollectable,
   collectionRecorded,
   courierChargeNote,
   deliveryCostCharged,
@@ -514,7 +514,11 @@ export async function importCourierPayouts(
       const order = byTracking.get(String(c.consignment_id));
       if (!order || order.status === "CANCELLED") continue;
       const totals = computeOrderTotals(order);
-      const expected = codBaseFor(order, totals);
+      // Prepaid CASH/bKash orders contribute zero COD to the courier.
+      const expected = codCollectable(
+        order.paymentMethod,
+        totals.invoicedTotal - totals.collectionShortfall,
+      );
       const gap = round2(Number(c.cod_amount) - expected);
       if (Math.abs(gap) < 0.01) continue;
       collectionGaps.push({
@@ -536,12 +540,15 @@ export async function importCourierPayouts(
     // order that could not be banked is left out of the sum rather than
     // assumed into it. Whatever it doesn't cover ends up in the difference,
     // which is the line that keeps the ledger equal to the bank either way.
-    const banked = await prisma.order.findMany({
-      where: { id: { in: orders.map((o) => o.id) }, cashInTreasury: true },
-      include: DEPOSIT_INCLUDE,
-    });
     const ordersTotal = round2(
-      banked.reduce((sum, o) => sum + depositAmount(o, computeOrderTotals(o)).net, 0),
+      orders.reduce((sum, o) => {
+        const totals = computeOrderTotals(o);
+        const base =
+          o.status === "CANCELLED"
+            ? Number(o.cancelledCollected)
+            : totals.invoicedTotal - totals.collectionShortfall;
+        return sum + codCollectable(o.paymentMethod, base) - deliveryCostCharged(o, totals);
+      }, 0) - Number(detail.data.charges),
     );
     const difference = round2(Number(detail.data.total) - ordersTotal);
 
@@ -609,7 +616,7 @@ export async function importCourierPayouts(
             source: `${courier.name} payout difference`,
             note:
               `${courier.name} paid ৳${detail.data.total} on ${detail.data.payment_id}; ` +
-              `the ${banked.length} order(s) in it come to ৳${ordersTotal}. The fee is charged ` +
+              `the ${orders.length} order(s) in it come to ৳${ordersTotal}. The fee is charged ` +
               `on the payout as a whole and rounded, so the two never land on the same paisa.` +
               // Named here too, because this note is what somebody reads when
               // they ask where the difference came from — and "rounding" on
