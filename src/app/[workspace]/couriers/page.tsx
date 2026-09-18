@@ -136,6 +136,8 @@ export default async function CouriersPage({
       inTransit: [],
       expected: 0,
       inTransitValue: 0,
+      awaitingApprovalValue: 0,
+      awaitingApprovalCount: 0,
     };
     accounts.set(id, fresh);
     return fresh;
@@ -202,6 +204,16 @@ export default async function CouriersPage({
     // money is now in the courier ledger, so count it in the holding balance.
     if (o.status === "DELIVERED" || cancelled || o.courierStatus === "delivered") {
       acc.holding.push(row);
+    } else if (o.courierStatus === "delivered_approval_pending") {
+      // Steadfast's account balance already includes the COD while its
+      // approval screen is open, but the money is not final enough to count as
+      // a delivered/settled parcel in the app. Keep it out of the expected
+      // net balance and expose it separately so the live aggregate cannot be
+      // reported as a false mismatch.
+      acc.awaitingApprovalValue += cod;
+      acc.awaitingApprovalCount += 1;
+      acc.inTransit.push(row);
+      acc.inTransitValue += cod;
     } else {
       acc.inTransit.push(row);
       acc.inTransitValue += row.cod;

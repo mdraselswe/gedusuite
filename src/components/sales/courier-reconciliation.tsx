@@ -57,6 +57,9 @@ export type CourierAccount = {
   inTransit: Parcel[];
   expected: number;
   inTransitValue: number;
+  /** COD the courier reports as delivered but has not approved yet. */
+  awaitingApprovalValue: number;
+  awaitingApprovalCount: number;
 };
 
 
@@ -366,7 +369,13 @@ export function CourierReconciliation({
         // screen a minute ago is a legitimate thing to check against.
         const actualNum =
           typed === undefined || typed === "" ? a.liveBalance : Number(typed);
-        const diff = actualNum === null ? null : Math.round((actualNum - a.expected) * 100) / 100;
+        // The courier includes delivered_approval_pending COD in its aggregate
+        // balance before the parcel is final. Do not call that timing gap an
+        // accounting error until approval or payout provides final charges.
+        const diff =
+          actualNum === null || a.awaitingApprovalCount > 0
+            ? null
+            : Math.round((actualNum - a.expected) * 100) / 100;
         // Three different things live in `holding`, and the line under the
         // total has to add up to what's in the table below it.
         const delivered = a.holding.filter((p) => p.status !== "CANCELLED").length;
@@ -470,6 +479,13 @@ export function CourierReconciliation({
                 </div>
                 <div>
                   <div className="text-xs text-muted-foreground">Difference</div>
+                  {diff === null && a.awaitingApprovalCount > 0 && (
+                    <div className="text-xs text-amber-700 dark:text-amber-300">
+                      {money(a.awaitingApprovalValue)} in {a.awaitingApprovalCount} delivered
+                      parcel(s) is awaiting courier approval. The courier already includes it
+                      in the live balance; compare after approval or payout.
+                    </div>
+                  )}
                   {diff === null ? (
                     <div className="text-2xl font-bold text-muted-foreground">—</div>
                   ) : (
