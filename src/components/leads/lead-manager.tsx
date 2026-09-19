@@ -397,6 +397,7 @@ export function LeadManager({
       label: "Confirmed · order not added",
       values: { status: "CONFIRMED", orderState: "not_added" },
     },
+    { label: "Confirmed · order added", values: { status: "CONFIRMED", orderState: "added" } },
     { label: "Hide carts", values: { cartRows: "hide" } },
     {
       label: "Real order · not called",
