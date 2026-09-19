@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "@/lib/live-router";
 import { toast } from "sonner";
@@ -340,16 +340,6 @@ const DELIVERY = ["SELF", "COURIER"];
 const METHODS = ["CASH", "BKASH", "NAGAD", "COURIER_COLLECTION", "OTHER"];
 const PAY_STATUS = ["UNPAID", "PAID", "PARTIAL"];
 const NONE = "__none__";
-
-/**
- * How a combo reads in the picker.
- *
- * Shared by the option list and the `items` map behind the closed trigger, so
- * the two cannot drift into describing the same combo differently.
- */
-function comboLabel(c: ComboOptionForOrder): string {
-  return `${c.name} · ${formatMoney(c.price)}${c.buildable === 0 ? " · none left" : ""}`;
-}
 
 /**
  * Packaging cost on an order, with a nudge when it isn't zero.
@@ -1123,6 +1113,33 @@ export function OrderManager({
   }
 
   const comboById = useMemo(() => new Map(combos.map((c) => [c.id, c])), [combos]);
+  const comboOptions = useMemo<ComboOption[]>(
+    () =>
+      combos.map((c) => ({
+        value: c.id,
+        label: `${c.name}${c.sku ? ` (${c.sku})` : ""} · ${formatMoney(c.price)}${c.buildable === 0 ? " · none left" : ""}`,
+      })),
+    [combos],
+  );
+  const comboOptionById = useMemo(
+    () => new Map(comboOptions.map((option) => [option.value, option])),
+    [comboOptions],
+  );
+  const fetchComboOptions = useCallback(
+    async (query: string, cursor: number) => {
+      const needle = query.trim().toLocaleLowerCase();
+      const matches = needle
+        ? comboOptions.filter((option) => option.label.toLocaleLowerCase().includes(needle))
+        : comboOptions;
+      const pageSize = 30;
+      const items = matches.slice(cursor, cursor + pageSize);
+      return {
+        items,
+        next: cursor + pageSize < matches.length ? cursor + pageSize : null,
+      };
+    },
+    [comboOptions],
+  );
 
   /** The combos on this order, resolved to their offers. */
   const pickedCombos = useMemo(
@@ -2317,42 +2334,25 @@ export function OrderManager({
                               <div className="grid grid-cols-[minmax(0,1fr)_5rem_auto] items-end gap-2">
                                 <div className="space-y-2">
                                   <Label>Combo</Label>
-                                  <Select
-                                    value={pick.comboSetId}
-                                    // Base UI reads the closed trigger's label from
-                                    // here, not from the options — those live in a
-                                    // portal that does not exist until the popup is
-                                    // first opened, so without this map the trigger
-                                    // has only the value to show, and the value is a
-                                    // cuid. Every other id-valued select on this form
-                                    // passes it; this one did not.
-                                    items={[
-                                      { value: NONE, label: "Choose a combo" },
-                                      ...combos.map((c) => ({
-                                        value: c.id,
-                                        label: comboLabel(c),
-                                      })),
-                                    ]}
-                                    onValueChange={(v) =>
+                                  <AsyncCombobox
+                                    value={comboOptionById.get(pick.comboSetId) ?? null}
+                                    fetchPage={fetchComboOptions}
+                                    placeholder="Search combo name or SKU"
+                                    emptyText="No combo matches"
+                                    onChange={(option) =>
                                       setComboPicks((prev) =>
                                         prev.map((p, j) =>
-                                          j === i ? { ...p, comboSetId: v ?? NONE, allocation: undefined } : p,
+                                          j === i
+                                            ? {
+                                                ...p,
+                                                comboSetId: option?.value ?? NONE,
+                                                allocation: undefined,
+                                              }
+                                            : p,
                                         ),
                                       )
                                     }
-                                  >
-                                    <SelectTrigger className="w-full">
-                                      <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value={NONE}>Choose a combo</SelectItem>
-                                      {combos.map((c) => (
-                                        <SelectItem key={c.id} value={c.id}>
-                                          {comboLabel(c)}
-                                        </SelectItem>
-                                      ))}
-                                    </SelectContent>
-                                  </Select>
+                                  />
                                 </div>
                                 <div className="space-y-2">
                                   <Label>Sets</Label>
