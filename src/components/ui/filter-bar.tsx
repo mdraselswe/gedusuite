@@ -59,6 +59,7 @@ export type FilterDef<T> = Base &
   );
 
 export type FilterState = Record<string, string>;
+export type FilterShortcut = { label: string; values: FilterState };
 
 export const fromKey = (k: string) => `${k}:from`;
 export const toKey = (k: string) => `${k}:to`;
@@ -126,6 +127,7 @@ export function useFilterBar<T>(
      * larger list, and "of 50" would describe the fetch rather than the list.
      */
     total?: number;
+    shortcuts?: FilterShortcut[];
   },
 ): { rows: T[]; bar: React.ReactNode; active: number } {
   const [state, setState] = useState<FilterState>({});
@@ -145,6 +147,7 @@ export function useFilterBar<T>(
       active={active}
       count={{ shown: filtered.length, total: options?.total ?? rows.length }}
       summary={options?.summary?.(filtered)}
+      shortcuts={options?.shortcuts}
     />
   );
 
@@ -162,6 +165,7 @@ export function UrlFilterBar<T>({
   onChange,
   count,
   summary,
+  shortcuts,
 }: {
   defs: FilterDef<T>[];
   state: FilterState;
@@ -169,6 +173,7 @@ export function UrlFilterBar<T>({
   /** Server-side counts — "of" is the unfiltered total across all pages. */
   count?: { shown: number; total: number };
   summary?: React.ReactNode;
+  shortcuts?: FilterShortcut[];
 }) {
   return (
     <FilterPanel
@@ -207,6 +212,30 @@ function FilterPanel<T>({
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
+        {shortcuts?.map((shortcut) => {
+          const selected = Object.entries(shortcut.values).every(
+            ([key, value]) => state[key] === value,
+          );
+          return (
+            <Button
+              key={shortcut.label}
+              type="button"
+              size="sm"
+              variant={selected ? "default" : "outline"}
+              onClick={() => {
+                const next = { ...state };
+                for (const key of Object.keys(shortcut.values)) {
+                  if (selected) delete next[key];
+                  else next[key] = shortcut.values[key];
+                }
+                onClear();
+                for (const [key, value] of Object.entries(next)) onSet(key, value);
+              }}
+            >
+              {shortcut.label}
+            </Button>
+          );
+        })}
         {primary.map((d) => (
           <Control key={d.key} def={d} state={state} onSet={onSet} compact />
         ))}

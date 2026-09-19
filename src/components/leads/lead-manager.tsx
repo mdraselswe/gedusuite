@@ -59,7 +59,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { DataTable, type Column } from "@/components/ui/data-table";
-import { useFilterBar, type FilterDef } from "@/components/ui/filter-bar";
+import { useFilterBar, type FilterDef, type FilterShortcut } from "@/components/ui/filter-bar";
 import {
   LeadItemsEditor,
   itemsTotal,
@@ -358,6 +358,23 @@ export function LeadManager({
       match: (l, v) => (v === "yes" ? !!l.convertedCustomerId : !l.convertedCustomerId),
     },
     {
+      key: "orderState",
+      label: "Order entry",
+      kind: "select",
+      options: [
+        { value: "added", label: "Order added" },
+        { value: "not_added", label: "Order not added" },
+      ],
+      match: (l, v) => (v === "added" ? !!l.orderId : !l.orderId),
+    },
+    {
+      key: "cartRows",
+      label: "Cart rows",
+      kind: "select",
+      options: [{ value: "hide", label: "Hide abandoned carts" }],
+      match: (l, v) => v !== "hide" || l.wooStatus !== CART_STATUS,
+    },
+    {
       key: "fulfilment",
       label: "Order status",
       kind: "select",
@@ -375,6 +392,18 @@ export function LeadManager({
     },
   ];
 
+  const shortcuts: FilterShortcut[] = [
+    {
+      label: "Confirmed · order not added",
+      values: { status: "CONFIRMED", orderState: "not_added" },
+    },
+    { label: "Hide carts", values: { cartRows: "hide" } },
+    {
+      label: "Real order · not called",
+      values: { status: "NOT_CALLED", orderState: "added" },
+    },
+  ];
+
   const { rows: filtered, bar, active } = useFilterBar(leads, filters, {
     summary: (shown) => (
       <span className="text-muted-foreground">
@@ -385,6 +414,7 @@ export function LeadManager({
       </span>
     ),
     total: totalCount,
+    shortcuts,
   });
 
   // ── Search: URL-driven, so the server queries every page ──
