@@ -184,6 +184,7 @@ export function UrlFilterBar<T>({
       active={countActive(defs, state)}
       count={count}
       summary={summary}
+      shortcuts={shortcuts}
     />
   );
 }
@@ -196,6 +197,7 @@ function FilterPanel<T>({
   active,
   count,
   summary,
+  shortcuts,
 }: {
   defs: FilterDef<T>[];
   state: FilterState;
@@ -204,6 +206,7 @@ function FilterPanel<T>({
   active: number;
   count?: { shown: number; total: number };
   summary?: React.ReactNode;
+  shortcuts?: FilterShortcut[];
 }) {
   const [open, setOpen] = useState(false);
   const primary = defs.filter((d) => d.primary);
