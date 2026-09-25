@@ -200,10 +200,15 @@ html[lang="bn"] {
 
 /*
  * A sheet is a real A4 page — landscape 297×210mm for order forms, portrait
- * 210×297mm for gift tags — and its 0.2in print margin is its own padding,
- * so the on-screen preview and the captured PDF are the same object at
- * different scales rather than two layouts that have to be kept in
- * agreement. --sheet-w/--sheet-h/--sheet-zoom are set by PrintSheetView.
+ * 210×297mm for gift tags. The grid fills that page: each printable component
+ * owns its own inset, so an outside edge and an internal cut edge leave the
+ * same amount of space after the sheet is physically cut. A page-level inset
+ * would make the outside pieces wider than the middle ones (most visibly in
+ * the three-column gift-tag sheet).
+ *
+ * The on-screen preview and the captured PDF are the same object at different
+ * scales rather than two layouts that have to be kept in agreement.
+ * --sheet-w/--sheet-h/--sheet-zoom are set by PrintSheetView.
  *
  * The frame carries the SCALED size and the sheet inside it is transformed.
  * A transform alone doesn't change the layout box, so without the frame every
@@ -219,7 +224,6 @@ html[lang="bn"] {
 .sheet-preview [data-sheet] {
   width: var(--sheet-w, 297mm);
   height: var(--sheet-h, 210mm);
-  padding: 0.1in;
   box-sizing: border-box;
   background: #fff;
   display: grid;
@@ -257,8 +261,8 @@ html[lang="bn"] {
 
 /* The cut lines. Dashed rather than solid so they read as "cut here" and not
    as a table border belonging to any one slot. For two- and four-up these
-   land at exactly the sheet's true half, because the columns/rows are equal
-   and the sheet's padding is symmetric; six-up adds the matching thirds. */
+   land at exactly the sheet's true half, because the grid fills the page and
+   its columns/rows are equal; six-up adds the matching thirds. */
 .sheet-preview [data-sheet]:not([data-density="6"]) [data-slot]:nth-child(2n) {
   border-left: 1px dashed #9b96c0;
 }

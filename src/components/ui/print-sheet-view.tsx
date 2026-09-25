@@ -72,9 +72,9 @@ export function PrintSheetView({
           useCORS: true,
           backgroundColor: "#ffffff",
         });
-        // Full-bleed: the 0.2in print margin is padding inside the sheet
-        // element, so what was previewed is exactly what lands on the page —
-        // there's no second margin calculation here to disagree with the CSS.
+        // Full-bleed: the grid reaches the PDF edges and every printable
+        // component supplies its own symmetric inset. That keeps an outside
+        // piece the same size as a middle piece after the sheet is cut.
         doc.addImage(canvas.toDataURL("image/png"), "PNG", 0, 0, widthMm, heightMm);
       }
       doc.save(`${filename}.pdf`);
