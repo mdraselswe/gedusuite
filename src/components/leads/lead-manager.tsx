@@ -117,10 +117,14 @@ type Lead = DhakaStamp & {
   fraudCheck: FraudCheckSummary | null;
 };
 type FraudCheckSummary = {
-  total_parcels: number;
-  total_delivered: number;
-  total_cancelled: number;
-  total_fraud_reports: unknown[];
+  delivery_ratio?: number | null;
+  cancellation_ratio?: number | null;
+  volume_band?: string | null;
+  total_reports?: number;
+  total_parcels?: number;
+  total_delivered?: number;
+  total_cancelled?: number;
+  total_fraud_reports?: unknown[];
 };
 type Perms = {
   canAdd: boolean;
@@ -1396,19 +1400,33 @@ function FraudCheckBadge({
   phone: string;
   summary: FraudCheckSummary | null;
 }) {
-  const total = Math.max(0, Number(summary?.total_parcels) || 0);
-  const delivered = Math.max(0, Number(summary?.total_delivered) || 0);
-  const cancelled = Math.max(0, Number(summary?.total_cancelled) || 0);
-  const reports = Array.isArray(summary?.total_fraud_reports)
-    ? summary.total_fraud_reports.length
-    : 0;
-  const successRate = total > 0 ? Math.round((delivered / total) * 100) : null;
-  const risky = reports > 0 || (total >= 3 && successRate !== null && successRate < 60);
+  const deliveryRatio =
+    summary?.delivery_ratio !== undefined
+      ? summary.delivery_ratio
+      : (summary?.total_parcels ?? 0) > 0
+        ? Math.round(((summary?.total_delivered ?? 0) / summary!.total_parcels!) * 100)
+        : null;
+  const cancelRatio =
+    summary?.cancellation_ratio !== undefined
+      ? summary.cancellation_ratio
+      : (summary?.total_parcels ?? 0) > 0
+        ? Math.round(((summary?.total_cancelled ?? 0) / summary!.total_parcels!) * 100)
+        : null;
+  const reports =
+    summary?.total_reports !== undefined
+      ? summary.total_reports
+      : Array.isArray(summary?.total_fraud_reports)
+        ? summary.total_fraud_reports.length
+        : 0;
+  const volumeBand = (summary?.volume_band ?? "none").toLowerCase();
+  const hasHistory = volumeBand !== "none" && deliveryRatio !== null;
+  const risky = reports > 0 || (hasHistory && deliveryRatio < 60);
+
   const title = summary
     ? [
-        successRate === null ? "No Steadfast parcel history" : `${successRate}% delivered`,
-        `${delivered} delivered`,
-        `${cancelled} cancelled`,
+        deliveryRatio === null ? "No Steadfast parcel history" : `${deliveryRatio}% delivered`,
+        cancelRatio !== null ? `${cancelRatio}% cancelled` : null,
+        volumeBand !== "none" ? `${volumeBand} volume` : null,
         reports > 0 ? `${reports} fraud report${reports === 1 ? "" : "s"}` : null,
       ]
         .filter(Boolean)
@@ -1431,7 +1449,7 @@ function FraudCheckBadge({
         )}
       >
         {risky ? <AlertTriangle className="size-3" aria-hidden /> : <ShieldCheck className="size-3" aria-hidden />}
-        {summary ? (successRate === null ? "SF new" : `${successRate}% SF`) : "SF check"}
+        {summary ? (deliveryRatio === null ? "SF new" : `${deliveryRatio}% SF`) : "SF check"}
       </Badge>
     </a>
   );

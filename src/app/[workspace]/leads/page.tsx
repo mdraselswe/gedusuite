@@ -144,6 +144,66 @@ export default async function LeadsPage({
     : [];
   const histories = buildBuyerHistory(buyers, buyerOrders);
 
+  const fraudChecks = leadPhones.length
+    ? await prisma.courierFraudCheck.findMany({
+        where: {
+          workspaceId: access.workspaceId,
+          phone: { in: leadPhones },
+          checkedAt: { not: null },
+        },
+        select: {
+          phone: true,
+          totalParcels: true,
+          totalDelivered: true,
+          totalCancelled: true,
+          totalFraudReports: true,
+        },
+      })
+    : [];
+
+  type FraudCheckSummary = {
+    delivery_ratio?: number | null;
+    cancellation_ratio?: number | null;
+    volume_band?: string | null;
+    total_reports?: number;
+    total_parcels?: number;
+    total_delivered?: number;
+    total_cancelled?: number;
+    total_fraud_reports?: unknown[];
+  };
+
+  const fraudByPhone = new Map<string, FraudCheckSummary>(
+    fraudChecks.map((fc): [string, FraudCheckSummary] => {
+      const raw = fc.totalFraudReports;
+      if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+        const obj = raw as Record<string, unknown>;
+        return [
+          fc.phone,
+          {
+            delivery_ratio: typeof obj.delivery_ratio === "number" ? obj.delivery_ratio : null,
+            cancellation_ratio:
+              typeof obj.cancellation_ratio === "number"
+                ? obj.cancellation_ratio
+                : typeof obj.return_ratio === "number"
+                  ? obj.return_ratio
+                  : null,
+            volume_band: typeof obj.volume_band === "string" ? obj.volume_band : null,
+            total_reports: typeof obj.total_reports === "number" ? obj.total_reports : 0,
+          },
+        ];
+      }
+      return [
+        fc.phone,
+        {
+          total_parcels: fc.totalParcels,
+          total_delivered: fc.totalDelivered,
+          total_cancelled: fc.totalCancelled,
+          total_fraud_reports: Array.isArray(raw) ? raw : [],
+        },
+      ];
+    }),
+  );
+
   const rows = leads.map((l) => ({
     id: l.id,
     source: l.source,
@@ -178,7 +238,7 @@ export default async function LeadsPage({
       l.orderId,
       (l.orderId ? orderById.get(l.orderId)?.status : null) ?? null,
     ),
-    fraudCheck: null,
+    fraudCheck: fraudByPhone.get(normalizePhone(l.phone) ?? "") ?? null,
   }));
 
   return (

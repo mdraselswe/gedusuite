@@ -46,10 +46,23 @@ export type Consignment = {
 };
 
 export type FraudCheck = {
-  total_parcels: number;
-  total_delivered: number;
-  total_cancelled: number;
-  total_fraud_reports: unknown[];
+  status: number;
+  phone: string;
+  score: number | null;
+  level: string | null;
+  reasons: unknown[];
+  scoring_disabled: boolean;
+  doubtful_reports: boolean;
+  total_reports: number;
+  delivery_ratio: number | null;
+  cancellation_ratio: number | null;
+  volume_band: string;
+  fraud_categories: unknown[];
+  return_ratio: number | null;
+  total_parcels?: number;
+  total_delivered?: number;
+  total_cancelled?: number;
+  total_fraud_reports?: unknown[];
 };
 
 export type SteadfastResult<T> =
@@ -218,11 +231,10 @@ export async function getBalance(
 
 
 /**
- * A phone number's Steadfast history across merchants.
+ * A phone number's Steadfast delivery score and history across merchants.
  *
- * Read live because another shop can ship to the same number after this lead
- * was created; the caller needs the courier's current answer before sending a
- * COD parcel.
+ * Uses Steadfast's GET /fraud_check/score/{phone} endpoint (replacing the
+ * sunset /fraud_check/{phone} endpoint).
  */
 export async function fraudCheck(
   creds: SteadfastCredentials,
@@ -230,7 +242,7 @@ export async function fraudCheck(
 ): Promise<SteadfastResult<FraudCheck>> {
   const normalized = normalizePhone(phone);
   if (!normalized) return { ok: false, error: "Enter a valid Bangladeshi mobile number" };
-  return request<FraudCheck>(creds, `/fraud_check/${encodeURIComponent(normalized)}`, {
+  return request<FraudCheck>(creds, `/fraud_check/score/${encodeURIComponent(normalized)}`, {
     method: "GET",
   });
 }

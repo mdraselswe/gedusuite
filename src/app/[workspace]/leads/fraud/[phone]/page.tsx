@@ -7,17 +7,18 @@ import { workspaceAccess } from "@/lib/authz";
 import { can } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
 import { loadCourierCredentials } from "@/lib/courier-credentials";
-import { fraudCheck, normalizePhone } from "@/lib/steadfast";
+import { fraudCheck, normalizePhone, type FraudCheck } from "@/lib/steadfast";
 import { phoneSearchTerms } from "@/lib/phone";
 import { dhakaInstant } from "@/lib/dhaka-time";
 import { Money } from "@/components/ui/money";
 import { PageHeader } from "@/components/ui/page-header";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const ERROR_COOLDOWN_MS = 5 * 60 * 1000;
 
-function jsonArray(value: unknown[]): Prisma.InputJsonValue {
+function jsonValue(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 }
 
@@ -81,19 +82,19 @@ export default async function LeadFraudPage({
         create: {
           workspaceId: access.workspaceId,
           phone,
-          totalParcels: result.data.total_parcels,
-          totalDelivered: result.data.total_delivered,
-          totalCancelled: result.data.total_cancelled,
-          totalFraudReports: jsonArray(result.data.total_fraud_reports),
+          totalParcels: 0,
+          totalDelivered: result.data.delivery_ratio ?? 0,
+          totalCancelled: result.data.cancellation_ratio ?? result.data.return_ratio ?? 0,
+          totalFraudReports: jsonValue(result.data),
           checkedAt: new Date(),
           lastError: null,
           errorAt: null,
         },
         update: {
-          totalParcels: result.data.total_parcels,
-          totalDelivered: result.data.total_delivered,
-          totalCancelled: result.data.total_cancelled,
-          totalFraudReports: jsonArray(result.data.total_fraud_reports),
+          totalParcels: 0,
+          totalDelivered: result.data.delivery_ratio ?? 0,
+          totalCancelled: result.data.cancellation_ratio ?? result.data.return_ratio ?? 0,
+          totalFraudReports: jsonValue(result.data),
           checkedAt: new Date(),
           lastError: null,
           errorAt: null,
@@ -138,31 +139,70 @@ export default async function LeadFraudPage({
     },
   });
 
-  const cachedReports = Array.isArray(cached?.totalFraudReports)
-    ? cached.totalFraudReports
-    : [];
-  const data = result.ok
-    ? result.data
+  const rawCache = cached?.totalFraudReports;
+  const isScoreObject =
+    rawCache &&
+    typeof rawCache === "object" &&
+    !Array.isArray(rawCache) &&
+    ("delivery_ratio" in rawCache || "total_reports" in rawCache || "volume_band" in rawCache);
+
+  const cachedData: FraudCheck | null = isScoreObject
+    ? (rawCache as unknown as FraudCheck)
     : cached?.checkedAt
       ? {
-          total_parcels: cached.totalParcels,
-          total_delivered: cached.totalDelivered,
-          total_cancelled: cached.totalCancelled,
-          total_fraud_reports: cachedReports,
+          status: 200,
+          phone,
+          score: null,
+          level: null,
+          reasons: [],
+          scoring_disabled: true,
+          doubtful_reports: false,
+          total_reports: Array.isArray(rawCache) ? rawCache.length : 0,
+          delivery_ratio:
+            cached.totalParcels > 0
+              ? Math.round((cached.totalDelivered / cached.totalParcels) * 100)
+              : cached.totalDelivered > 0
+                ? cached.totalDelivered
+                : null,
+          cancellation_ratio:
+            cached.totalParcels > 0
+              ? Math.round((cached.totalCancelled / cached.totalParcels) * 100)
+              : cached.totalCancelled > 0
+                ? cached.totalCancelled
+                : null,
+          volume_band: cached.totalParcels > 0 ? "medium" : "none",
+          fraud_categories: [],
+          return_ratio:
+            cached.totalParcels > 0
+              ? Math.round((cached.totalCancelled / cached.totalParcels) * 100)
+              : cached.totalCancelled > 0
+                ? cached.totalCancelled
+                : null,
         }
       : null;
+
+  const data: FraudCheck | null = result.ok ? result.data : cachedData;
   const error = !result.ok
     ? result.error
     : cached?.checkedAt && cacheFresh
       ? null
       : null;
-  const total = data?.total_parcels ?? 0;
-  const delivered = data?.total_delivered ?? 0;
-  const cancelled = data?.total_cancelled ?? 0;
-  const reports = Array.isArray(data?.total_fraud_reports) ? data.total_fraud_reports.length : 0;
-  const successRate = total > 0 ? Math.round((delivered / total) * 100) : null;
-  const cancelRate = total > 0 ? Math.round((cancelled / total) * 100) : null;
-  const risky = reports > 0 || (total >= 3 && successRate !== null && successRate < 60);
+
+  const deliveryRatio = data?.delivery_ratio ?? null;
+  const cancelRatio = data?.cancellation_ratio ?? data?.return_ratio ?? null;
+  const volumeBand = (data?.volume_band ?? "none").toLowerCase();
+  const reports = data?.total_reports ?? 0;
+  const doubtfulReports = data?.doubtful_reports ?? false;
+  const hasHistory = volumeBand !== "none" && deliveryRatio !== null;
+
+  const risky = reports > 0 || (hasHistory && deliveryRatio < 60);
+
+  const volumeLabel: Record<string, string> = {
+    none: "None (new customer)",
+    low: "Low volume",
+    medium: "Medium volume",
+    high: "High volume",
+  };
 
   return (
     <div className="space-y-6">
@@ -199,26 +239,105 @@ export default async function LeadFraudPage({
       {data && (
         <>
           <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <Metric label="Success rate" value={successRate === null ? "No history" : `${successRate}%`} />
-            <Metric label="Delivered" value={delivered} />
-            <Metric label="Cancelled" value={cancelRate === null ? cancelled : `${cancelled} (${cancelRate}%)`} />
-            <Metric label="Fraud reports" value={reports} danger={reports > 0} />
+            <Metric
+              label="Delivery success rate"
+              value={deliveryRatio === null ? "No history" : `${deliveryRatio}%`}
+              danger={deliveryRatio !== null && deliveryRatio < 60}
+            />
+            <Metric
+              label="Cancellation rate"
+              value={cancelRatio === null ? "No history" : `${cancelRatio}%`}
+              danger={cancelRatio !== null && cancelRatio > 40}
+            />
+            <Metric
+              label="Steadfast parcel volume"
+              value={volumeLabel[volumeBand] ?? volumeBand}
+            />
+            <Metric
+              label="Fraud reports"
+              value={`${reports}${doubtfulReports ? " (doubtful)" : ""}`}
+              danger={reports > 0}
+            />
           </section>
 
-          <section className="rounded-md border p-4">
-            <div className="mb-3 flex flex-wrap items-center gap-2">
-              <h2 className="font-semibold">Steadfast summary</h2>
-              <Badge variant={risky ? "destructive" : "secondary"}>
-                {risky ? "Review before shipping" : "Looks clean"}
-              </Badge>
+          <section className="rounded-md border p-4 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="font-semibold">Steadfast delivery record & score</h2>
+                <Badge variant={risky ? "destructive" : hasHistory ? "secondary" : "outline"}>
+                  {risky
+                    ? "Review before shipping"
+                    : hasHistory
+                      ? deliveryRatio >= 80
+                        ? "Reliable customer"
+                        : "Moderate delivery record"
+                      : "New customer"}
+                </Badge>
+              </div>
               {courier && <span className="text-xs text-muted-foreground">via {courier.name}</span>}
             </div>
-            <div className="grid gap-2 text-sm sm:grid-cols-2">
-              <p>Total parcels: <span className="font-medium tabular-nums">{total}</span></p>
-              <p>Total delivered: <span className="font-medium tabular-nums">{delivered}</span></p>
-              <p>Total cancelled: <span className="font-medium tabular-nums">{cancelled}</span></p>
-              <p>Total fraud reports: <span className="font-medium tabular-nums">{reports}</span></p>
+
+            <div className="grid gap-2 text-sm sm:grid-cols-2 pt-1">
+              <p>
+                Delivery success:{" "}
+                <span className="font-medium tabular-nums">
+                  {deliveryRatio !== null ? `${deliveryRatio}%` : "No parcel history"}
+                </span>
+              </p>
+              <p>
+                Cancellation / return:{" "}
+                <span className="font-medium tabular-nums">
+                  {cancelRatio !== null ? `${cancelRatio}%` : "No parcel history"}
+                </span>
+              </p>
+              <p>
+                Courier parcel activity:{" "}
+                <span className="font-medium capitalize">
+                  {volumeLabel[volumeBand] ?? volumeBand}
+                </span>
+              </p>
+              <p>
+                Merchant fraud reports:{" "}
+                <span className={cn("font-medium tabular-nums", reports > 0 && "font-semibold text-destructive")}>
+                  {reports}
+                  {doubtfulReports && " (marked doubtful)"}
+                </span>
+              </p>
+              {data.score !== null && data.score !== undefined && (
+                <p>
+                  Fraud score: <span className="font-medium">{data.score}</span>
+                </p>
+              )}
+              {data.level && (
+                <p>
+                  Risk level: <span className="font-medium capitalize">{data.level}</span>
+                </p>
+              )}
             </div>
+
+            {Array.isArray(data.reasons) && data.reasons.length > 0 && (
+              <div className="rounded border bg-muted/40 p-2.5 text-xs">
+                <p className="font-semibold text-foreground mb-1">Report reasons:</p>
+                <ul className="list-inside list-disc space-y-0.5 text-muted-foreground">
+                  {data.reasons.map((r: unknown, i: number) => (
+                    <li key={i}>{String(r)}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {Array.isArray(data.fraud_categories) && data.fraud_categories.length > 0 && (
+              <div className="rounded border bg-muted/40 p-2.5 text-xs">
+                <p className="font-semibold text-foreground mb-1">Fraud categories:</p>
+                <div className="flex flex-wrap gap-1">
+                  {data.fraud_categories.map((c: unknown, i: number) => (
+                    <Badge key={i} variant="outline" className="text-xs">
+                      {String(c)}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
           </section>
         </>
       )}
