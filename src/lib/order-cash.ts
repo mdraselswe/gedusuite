@@ -161,10 +161,14 @@ export function codBaseFor(
  */
 export function amountCollected(
   order: SettleableOrder,
-  totals: Pick<OrderTotals, "customerTotal">,
+  totals: Pick<OrderTotals, "customerTotal"> & Partial<Pick<OrderTotals, "invoicedTotal" | "refunds">>,
 ): number {
   if (order.status === "CANCELLED") return round2(Number(order.cancelledCollected ?? 0));
-  if (order.paymentStatus === "PAID") return totals.customerTotal;
+  if (order.paymentStatus === "PAID") {
+    const invoiced = totals.invoicedTotal != null ? totals.invoicedTotal : totals.customerTotal;
+    const refunds = Number(totals.refunds ?? 0);
+    return round2(Math.max(totals.customerTotal, invoiced - refunds));
+  }
   if (order.paymentStatus !== "PARTIAL") return 0;
   return round2(
     Math.min(totals.customerTotal, Math.max(0, Number(order.amountPaid ?? 0))),
@@ -237,7 +241,7 @@ export function bankedAfterChange(banked: number, deposit: number): number {
 
 export function amountRemitted(
   order: SettleableOrder & { collectionShortfall: Prisma.Decimal | number },
-  totals: Pick<OrderTotals, "customerTotal">,
+  totals: Pick<OrderTotals, "customerTotal"> & Partial<Pick<OrderTotals, "invoicedTotal" | "refunds">>,
 ): number {
   const paid = amountCollected(order, totals);
   return round2(Math.max(0, paid - Number(order.collectionShortfall ?? 0)));
@@ -374,7 +378,8 @@ export function deliveryCostCharged(
 
 export function depositAmount(
   order: DepositableOrder,
-  totals: Pick<OrderTotals, "customerTotal" | "deliveryCost" | "codFeeCost">,
+  totals: Pick<OrderTotals, "customerTotal" | "deliveryCost" | "codFeeCost"> &
+    Partial<Pick<OrderTotals, "invoicedTotal" | "refunds">>,
 ): DepositAmount {
   // What was collected, not what was invoiced: a part-paid order banks the
   // part that was paid — less anything that went missing between the doorstep
@@ -383,8 +388,18 @@ export function depositAmount(
   const gross = amountRemitted(order, totals);
 
   const deliveryCost = deliveryCostCharged(order, totals);
+  // An advance payment on an active partial order is collected directly by the
+  // shop (via bKash/Nagad/cash), not by the courier. The courier's charges are
+  // deducted from the remaining COD on delivery, not from the customer's advance.
+  const isAdvancePayment =
+    order.status !== "CANCELLED" &&
+    order.paymentStatus === "PARTIAL" &&
+    gross < totals.customerTotal &&
+    gross > 0;
+
   const courierCharges =
     order.deliveryType === "COURIER" &&
+    !isAdvancePayment &&
     (order.paymentMethod === "COURIER_COLLECTION" || gross === 0)
       ? round2(deliveryCost + totals.codFeeCost)
       : 0;

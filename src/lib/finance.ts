@@ -242,6 +242,7 @@ export async function partnerBalances(
         partnerId: true,
         type: true,
         amount: true,
+        purpose: true,
         date: true,
         distributionId: true,
         // Whether the pot actually moved. A withdrawal of cash a partner was
@@ -292,14 +293,20 @@ export async function partnerBalances(
   // Nothing but shape-shifting from here: the arithmetic is rollUpBalances,
   // which the tests can call without a database in front of it.
   return rollUpBalances({
-    txns: txns.map((r) => ({
-      partnerId: r.partnerId,
-      type: r.type,
-      amount: Number(r.amount),
-      date: r.date,
-      fromDistribution: r.distributionId != null,
-      movedTreasury: r.treasuryEntry != null,
-    })),
+    txns: txns.map((r) => {
+      const isBeyondProfit =
+        r.type === "WITHDRAWAL" &&
+        r.distributionId != null &&
+        (r.purpose?.includes("beyond profit") ?? false);
+      return {
+        partnerId: r.partnerId,
+        type: r.type,
+        amount: Number(r.amount),
+        date: r.date,
+        fromDistribution: isBeyondProfit ? false : r.distributionId != null,
+        movedTreasury: isBeyondProfit ? true : r.treasuryEntry != null,
+      };
+    }),
     partnerSpend: [
       ...purchaseRows.map((p) => ({
         partnerId: p.paidByPartnerId!,
@@ -862,7 +869,7 @@ export async function operatingExpenses(
     // ever sees cost when something sells, so a broken box simply vanished
     // from the shelf and from the accounts at the same time.
     prisma.stockAdjustment.findMany({
-      where: { workspaceId, type: { in: ["DAMAGED", "LOST"] }, ...dateFilter },
+      where: { workspaceId, type: { in: ["DAMAGED", "LOST", "GIFT"] }, ...dateFilter },
       select: {
         delta: true,
         productVariant: {
@@ -873,7 +880,7 @@ export async function operatingExpenses(
             // catalogue cost would report zero loss for every variant that was
             // bought but never priced — which is most of them, since the
             // purchase form is where the real cost gets typed.
-            purchases: { orderBy: { date: "desc" }, take: 1, select: { unitCost: true } },
+            purchases: { orderBy: { date: "desc" }, select: { unitCost: true, quantity: true } },
           },
         },
       },
@@ -1170,11 +1177,9 @@ export async function totalDue(workspaceId: string): Promise<CustomerDue> {
     const outstanding = amountOutstanding(o, totals);
     if (outstanding <= 0) continue;
     gross += outstanding;
-    // Same rule depositAmount uses: only a courier collection is netted, since
-    // that is the only case where somebody else handles the money first. An
-    // order whose cash is already banked has had its charges taken, and
-    // charging them again would understate what is still coming.
-    if (o.paymentMethod === "COURIER_COLLECTION" && !o.cashInTreasury) {
+    // Only a courier collection is netted, since that is where the courier
+    // deducts its charges from the remaining doorstep collection.
+    if (o.paymentMethod === "COURIER_COLLECTION") {
       courierCut += deliveryCostCharged(o, totals) + totals.codFeeCost;
     }
   }

@@ -121,6 +121,13 @@ describe("breakEvenDeliveryCharge", () => {
     const greedy: CourierRules = { ...steadfast, codFeePercent: 100 };
     expect(breakEvenDeliveryCharge(greedy, { zoneRate: 115, goodsAmount: 845 })).toBeNull();
   });
+
+  it("accounts for return rate in break-even charge", () => {
+    const withoutReturns = breakEvenDeliveryCharge(steadfast, { zoneRate: 115, goodsAmount: 845 });
+    const withReturns = breakEvenDeliveryCharge(steadfast, { zoneRate: 115, goodsAmount: 845 }, 0.15);
+    expect(withReturns).not.toBeNull();
+    expect(withReturns!).toBeGreaterThan(withoutReturns!);
+  });
 });
 
 describe("expectedCourierBalance", () => {

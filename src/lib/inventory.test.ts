@@ -34,6 +34,18 @@ describe("variantCost", () => {
   it("keeps a free piece at zero rather than treating it as unknown", () => {
     expect(variantCost({ unitCost: null, purchases: [{ unitCost: 0 }] })).toBe(0);
   });
+
+  it("calculates weighted average cost across purchases with quantities", () => {
+    expect(
+      variantCost({
+        unitCost: null,
+        purchases: [
+          { unitCost: 50, quantity: 100 },
+          { unitCost: 80, quantity: 50 },
+        ],
+      }),
+    ).toBe(60);
+  });
 });
 
 describe("variantListPrice", () => {

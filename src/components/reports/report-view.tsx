@@ -46,6 +46,9 @@ const MIN_SETTLED_FOR_RATE = 5;
 const PICK_DISTRICT = "__pick_district__";
 
 function formatMethod(value: string) {
+  if (value === "COURIER_PARTIAL_COLLECTION") {
+    return "Partial delivery collection (refused parcels)";
+  }
   return value
     .toLowerCase()
     .split("_")
