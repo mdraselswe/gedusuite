@@ -387,6 +387,14 @@ export async function buildReport(
     dst.cancelled += 1;
     dst.cancelledCost += cost;
     districtMap.set(dstKey, dst);
+
+    const collected = round2(Number(o.cancelledCollected ?? 0));
+    if (collected > 0) {
+      const m = methodMap.get(o.paymentMethod) ?? { amount: 0, orders: 0 };
+      m.amount += collected;
+      m.orders += 1;
+      methodMap.set(o.paymentMethod, m);
+    }
   }
   // Out of the parcels that have an answer. A hundred still in transit say
   // nothing about how often this courier loses one.

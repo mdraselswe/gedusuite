@@ -173,20 +173,56 @@ export async function createDistribution(
         dateHasTime: d.date.hasTime,
       },
     });
+    const profitPortion = Math.max(0, round2(d.amount - beyondProfit));
     for (const cut of cuts) {
       if (cut.amount <= 0) continue;
-      await tx.partnerTxn.create({
-        data: {
-          workspaceId,
-          partnerId: cut.partnerId,
-          type: "WITHDRAWAL",
-          amount: cut.amount,
-          purpose: beyondProfit > 0 ? "Distribution (beyond profit)" : "Profit distribution",
-          distributionId: distribution.id,
-          date: d.date.at,
-        dateHasTime: d.date.hasTime,
-        },
-      });
+      if (beyondProfit > 0 && profitPortion > 0) {
+        // Split proportionally so profit part stays profit and capital part is tracked as capital withdrawal
+        const profitAmount = round2((cut.amount * profitPortion) / d.amount);
+        const capitalAmount = round2(cut.amount - profitAmount);
+
+        if (profitAmount > 0) {
+          await tx.partnerTxn.create({
+            data: {
+              workspaceId,
+              partnerId: cut.partnerId,
+              type: "WITHDRAWAL",
+              amount: profitAmount,
+              purpose: "Profit distribution",
+              distributionId: distribution.id,
+              date: d.date.at,
+              dateHasTime: d.date.hasTime,
+            },
+          });
+        }
+        if (capitalAmount > 0) {
+          await tx.partnerTxn.create({
+            data: {
+              workspaceId,
+              partnerId: cut.partnerId,
+              type: "WITHDRAWAL",
+              amount: capitalAmount,
+              purpose: "Distribution (beyond profit)",
+              distributionId: distribution.id,
+              date: d.date.at,
+              dateHasTime: d.date.hasTime,
+            },
+          });
+        }
+      } else {
+        await tx.partnerTxn.create({
+          data: {
+            workspaceId,
+            partnerId: cut.partnerId,
+            type: "WITHDRAWAL",
+            amount: cut.amount,
+            purpose: beyondProfit > 0 ? "Distribution (beyond profit)" : "Profit distribution",
+            distributionId: distribution.id,
+            date: d.date.at,
+            dateHasTime: d.date.hasTime,
+          },
+        });
+      }
     }
     return distribution.id;
     });

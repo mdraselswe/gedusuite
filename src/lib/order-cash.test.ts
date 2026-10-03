@@ -123,6 +123,26 @@ describe("depositAmount", () => {
     }
   });
 
+  it("does not deduct courier charges from partial advance payments", () => {
+    // Customer paid 200 in advance. The courier charges will be deducted from
+    // the remaining COD collection on delivery, not from the advance.
+    const d = depositAmount(
+      {
+        status: "PROCESSING",
+        deliveryType: "COURIER",
+        collectionShortfall: 0,
+        paymentStatus: "PARTIAL",
+        amountPaid: 200,
+        paymentMethod: "COURIER_COLLECTION",
+        deliveryCost: 65,
+      },
+      totals(),
+    );
+    expect(d.gross).toBe(200);
+    expect(d.courierCharges).toBe(0);
+    expect(d.net).toBe(200);
+  });
+
   it("charges a parcel that collected nothing to the courier's account", () => {
     // A giveaway: the customer owes nothing, so there is no collection for the
     // courier to keep its 65 out of — it takes it off the shop's balance
@@ -261,6 +281,20 @@ describe("amountCollected / amountOutstanding", () => {
     const o = { status: "DELIVERED", paymentStatus: "PAID", amountPaid: 0 };
     expect(amountCollected(o, totals)).toBe(5000);
     expect(amountOutstanding(o, totals)).toBe(0);
+  });
+
+  it("retains collected amount when return is an exchange without cash refund", () => {
+    // 5000 invoiced, 1000 returned, but 0 cash refunded (exchange). The shop still holds 5000.
+    const o = { status: "DELIVERED", paymentStatus: "PAID", amountPaid: 0 };
+    const exchangeTotals = { customerTotal: 4000, invoicedTotal: 5000, refunds: 0 };
+    expect(amountCollected(o, exchangeTotals)).toBe(5000);
+  });
+
+  it("reduces collected amount when return includes cash refund", () => {
+    // 5000 invoiced, 1000 returned, 1000 cash refunded. The shop holds 4000.
+    const o = { status: "DELIVERED", paymentStatus: "PAID", amountPaid: 0 };
+    const refundTotals = { customerTotal: 4000, invoicedTotal: 5000, refunds: 1000 };
+    expect(amountCollected(o, refundTotals)).toBe(4000);
   });
 
   it("collects nothing on an UNPAID order", () => {

@@ -215,11 +215,20 @@ export function expectedCourierBalance(
 export function breakEvenDeliveryCharge(
   rules: CourierRules,
   input: { zoneRate: number; bands?: WeightBand[]; weightKg?: number | null; goodsAmount: number },
+  returnRate?: number,
 ): number | null {
   const { rate, includedKg } = zoneRateFor(input, rules.baseWeightKg);
   const delivery = round2(rate + weightCharge(rules, input.weightKg, includedKg));
   const pct = rules.codFeePercent / 100;
   if (pct >= 1) return null;
-  const base = rules.codFeeBase === "GROSS" ? input.goodsAmount : input.goodsAmount - delivery;
-  return round2((delivery + pct * base) / (1 - pct));
+  if (returnRate != null && returnRate >= 1) return null;
+
+  let effectiveDelivery = delivery;
+  if (returnRate && returnRate > 0) {
+    const returnCharge = quoteReturnCharge(rules, input);
+    effectiveDelivery = round2(delivery + (returnRate * returnCharge) / (1 - returnRate));
+  }
+
+  const base = rules.codFeeBase === "GROSS" ? input.goodsAmount : input.goodsAmount - effectiveDelivery;
+  return round2((effectiveDelivery + pct * base) / (1 - pct));
 }

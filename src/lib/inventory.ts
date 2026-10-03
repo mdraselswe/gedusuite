@@ -249,9 +249,24 @@ export async function comboStockMap(
  */
 export function variantCost(v: {
   unitCost: unknown;
-  purchases: { unitCost: unknown }[];
+  purchases: { unitCost: unknown; quantity?: unknown }[];
 }): number {
-  if (v.purchases[0]) return Number(v.purchases[0].unitCost);
+  if (v.purchases && v.purchases.length > 0) {
+    let totalQty = 0;
+    let totalCost = 0;
+    for (const p of v.purchases) {
+      const q = Number(p.quantity ?? 0);
+      const c = Number(p.unitCost ?? 0);
+      if (q > 0) {
+        totalQty += q;
+        totalCost += c * q;
+      }
+    }
+    if (totalQty > 0) {
+      return round2(totalCost / totalQty);
+    }
+    return Number(v.purchases[0].unitCost);
+  }
   return v.unitCost != null ? Number(v.unitCost) : 0;
 }
 
@@ -296,8 +311,7 @@ export async function variantCostMap(
       purchases: {
         where: { workspaceId },
         orderBy: { date: "desc" },
-        take: 1,
-        select: { unitCost: true },
+        select: { unitCost: true, quantity: true },
       },
     },
   });
@@ -364,8 +378,7 @@ export async function inventoryValue(workspaceId: string): Promise<InventoryValu
         purchases: {
           where: { workspaceId },
           orderBy: { date: "desc" },
-          take: 1,
-          select: { unitCost: true, salePrice: true },
+          select: { unitCost: true, salePrice: true, quantity: true },
         },
       },
     }),
