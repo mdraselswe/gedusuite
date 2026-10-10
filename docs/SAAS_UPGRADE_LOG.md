@@ -30,3 +30,42 @@ PRODUCTION database — nothing in this branch's tooling reads it.
 - CI workflow (typecheck + unit tests).
 - Baseline recorded from code that differs from `main` only in `prisma.ts`'s
   adapter selection — no business logic.
+
+## Phase 1 — security and account lifecycle ✅
+
+Migration `20261011000000_account_security` (additive): `User.sessionsValidAfter`,
+`RateLimit` table, and a backfill marking every existing user's email verified
+so nobody is locked out.
+
+- **Email confirmation**: sign-up mails a one-time link (hashed token, 24 h);
+  the confirm page uses a button so mail scanners can't burn the token.
+  Unverified accounts can use the app but cannot create workspaces; a banner
+  offers "resend".
+- **Password reset**: `/forgot-password` → mailed single-use link (30 min) →
+  `/reset-password/[token]`. Never reveals whether an address is registered.
+  A reset voids every older session cookie.
+- **Throttling**: DB-backed fixed-window limits on sign-in (per account and per
+  IP), sign-up, reset, workspace creation. Fails open.
+- **Pre-hijack fix**: Google sign-in clears the password of a still-unverified
+  account with the same address, so a pre-registered attacker password dies
+  when the real owner arrives. Existing Google/password users are unaffected.
+- **Removed members / role changes** take effect at once: `requireMembership`
+  reads the database instead of the JWT snapshot (same query is reused for the
+  email-verified banner, so no extra round trip).
+- **Headers**: HSTS, nosniff, frame, referrer, permissions; CSP in report-only
+  mode with a `/api/csp-report` sink.
+- **Error reporting**: `reportError()` + `instrumentation.ts`; Sentry via HTTP
+  envelope when `SENTRY_DSN` is set (no SDK).
+- **Encryption key**: production warns when `BACKUP_ENCRYPTION_KEY` is unset.
+- **Mailer**: Resend HTTP API; without `RESEND_API_KEY` mail goes to the log and
+  an in-memory outbox (what the tests read).
+
+Verification: 10 new integration tests (sign-up, confirm, single-use tokens,
+purpose binding, expiry, reset, session void, throttle lockout/clear, rate
+window, pre-hijack, verified account untouched, unverified Google profile
+refused); 5 new unit tests; Golden Master unchanged; `tsc` clean.
+
+**Needs from you before deploy:** `RESEND_API_KEY` + `MAIL_FROM` (a verified
+sending domain); optionally `SENTRY_DSN`; a distinct `BACKUP_ENCRYPTION_KEY`
+only if you also re-save stored credentials (changing it makes existing
+encrypted courier/Google tokens unreadable).

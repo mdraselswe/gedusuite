@@ -7,6 +7,8 @@ declare module "next-auth" {
       id: string;
       memberships: SessionMembership[];
       locale?: string;
+      /** JWT issued-at, seconds since epoch. */
+      issuedAt?: number;
     } & DefaultSession["user"];
   }
 }

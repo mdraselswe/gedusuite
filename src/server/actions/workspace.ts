@@ -7,6 +7,7 @@ import { requireUser } from "@/lib/session";
 import { workspaceAccess } from "@/lib/authz";
 import { uniqueWorkspaceSlug } from "@/lib/slug";
 import { failed, type ActionFailure } from "@/lib/form";
+import { rateLimit } from "@/lib/rate-limit";
 
 const CreateSchema = z.object({
   name: z.string().trim().min(2, "Business name is required").max(100),
@@ -25,6 +26,24 @@ export async function createWorkspace(
   formData: FormData,
 ): Promise<CreateWorkspaceResult> {
   const user = await requireUser();
+
+  // Making a workspace is the first thing an abuser would script, so it needs
+  // a confirmed address and a sane pace. Everyone who had an account before
+  // this check was marked confirmed by the migration.
+  const account = await prisma.user.findUnique({
+    where: { id: user.id },
+    select: { emailVerified: true, email: true },
+  });
+  if (!account?.emailVerified) {
+    return {
+      ok: false,
+      error: `Please confirm your email address first — we sent a link to ${account?.email ?? "your inbox"}.`,
+    };
+  }
+  const pace = await rateLimit(`workspace-create:${user.id}`, 5, 24 * 3600);
+  if (!pace.allowed) {
+    return { ok: false, error: "You have created several workspaces today. Please try again tomorrow." };
+  }
 
   const parsed = CreateSchema.safeParse({
     name: formData.get("name"),

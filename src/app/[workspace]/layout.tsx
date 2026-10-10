@@ -27,6 +27,7 @@ import { translate, isLocale, type Locale } from "@/lib/i18n";
 import { AppShell, type NavItem } from "@/components/layout/app-shell";
 import { AppShellSkeleton } from "@/components/layout/app-shell-skeleton";
 import { LiveRefresh } from "@/components/live-refresh";
+import { VerifyEmailBanner } from "@/components/verify-email-banner";
 
 // Identity helper so each object literal below is individually contextually
 // typed against NavItem (narrowing `color` to the SectionColor union) instead
@@ -63,7 +64,7 @@ async function WorkspaceChrome({
   params: Promise<{ workspace: string }>;
 }) {
   const { workspace: slug } = await params;
-  const { user, membership } = await requireMembership(slug);
+  const { user, membership, account } = await requireMembership(slug);
 
   // Was 3 sequential DB round trips (workspace -> locale -> notif count) on
   // every navigation; each round trip costs ~300ms over a long-haul network
@@ -218,6 +219,9 @@ async function WorkspaceChrome({
           lose track of how long the tab has been away — or of a change another
           tab announced while this one was hidden. */}
       <LiveRefresh workspace={slug} />
+      {!account.emailVerified ? (
+        <VerifyEmailBanner email={account.email} />
+      ) : null}
       <AppShell
         slug={slug}
         workspaceName={workspace.name}

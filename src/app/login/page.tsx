@@ -35,7 +35,7 @@ function LoginForm() {
     });
     setLoading(false);
     if (res?.error) {
-      toast.error("Invalid email or password");
+      toast.error("Invalid email or password, or too many attempts. Please wait a few minutes.");
       return;
     }
     router.push(callbackUrl);
@@ -74,6 +74,14 @@ function LoginForm() {
               autoComplete="current-password"
             />
           </Field>
+          <div className="-mt-2 text-right">
+            <Link
+              href="/forgot-password"
+              className="text-xs text-muted-foreground underline underline-offset-4"
+            >
+              Forgot password?
+            </Link>
+          </div>
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? "Signing in…" : "Sign in"}
           </Button>

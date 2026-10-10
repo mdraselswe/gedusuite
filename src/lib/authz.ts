@@ -2,6 +2,7 @@ import { cache } from "react";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { can, type Access, type Module } from "@/lib/rbac";
+import { sessionIsVoid } from "@/lib/session-validity";
 import type { Role } from "@prisma/client";
 
 export type WorkspaceAccess = {
@@ -25,9 +26,16 @@ export const workspaceAccess = cache(async function workspaceAccess(
   // id first. Every server action calls this, so this halves its DB latency.
   const membership = await prisma.membership.findFirst({
     where: { userId: user.id, workspace: { slug } },
-    select: { workspaceId: true, role: true, permissions: true },
+    select: {
+      workspaceId: true,
+      role: true,
+      permissions: true,
+      user: { select: { sessionsValidAfter: true } },
+    },
   });
   if (!membership) return null;
+  // A password reset voids every cookie issued before it.
+  if (sessionIsVoid(user.issuedAt, membership.user.sessionsValidAfter)) return null;
 
   return {
     userId: user.id,

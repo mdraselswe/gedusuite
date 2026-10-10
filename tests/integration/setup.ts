@@ -20,6 +20,15 @@ vi.mock("next/navigation", () => ({
   },
 }));
 
+vi.mock("next/headers", () => ({
+  headers: async () =>
+    new Headers({
+      "x-forwarded-for":
+        (globalThis as { __testIp?: string }).__testIp ?? "203.0.113.7",
+    }),
+  cookies: async () => ({ get: () => undefined, set: () => undefined }),
+}));
+
 // ── Session: whoever the test says is acting ──────────────────────────
 // Server actions read the session through getServerSession; tests set it with
 // actAs() in harness.ts.

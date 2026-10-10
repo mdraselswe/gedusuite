@@ -37,6 +37,9 @@ const stop = async () => {
   await pg.stop();
   process.exit(0);
 };
+process.on("exit", (c) => console.error(`[local-db] process exiting, code ${c}`));
+process.on("uncaughtException", (e) => console.error("[local-db] uncaught", e));
+process.on("unhandledRejection", (e) => console.error("[local-db] unhandled", e));
 process.on("SIGINT", stop);
 process.on("SIGTERM", stop);
 setInterval(() => {}, 1 << 30);

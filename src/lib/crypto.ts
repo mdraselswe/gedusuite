@@ -7,9 +7,18 @@ import {
 
 // AES-256-GCM at-rest encryption for stored OAuth tokens. The key is derived
 // from BACKUP_ENCRYPTION_KEY (fall back to NEXTAUTH_SECRET) via SHA-256.
+let warnedFallback = false;
 function key(): Buffer {
   const secret = process.env.BACKUP_ENCRYPTION_KEY || process.env.NEXTAUTH_SECRET;
   if (!secret) throw new Error("BACKUP_ENCRYPTION_KEY or NEXTAUTH_SECRET must be set");
+  if (!process.env.BACKUP_ENCRYPTION_KEY && process.env.NODE_ENV === "production" && !warnedFallback) {
+    // Tied to the session secret: rotating one silently breaks the other.
+    warnedFallback = true;
+    console.warn(
+      "[crypto] BACKUP_ENCRYPTION_KEY is not set - stored credentials are encrypted with NEXTAUTH_SECRET. " +
+        "Set a separate BACKUP_ENCRYPTION_KEY (and keep the old value until credentials are re-saved).",
+    );
+  }
   return createHash("sha256").update(secret).digest();
 }
 

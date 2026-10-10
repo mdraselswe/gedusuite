@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { denyCron } from "@/lib/cron-auth";
 import { buildSnapshot } from "@/lib/backup";
 import { pruneOldActivity } from "@/lib/activity-retention";
+import { purgeExpiredRateLimits } from "@/lib/rate-limit";
 
 const KEEP = 10;
 
@@ -94,6 +95,7 @@ export async function GET(req: NextRequest) {
     where: { createdAt: { lt: cutoff } },
   });
   const activityPruned = await pruneOldActivity();
+  const rateLimitsPurged = await purgeExpiredRateLimits().catch(() => 0);
 
   return NextResponse.json({
     ok: true,
@@ -101,5 +103,6 @@ export async function GET(req: NextRequest) {
     results,
     pruned: pruned.count,
     activityPruned,
+    rateLimitsPurged,
   });
 }

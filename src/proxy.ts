@@ -8,6 +8,10 @@ import type { SessionMembership } from "@/lib/auth";
 const PUBLIC_PREFIXES = [
   "/login",
   "/register",
+  "/forgot-password",
+  "/reset-password",
+  "/verify-email",
+  "/api/csp-report",
   "/invite",
   "/api/auth",
   "/api/cron",

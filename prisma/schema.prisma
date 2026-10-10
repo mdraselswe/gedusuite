@@ -74,6 +74,9 @@ model User {
   emailVerified DateTime? // required by NextAuth adapter
   image         String?
   passwordHash  String? // null for OAuth-only users
+  // Sessions issued before this instant are void. Moved forward by a password
+  // reset so a stolen cookie dies with the password it was stolen with.
+  sessionsValidAfter DateTime?
   theme         String    @default("system") // light | dark | system
   colorPreset   String    @default("indigo") // indigo | green | rose | amber
   locale        String    @default("en") // en | bn
@@ -152,6 +155,16 @@ model Session {
   userId       String
   expires      DateTime
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Fixed-window counters for throttling sign-in, sign-up and password reset.
+// In the database rather than memory because serverless instances share none.
+model RateLimit {
+  key     String   @id
+  count   Int
+  resetAt DateTime
+
+  @@index([resetAt])
 }
 
 model VerificationToken {

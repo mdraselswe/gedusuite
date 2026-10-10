@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs";
 import type { Role } from "@prisma/client";
 
 /** Everything a test needs to say "this person is doing it now". */
-export async function actAs(userId: string | null) {
+export async function actAs(userId: string | null, opts: { issuedAt?: number } = {}) {
   const g = globalThis as { __testSession?: unknown };
   if (!userId) {
     g.__testSession = null;
@@ -23,6 +23,7 @@ export async function actAs(userId: string | null) {
       email: user.email,
       name: user.name,
       locale: user.locale,
+      issuedAt: opts.issuedAt ?? Math.floor(Date.now() / 1000),
       memberships: memberships.map((m) => ({
         workspaceId: m.workspaceId,
         slug: m.workspace.slug,
