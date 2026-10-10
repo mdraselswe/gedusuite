@@ -1,0 +1,5507 @@
+{
+  "businessProfit": {
+    "adSpend": 18461,
+    "distributableProfit": 34034.82,
+    "distributed": 8000,
+    "internalPurchaseSpend": 18134.78,
+    "internalPurchaseTotal": 18700,
+    "miscExpense": 0,
+    "netProfit": 42034.82,
+    "operatingExpenses": 36595.78,
+    "orderCount": 124,
+    "prepaidExpenses": 565.22,
+    "revenue": 246842.1,
+    "stockLoss": 0,
+    "tradingProfit": 78630.6
+  },
+  "capital": {
+    "boostSpend": 18461,
+    "businessHoldings": 454218.5,
+    "capitalSpend": 303561,
+    "customerProductSpend": 392400,
+    "internalPurchaseSpend": 18700,
+    "inventoryFromCorrections": 0,
+    "inventoryInTransitUnits": 0,
+    "inventoryInTransitValue": 0,
+    "inventoryUnits": 477,
+    "inventoryValue": 227740,
+    "miscExpense": 0,
+    "netInvested": 937100,
+    "partnerCashInTreasury": 133539,
+    "salesFundedSpend": 0,
+    "supplierDue": 126000,
+    "totalCapitalWithdrawn": 0,
+    "totalExpenses": 429561,
+    "totalInvested": 937100,
+    "totalRemaining": 633539,
+    "treasuryBalance": 352478.5,
+    "treasuryCapitalSpend": 206461,
+    "treasuryFundedSpend": 206461
+  },
+  "cashHeld": [],
+  "customerDue": {
+    "courierCut": 828.9,
+    "gross": 17640,
+    "net": 16811.1
+  },
+  "inventoryValue": {
+    "fromCorrections": 0,
+    "inTransitUnits": 0,
+    "inTransitValue": 0,
+    "saleValue": 352680,
+    "units": 477,
+    "unpricedUnits": 0,
+    "value": 227740
+  },
+  "operatingExpensesAll": {
+    "adSpend": 18461,
+    "internalPurchaseSpend": 18134.78,
+    "internalPurchaseTotal": 18700,
+    "miscExpense": 0,
+    "prepaidExpenses": 565.22,
+    "stockLoss": 0,
+    "total": 36595.78
+  },
+  "operatingExpensesRange": {
+    "adSpend": 12967,
+    "internalPurchaseSpend": 1600,
+    "internalPurchaseTotal": 18700,
+    "miscExpense": 0,
+    "prepaidExpenses": 565.22,
+    "stockLoss": 0,
+    "total": 14567
+  },
+  "overdue": [
+    {
+      "amount": 1490,
+      "customerName": "Farhana Akter",
+      "date": "2026-09-16",
+      "daysOverdue": 15,
+      "heldByName": null
+    },
+    {
+      "amount": 1640,
+      "customerName": "Munira Begum",
+      "date": "2026-07-21",
+      "daysOverdue": 72,
+      "heldByName": null
+    },
+    {
+      "amount": 1840,
+      "customerName": "Nusrat Jahan",
+      "date": "2026-09-22",
+      "daysOverdue": 9,
+      "heldByName": null
+    },
+    {
+      "amount": 2210,
+      "customerName": "Tania Islam",
+      "date": "2026-09-22",
+      "daysOverdue": 9,
+      "heldByName": null
+    },
+    {
+      "amount": 2600,
+      "customerName": "Nusrat Jahan",
+      "date": "2026-07-26",
+      "daysOverdue": 67,
+      "heldByName": null
+    },
+    {
+      "amount": 2980,
+      "customerName": "Tasnim Sultana",
+      "date": "2026-08-08",
+      "daysOverdue": 54,
+      "heldByName": null
+    },
+    {
+      "amount": 3620,
+      "customerName": "Mst. Rokeya Begum",
+      "date": "2026-07-27",
+      "daysOverdue": 66,
+      "heldByName": null
+    },
+    {
+      "amount": 430,
+      "customerName": "Tania Islam",
+      "date": "2026-07-19",
+      "daysOverdue": 74,
+      "heldByName": null
+    },
+    {
+      "amount": 830,
+      "customerName": "Nasrin Parvin",
+      "date": "2026-09-22",
+      "daysOverdue": 9,
+      "heldByName": null
+    }
+  ],
+  "paidNotDeposited": [
+    {
+      "alreadyBanked": 0,
+      "amount": -40,
+      "cancelled": true,
+      "courierCharges": 40,
+      "courierName": "Steadfast Courier",
+      "customerName": "Jannatul Ferdous",
+      "date": "2026-07-23",
+      "gross": 0,
+      "heldByName": null,
+      "isCourierCollection": true,
+      "paymentMethod": "COURIER_COLLECTION",
+      "settlesAtPayout": false
+    },
+    {
+      "alreadyBanked": 0,
+      "amount": -40,
+      "cancelled": true,
+      "courierCharges": 40,
+      "courierName": "Steadfast Courier",
+      "customerName": "Lamia Hossain",
+      "date": "2026-08-21",
+      "gross": 0,
+      "heldByName": null,
+      "isCourierCollection": false,
+      "paymentMethod": "BKASH",
+      "settlesAtPayout": false
+    },
+    {
+      "alreadyBanked": 0,
+      "amount": -40,
+      "cancelled": true,
+      "courierCharges": 40,
+      "courierName": "Steadfast Courier",
+      "customerName": "Lamia Hossain",
+      "date": "2026-08-31",
+      "gross": 0,
+      "heldByName": null,
+      "isCourierCollection": true,
+      "paymentMethod": "COURIER_COLLECTION",
+      "settlesAtPayout": false
+    },
+    {
+      "alreadyBanked": 0,
+      "amount": -40,
+      "cancelled": true,
+      "courierCharges": 40,
+      "courierName": "Steadfast Courier",
+      "customerName": "Mahfuza Khatun",
+      "date": "2026-08-08",
+      "gross": 0,
+      "heldByName": null,
+      "isCourierCollection": true,
+      "paymentMethod": "COURIER_COLLECTION",
+      "settlesAtPayout": false
+    },
+    {
+      "alreadyBanked": 0,
+      "amount": -40,
+      "cancelled": true,
+      "courierCharges": 40,
+      "courierName": "Steadfast Courier",
+      "customerName": "Munira Begum",
+      "date": "2026-08-10",
+      "gross": 0,
+      "heldByName": null,
+      "isCourierCollection": true,
+      "paymentMethod": "COURIER_COLLECTION",
+      "settlesAtPayout": false
+    },
+    {
+      "alreadyBanked": 0,
+      "amount": -40,
+      "cancelled": true,
+      "courierCharges": 40,
+      "courierName": "Steadfast Courier",
+      "customerName": "Munira Begum",
+      "date": "2026-09-03",
+      "gross": 0,
+      "heldByName": null,
+      "isCourierCollection": true,
+      "paymentMethod": "COURIER_COLLECTION",
+      "settlesAtPayout": false
+    },
+    {
+      "alreadyBanked": 0,
+      "amount": -40,
+      "cancelled": true,
+      "courierCharges": 40,
+      "courierName": "Steadfast Courier",
+      "customerName": "Nasrin Parvin",
+      "date": "2026-08-16",
+      "gross": 0,
+      "heldByName": null,
+      "isCourierCollection": true,
+      "paymentMethod": "COURIER_COLLECTION",
+      "settlesAtPayout": false
+    },
+    {
+      "alreadyBanked": 0,
+      "amount": -40,
+      "cancelled": true,
+      "courierCharges": 40,
+      "courierName": "Steadfast Courier",
+      "customerName": "Nusrat Jahan",
+      "date": "2026-07-21",
+      "gross": 0,
+      "heldByName": null,
+      "isCourierCollection": true,
+      "paymentMethod": "COURIER_COLLECTION",
+      "settlesAtPayout": false
+    },
+    {
+      "alreadyBanked": 0,
+      "amount": -40,
+      "cancelled": true,
+      "courierCharges": 40,
+      "courierName": "Steadfast Courier",
+      "customerName": "Popy Akter",
+      "date": "2026-08-01",
+      "gross": 0,
+      "heldByName": null,
+      "isCourierCollection": true,
+      "paymentMethod": "COURIER_COLLECTION",
+      "settlesAtPayout": false
+    },
+    {
+      "alreadyBanked": 0,
+      "amount": -40,
+      "cancelled": true,
+      "courierCharges": 40,
+      "courierName": "Steadfast Courier",
+      "customerName": "Popy Akter",
+      "date": "2026-08-17",
+      "gross": 0,
+      "heldByName": null,
+      "isCourierCollection": true,
+      "paymentMethod": "COURIER_COLLECTION",
+      "settlesAtPayout": false
+    },
+    {
+      "alreadyBanked": 0,
+      "amount": -40,
+      "cancelled": true,
+      "courierCharges": 40,
+      "courierName": "Steadfast Courier",
+      "customerName": "Sadia Afrin",
+      "date": "2026-08-28",
+      "gross": 0,
+      "heldByName": null,
+      "isCourierCollection": true,
+      "paymentMethod": "COURIER_COLLECTION",
+      "settlesAtPayout": false
+    },
+    {
+      "alreadyBanked": 0,
+      "amount": -40,
+      "cancelled": true,
+      "courierCharges": 40,
+      "courierName": "Steadfast Courier",
+      "customerName": "Sharmin Sultana",
+      "date": "2026-08-21",
+      "gross": 0,
+      "heldByName": null,
+      "isCourierCollection": false,
+      "paymentMethod": "BKASH",
+      "settlesAtPayout": false
+    },
+    {
+      "alreadyBanked": 0,
+      "amount": -40,
+      "cancelled": true,
+      "courierCharges": 40,
+      "courierName": "Steadfast Courier",
+      "customerName": "Sumaiya Rahman",
+      "date": "2026-09-15",
+      "gross": 0,
+      "heldByName": null,
+      "isCourierCollection": true,
+      "paymentMethod": "COURIER_COLLECTION",
+      "settlesAtPayout": false
+    },
+    {
+      "alreadyBanked": 0,
+      "amount": -40,
+      "cancelled": true,
+      "courierCharges": 40,
+      "courierName": "Steadfast Courier",
+      "customerName": "Tasnim Sultana",
+      "date": "2026-08-29",
+      "gross": 0,
+      "heldByName": null,
+      "isCourierCollection": false,
+      "paymentMethod": "BKASH",
+      "settlesAtPayout": false
+    },
+    {
+      "alreadyBanked": 0,
+      "amount": 2110,
+      "cancelled": false,
+      "courierCharges": 0,
+      "courierName": "Steadfast Courier",
+      "customerName": "Shirin Akter",
+      "date": "2026-09-04",
+      "gross": 2110,
+      "heldByName": null,
+      "isCourierCollection": false,
+      "paymentMethod": "BKASH",
+      "settlesAtPayout": false
+    },
+    {
+      "alreadyBanked": 0,
+      "amount": 3050,
+      "cancelled": false,
+      "courierCharges": 0,
+      "courierName": "Steadfast Courier",
+      "customerName": "Lamia Hossain",
+      "date": "2026-08-15",
+      "gross": 3050,
+      "heldByName": null,
+      "isCourierCollection": false,
+      "paymentMethod": "BKASH",
+      "settlesAtPayout": false
+    },
+    {
+      "alreadyBanked": 0,
+      "amount": 3150,
+      "cancelled": false,
+      "courierCharges": 0,
+      "courierName": "Steadfast Courier",
+      "customerName": "Sumaiya Rahman",
+      "date": "2026-07-30",
+      "gross": 3150,
+      "heldByName": null,
+      "isCourierCollection": false,
+      "paymentMethod": "BKASH",
+      "settlesAtPayout": false
+    },
+    {
+      "alreadyBanked": 0,
+      "amount": 500,
+      "cancelled": false,
+      "courierCharges": 0,
+      "courierName": "Steadfast Courier",
+      "customerName": "Maliha Chowdhury",
+      "date": "2026-09-21",
+      "gross": 500,
+      "heldByName": null,
+      "isCourierCollection": false,
+      "paymentMethod": "BKASH",
+      "settlesAtPayout": false
+    }
+  ],
+  "partnerBalances": {
+    "Mim Chowdhury": {
+      "boostSpend": 0,
+      "capitalWithdrawn": 0,
+      "customerProductSpend": 0,
+      "depositedToTreasury": 0,
+      "expenses": 9500,
+      "internalPurchaseSpend": 9500,
+      "invested": 109500,
+      "miscExpense": 0,
+      "netCapital": 109500,
+      "profitWithdrawn": 1600,
+      "remaining": 100000,
+      "treasuryCapitalRemaining": 0,
+      "treasuryCapitalSpend": 0,
+      "treasuryCapitalWithdrawn": 0,
+      "withdrawn": 1600
+    },
+    "Rafiul Islam": {
+      "boostSpend": 0,
+      "capitalWithdrawn": 0,
+      "customerProductSpend": 87600,
+      "depositedToTreasury": 120000,
+      "expenses": 87600,
+      "internalPurchaseSpend": 0,
+      "invested": 237600,
+      "miscExpense": 0,
+      "netCapital": 357600,
+      "profitWithdrawn": 2400,
+      "remaining": 197131.4,
+      "treasuryCapitalRemaining": 47131.4,
+      "treasuryCapitalSpend": 72868.6,
+      "treasuryCapitalWithdrawn": 0,
+      "withdrawn": 2400
+    },
+    "Shahriar Ahmed": {
+      "boostSpend": 0,
+      "capitalWithdrawn": 0,
+      "customerProductSpend": 0,
+      "depositedToTreasury": 220000,
+      "expenses": 0,
+      "internalPurchaseSpend": 0,
+      "invested": 250000,
+      "miscExpense": 0,
+      "netCapital": 470000,
+      "profitWithdrawn": 4000,
+      "remaining": 336407.6,
+      "treasuryCapitalRemaining": 86407.6,
+      "treasuryCapitalSpend": 133592.4,
+      "treasuryCapitalWithdrawn": 0,
+      "withdrawn": 4000
+    }
+  },
+  "productReports": {
+    "Baby Blanket": {
+      "adjustments": [],
+      "orders": [
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 1220,
+          "customer": "Mahfuza Khatun",
+          "date": "2026-09-15",
+          "netProfit": 710,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 1930,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 2,
+          "variants": [
+            "Blue"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 1220,
+          "customer": "Mst. Rokeya Begum",
+          "date": "2026-09-09",
+          "netProfit": 730.3,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 1980,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 2,
+          "variants": [
+            "Pink",
+            "Blue"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 1220,
+          "customer": "Munira Begum",
+          "date": "2026-09-04",
+          "netProfit": 760,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 1980,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 2,
+          "variants": [
+            "Pink"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 1220,
+          "customer": "Nasrin Parvin",
+          "date": "2026-08-12",
+          "netProfit": 746.69,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 1980,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 2,
+          "variants": [
+            "Blue"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 1220,
+          "customer": "Rima Das",
+          "date": "2026-08-13",
+          "netProfit": 744.36,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 1980,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 2,
+          "variants": [
+            "Blue"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 1220,
+          "customer": "Rumana Haque",
+          "date": "2026-09-09",
+          "netProfit": 675.84,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 1920.9,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 2,
+          "variants": [
+            "Pink"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 1220,
+          "customer": "Shirin Akter",
+          "date": "2026-09-04",
+          "netProfit": 750,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 1980,
+          "source": null,
+          "status": "SHIPPED",
+          "units": 2,
+          "variants": [
+            "Blue",
+            "Pink"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 1220,
+          "customer": "Shirin Akter",
+          "date": "2026-09-05",
+          "netProfit": 760,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 1980,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 2,
+          "variants": [
+            "Pink"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 1830,
+          "customer": "Nusrat Jahan",
+          "date": "2026-08-02",
+          "netProfit": 1070.7,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 2920,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 3,
+          "variants": [
+            "Blue",
+            "Pink"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 610,
+          "customer": "Ayesha Siddika",
+          "date": "2026-09-11",
+          "netProfit": 374.38,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 990,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "Blue"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 610,
+          "customer": "Farhana Akter",
+          "date": "2026-08-12",
+          "netProfit": 380,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 990,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "Blue"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 610,
+          "customer": "Lamia Hossain",
+          "date": "2026-08-11",
+          "netProfit": 325.21,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 940,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "Blue"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 610,
+          "customer": "Lamia Hossain",
+          "date": "2026-08-15",
+          "netProfit": 386.67,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 990,
+          "source": null,
+          "status": "SHIPPED",
+          "units": 1,
+          "variants": [
+            "Pink"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 610,
+          "customer": "Maliha Chowdhury",
+          "date": "2026-08-07",
+          "netProfit": 373.88,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 990,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "Pink"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 610,
+          "customer": "Mst. Rokeya Begum",
+          "date": "2026-09-01",
+          "netProfit": 326.03,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 940,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "Pink"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 610,
+          "customer": "Popy Akter",
+          "date": "2026-08-21",
+          "netProfit": 370.1,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 990,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "Pink"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 610,
+          "customer": "Rima Das",
+          "date": "2026-09-02",
+          "netProfit": 373.49,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 990,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "Blue"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 610,
+          "customer": "Rumana Haque",
+          "date": "2026-08-28",
+          "netProfit": 380,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 990,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "Pink"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 610,
+          "customer": "Sabina Yasmin",
+          "date": "2026-09-06",
+          "netProfit": 372.34,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 990,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "Pink"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 610,
+          "customer": "Sadia Afrin",
+          "date": "2026-08-06",
+          "netProfit": 339.09,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 949.09,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "Blue"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 610,
+          "customer": "Tania Islam",
+          "date": "2026-08-05",
+          "netProfit": 318.24,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 937.62,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "Blue"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 610,
+          "customer": "Tania Islam",
+          "date": "2026-08-30",
+          "netProfit": 380,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 990,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "Pink"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 610,
+          "customer": "Tasnim Sultana",
+          "date": "2026-09-03",
+          "netProfit": 360.2,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 990,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "Pink"
+          ]
+        },
+        {
+          "cancelled": true,
+          "cancelledCost": 28.09,
+          "cogs": 0,
+          "customer": "Sumaiya Rahman",
+          "date": "2026-09-09",
+          "netProfit": 0,
+          "paymentStatus": "UNPAID",
+          "returned": 0,
+          "revenue": 0,
+          "source": null,
+          "status": "CANCELLED",
+          "units": 1,
+          "variants": [
+            "Pink"
+          ]
+        },
+        {
+          "cancelled": true,
+          "cancelledCost": 40,
+          "cogs": 0,
+          "customer": "Sadia Afrin",
+          "date": "2026-08-28",
+          "netProfit": 0,
+          "paymentStatus": "UNPAID",
+          "returned": 0,
+          "revenue": 0,
+          "source": null,
+          "status": "CANCELLED",
+          "units": 2,
+          "variants": [
+            "Blue"
+          ]
+        }
+      ],
+      "product": {
+        "barcode": null,
+        "category": "Clothing",
+        "imageUrl": null,
+        "lowStockThreshold": 5,
+        "name": "Baby Blanket",
+        "sku": null,
+        "unitsPerPack": null
+      },
+      "purchases": {
+        "quantity": 0,
+        "rows": [],
+        "spend": 0
+      },
+      "returns": [],
+      "series": [
+        {
+          "date": "2026-08-02",
+          "profit": 1070.7,
+          "revenue": 2920,
+          "units": 3
+        },
+        {
+          "date": "2026-08-05",
+          "profit": 318.24,
+          "revenue": 937.62,
+          "units": 1
+        },
+        {
+          "date": "2026-08-06",
+          "profit": 339.09,
+          "revenue": 949.09,
+          "units": 1
+        },
+        {
+          "date": "2026-08-07",
+          "profit": 373.88,
+          "revenue": 990,
+          "units": 1
+        },
+        {
+          "date": "2026-08-11",
+          "profit": 325.21,
+          "revenue": 940,
+          "units": 1
+        },
+        {
+          "date": "2026-08-12",
+          "profit": 1126.69,
+          "revenue": 2970,
+          "units": 3
+        },
+        {
+          "date": "2026-08-13",
+          "profit": 744.36,
+          "revenue": 1980,
+          "units": 2
+        },
+        {
+          "date": "2026-08-15",
+          "profit": 386.67,
+          "revenue": 990,
+          "units": 1
+        },
+        {
+          "date": "2026-08-21",
+          "profit": 370.1,
+          "revenue": 990,
+          "units": 1
+        },
+        {
+          "date": "2026-08-28",
+          "profit": 380,
+          "revenue": 990,
+          "units": 1
+        },
+        {
+          "date": "2026-08-30",
+          "profit": 380,
+          "revenue": 990,
+          "units": 1
+        },
+        {
+          "date": "2026-09-01",
+          "profit": 326.03,
+          "revenue": 940,
+          "units": 1
+        },
+        {
+          "date": "2026-09-02",
+          "profit": 373.49,
+          "revenue": 990,
+          "units": 1
+        },
+        {
+          "date": "2026-09-03",
+          "profit": 360.2,
+          "revenue": 990,
+          "units": 1
+        },
+        {
+          "date": "2026-09-04",
+          "profit": 1510,
+          "revenue": 3960,
+          "units": 4
+        },
+        {
+          "date": "2026-09-05",
+          "profit": 760,
+          "revenue": 1980,
+          "units": 2
+        },
+        {
+          "date": "2026-09-06",
+          "profit": 372.34,
+          "revenue": 990,
+          "units": 1
+        },
+        {
+          "date": "2026-09-09",
+          "profit": 1406.14,
+          "revenue": 3900.9,
+          "units": 4
+        },
+        {
+          "date": "2026-09-11",
+          "profit": 374.38,
+          "revenue": 990,
+          "units": 1
+        },
+        {
+          "date": "2026-09-15",
+          "profit": 710,
+          "revenue": 1930,
+          "units": 2
+        }
+      ],
+      "stock": {
+        "onHand": 70,
+        "value": 42700
+      },
+      "totals": {
+        "avgSellPrice": 979.32,
+        "avgUnitCost": 610,
+        "cancelledCost": 68.09,
+        "cancelledOrders": 2,
+        "cancelledUnits": 3,
+        "codFeeCost": 195.57,
+        "cogs": 20130,
+        "collectionShortfall": 0,
+        "deliveryMargin": 15.48,
+        "giftCost": 0,
+        "giftedCost": 0,
+        "giftedUnits": 0,
+        "grossMargin": 12187.61,
+        "marginPercent": 37.15,
+        "netProfit": 12007.51,
+        "netProfitAfterCancellations": 11939.43,
+        "orders": 23,
+        "packagingCost": 152.67,
+        "refunds": 0,
+        "revenue": 32317.61,
+        "unitsReturned": 0,
+        "unitsSold": 33
+      },
+      "variants": [
+        {
+          "cogs": 10370,
+          "grossMargin": 6350.9,
+          "label": "Pink",
+          "netProfit": 6258.65,
+          "revenue": 16720.9,
+          "salePrice": 990,
+          "sku": null,
+          "stock": 39,
+          "unitCost": 610,
+          "unitsReturned": 0,
+          "unitsSold": 17
+        },
+        {
+          "cogs": 9760,
+          "grossMargin": 5836.71,
+          "label": "Blue",
+          "netProfit": 5748.86,
+          "revenue": 15596.71,
+          "salePrice": 990,
+          "sku": null,
+          "stock": 31,
+          "unitCost": 610,
+          "unitsReturned": 0,
+          "unitsSold": 16
+        }
+      ]
+    },
+    "Baby Diaper Pants": {
+      "adjustments": [],
+      "orders": [
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 1080,
+          "customer": "Farhana Akter",
+          "date": "2026-09-12",
+          "netProfit": 370,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 1450,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "M (48 pcs)"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 1080,
+          "customer": "Mahfuza Khatun",
+          "date": "2026-09-15",
+          "netProfit": 370,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 1450,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "M (48 pcs)"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 1080,
+          "customer": "Mst. Rokeya Begum",
+          "date": "2026-09-01",
+          "netProfit": 363.87,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 1450,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "M (48 pcs)"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 1080,
+          "customer": "Munira Begum",
+          "date": "2026-08-19",
+          "netProfit": 349.23,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 1450,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "M (48 pcs)"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 1080,
+          "customer": "Popy Akter",
+          "date": "2026-08-24",
+          "netProfit": 355.5,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 1450,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "M (48 pcs)"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 1080,
+          "customer": "Sabina Yasmin",
+          "date": "2026-08-20",
+          "netProfit": 350.28,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 1450,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "M (48 pcs)"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 1080,
+          "customer": "Shirin Akter",
+          "date": "2026-09-05",
+          "netProfit": 370,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 1450,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "M (48 pcs)"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 1100,
+          "customer": "Nusrat Jahan",
+          "date": "2026-09-08",
+          "netProfit": 373.21,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 1480,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "L (44 pcs)"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 1100,
+          "customer": "Rima Das",
+          "date": "2026-08-13",
+          "netProfit": 368.31,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 1480,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "L (44 pcs)"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 1100,
+          "customer": "Rima Das",
+          "date": "2026-08-23",
+          "netProfit": 321.39,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 1430,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "L (44 pcs)"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 1100,
+          "customer": "Rumana Haque",
+          "date": "2026-08-15",
+          "netProfit": 380,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 1480,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "L (44 pcs)"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 1100,
+          "customer": "Sadia Afrin",
+          "date": "2026-08-03",
+          "netProfit": 310.98,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 1403.32,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "L (44 pcs)"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 2160,
+          "customer": "Ayesha Siddika",
+          "date": "2026-08-18",
+          "netProfit": 711,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 2900,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 2,
+          "variants": [
+            "M (48 pcs)"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 2160,
+          "customer": "Jannatul Ferdous",
+          "date": "2026-08-17",
+          "netProfit": 740,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 2900,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 2,
+          "variants": [
+            "M (48 pcs)"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 2160,
+          "customer": "Maliha Chowdhury",
+          "date": "2026-08-07",
+          "netProfit": 722.06,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 2900,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 2,
+          "variants": [
+            "M (48 pcs)"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 2160,
+          "customer": "Maliha Chowdhury",
+          "date": "2026-09-07",
+          "netProfit": 719.75,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 2900,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 2,
+          "variants": [
+            "M (48 pcs)"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 2160,
+          "customer": "Shirin Akter",
+          "date": "2026-09-10",
+          "netProfit": 675.61,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 2850,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 2,
+          "variants": [
+            "M (48 pcs)"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 2160,
+          "customer": "Tasnim Sultana",
+          "date": "2026-08-08",
+          "netProfit": 711,
+          "paymentStatus": "UNPAID",
+          "returned": 0,
+          "revenue": 2900,
+          "source": null,
+          "status": "SHIPPED",
+          "units": 2,
+          "variants": [
+            "M (48 pcs)"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 2180,
+          "customer": "Mahfuza Khatun",
+          "date": "2026-08-19",
+          "netProfit": 645.9,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 2846.05,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 2,
+          "variants": [
+            "M (48 pcs)",
+            "L (44 pcs)"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 2180,
+          "customer": "Sharmin Sultana",
+          "date": "2026-09-08",
+          "netProfit": 738.02,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 2930,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 2,
+          "variants": [
+            "M (48 pcs)",
+            "L (44 pcs)"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 2200,
+          "customer": "Lamia Hossain",
+          "date": "2026-08-24",
+          "netProfit": 746.41,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 2960,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 2,
+          "variants": [
+            "L (44 pcs)"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 2200,
+          "customer": "Munira Begum",
+          "date": "2026-08-25",
+          "netProfit": 740.3,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 2960,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 2,
+          "variants": [
+            "L (44 pcs)"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 2200,
+          "customer": "Rima Das",
+          "date": "2026-08-04",
+          "netProfit": 741.13,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 2960,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 2,
+          "variants": [
+            "L (44 pcs)"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 2200,
+          "customer": "Sabina Yasmin",
+          "date": "2026-09-06",
+          "netProfit": 737.11,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 2960,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 2,
+          "variants": [
+            "L (44 pcs)"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 2200,
+          "customer": "Sadia Afrin",
+          "date": "2026-09-07",
+          "netProfit": 780,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 2960,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 2,
+          "variants": [
+            "L (44 pcs)"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 2200,
+          "customer": "Tasnim Sultana",
+          "date": "2026-08-20",
+          "netProfit": 750.86,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 2960,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 2,
+          "variants": [
+            "L (44 pcs)"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 3280,
+          "customer": "Jannatul Ferdous",
+          "date": "2026-08-31",
+          "netProfit": 1056.2,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 4360,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 3,
+          "variants": [
+            "M (48 pcs)",
+            "L (44 pcs)"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 4360,
+          "customer": "Ayesha Siddika",
+          "date": "2026-08-20",
+          "netProfit": 1441.4,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 5860,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 4,
+          "variants": [
+            "M (48 pcs)",
+            "L (44 pcs)"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 4360,
+          "customer": "Nasrin Parvin",
+          "date": "2026-08-27",
+          "netProfit": 1520,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 5860,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 4,
+          "variants": [
+            "M (48 pcs)",
+            "L (44 pcs)"
+          ]
+        },
+        {
+          "cancelled": true,
+          "cancelledCost": 25.3,
+          "cogs": 0,
+          "customer": "Lamia Hossain",
+          "date": "2026-08-21",
+          "netProfit": 0,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 0,
+          "source": null,
+          "status": "CANCELLED",
+          "units": 2,
+          "variants": [
+            "L (44 pcs)"
+          ]
+        },
+        {
+          "cancelled": true,
+          "cancelledCost": 27.22,
+          "cogs": 0,
+          "customer": "Mahfuza Khatun",
+          "date": "2026-08-08",
+          "netProfit": 0,
+          "paymentStatus": "UNPAID",
+          "returned": 0,
+          "revenue": 0,
+          "source": null,
+          "status": "CANCELLED",
+          "units": 2,
+          "variants": [
+            "L (44 pcs)"
+          ]
+        },
+        {
+          "cancelled": true,
+          "cancelledCost": 34.67,
+          "cogs": 0,
+          "customer": "Munira Begum",
+          "date": "2026-09-03",
+          "netProfit": 0,
+          "paymentStatus": "UNPAID",
+          "returned": 0,
+          "revenue": 0,
+          "source": null,
+          "status": "CANCELLED",
+          "units": 4,
+          "variants": [
+            "M (48 pcs)",
+            "L (44 pcs)"
+          ]
+        },
+        {
+          "cancelled": true,
+          "cancelledCost": 40,
+          "cogs": 0,
+          "customer": "Munira Begum",
+          "date": "2026-08-10",
+          "netProfit": 0,
+          "paymentStatus": "UNPAID",
+          "returned": 0,
+          "revenue": 0,
+          "source": null,
+          "status": "CANCELLED",
+          "units": 1,
+          "variants": [
+            "M (48 pcs)"
+          ]
+        },
+        {
+          "cancelled": true,
+          "cancelledCost": 40,
+          "cogs": 0,
+          "customer": "Sumaiya Rahman",
+          "date": "2026-09-15",
+          "netProfit": 0,
+          "paymentStatus": "UNPAID",
+          "returned": 0,
+          "revenue": 0,
+          "source": null,
+          "status": "CANCELLED",
+          "units": 1,
+          "variants": [
+            "L (44 pcs)"
+          ]
+        }
+      ],
+      "product": {
+        "barcode": null,
+        "category": "Diapers",
+        "imageUrl": null,
+        "lowStockThreshold": 5,
+        "name": "Baby Diaper Pants",
+        "sku": null,
+        "unitsPerPack": null
+      },
+      "purchases": {
+        "quantity": 0,
+        "rows": [],
+        "spend": 0
+      },
+      "returns": [],
+      "series": [
+        {
+          "date": "2026-08-03",
+          "profit": 310.98,
+          "revenue": 1403.32,
+          "units": 1
+        },
+        {
+          "date": "2026-08-04",
+          "profit": 741.13,
+          "revenue": 2960,
+          "units": 2
+        },
+        {
+          "date": "2026-08-07",
+          "profit": 722.06,
+          "revenue": 2900,
+          "units": 2
+        },
+        {
+          "date": "2026-08-08",
+          "profit": 711,
+          "revenue": 2900,
+          "units": 2
+        },
+        {
+          "date": "2026-08-13",
+          "profit": 368.31,
+          "revenue": 1480,
+          "units": 1
+        },
+        {
+          "date": "2026-08-15",
+          "profit": 380,
+          "revenue": 1480,
+          "units": 1
+        },
+        {
+          "date": "2026-08-17",
+          "profit": 740,
+          "revenue": 2900,
+          "units": 2
+        },
+        {
+          "date": "2026-08-18",
+          "profit": 711,
+          "revenue": 2900,
+          "units": 2
+        },
+        {
+          "date": "2026-08-19",
+          "profit": 995.13,
+          "revenue": 4296.05,
+          "units": 3
+        },
+        {
+          "date": "2026-08-20",
+          "profit": 2542.54,
+          "revenue": 10270,
+          "units": 7
+        },
+        {
+          "date": "2026-08-23",
+          "profit": 321.39,
+          "revenue": 1430,
+          "units": 1
+        },
+        {
+          "date": "2026-08-24",
+          "profit": 1101.91,
+          "revenue": 4410,
+          "units": 3
+        },
+        {
+          "date": "2026-08-25",
+          "profit": 740.3,
+          "revenue": 2960,
+          "units": 2
+        },
+        {
+          "date": "2026-08-27",
+          "profit": 1520,
+          "revenue": 5860,
+          "units": 4
+        },
+        {
+          "date": "2026-08-31",
+          "profit": 1056.2,
+          "revenue": 4360,
+          "units": 3
+        },
+        {
+          "date": "2026-09-01",
+          "profit": 363.87,
+          "revenue": 1450,
+          "units": 1
+        },
+        {
+          "date": "2026-09-05",
+          "profit": 370,
+          "revenue": 1450,
+          "units": 1
+        },
+        {
+          "date": "2026-09-06",
+          "profit": 737.11,
+          "revenue": 2960,
+          "units": 2
+        },
+        {
+          "date": "2026-09-07",
+          "profit": 1499.75,
+          "revenue": 5860,
+          "units": 4
+        },
+        {
+          "date": "2026-09-08",
+          "profit": 1111.22,
+          "revenue": 4410,
+          "units": 3
+        },
+        {
+          "date": "2026-09-10",
+          "profit": 675.61,
+          "revenue": 2850,
+          "units": 2
+        },
+        {
+          "date": "2026-09-12",
+          "profit": 370,
+          "revenue": 1450,
+          "units": 1
+        },
+        {
+          "date": "2026-09-15",
+          "profit": 370,
+          "revenue": 1450,
+          "units": 1
+        }
+      ],
+      "stock": {
+        "onHand": 54,
+        "value": 58860
+      },
+      "totals": {
+        "avgSellPrice": 1458.61,
+        "avgUnitCost": 1089.8,
+        "cancelledCost": 167.19,
+        "cancelledOrders": 5,
+        "cancelledUnits": 10,
+        "codFeeCost": 511.78,
+        "cogs": 55580,
+        "collectionShortfall": 0,
+        "deliveryMargin": 161.94,
+        "giftCost": 0,
+        "giftedCost": 0,
+        "giftedUnits": 0,
+        "grossMargin": 18809.36,
+        "marginPercent": 24.81,
+        "netProfit": 18459.52,
+        "netProfitAfterCancellations": 18292.33,
+        "orders": 29,
+        "packagingCost": 257.63,
+        "refunds": 0,
+        "revenue": 74389.36,
+        "unitsReturned": 0,
+        "unitsSold": 51
+      },
+      "variants": [
+        {
+          "cogs": 27500,
+          "grossMargin": 9330.91,
+          "label": "L (44 pcs)",
+          "netProfit": 9195.41,
+          "revenue": 36830.91,
+          "salePrice": 1480,
+          "sku": null,
+          "stock": 27,
+          "unitCost": 1100,
+          "unitsReturned": 0,
+          "unitsSold": 25
+        },
+        {
+          "cogs": 28080,
+          "grossMargin": 9478.45,
+          "label": "M (48 pcs)",
+          "netProfit": 9264.11,
+          "revenue": 37558.45,
+          "salePrice": 1450,
+          "sku": null,
+          "stock": 27,
+          "unitCost": 1080,
+          "unitsReturned": 0,
+          "unitsSold": 26
+        }
+      ]
+    },
+    "Baby Lotion": {
+      "adjustments": [],
+      "orders": [
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 0,
+          "customer": "Sharmin Sultana",
+          "date": "2026-09-11",
+          "netProfit": 20,
+          "paymentStatus": "PAID",
+          "returned": 1,
+          "revenue": 0,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 0,
+          "variants": [
+            "200ml"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 1040,
+          "customer": "Mahfuza Khatun",
+          "date": "2026-08-14",
+          "netProfit": 474.75,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 1510,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 2,
+          "variants": [
+            "400ml"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 1040,
+          "customer": "Mahfuza Khatun",
+          "date": "2026-09-15",
+          "netProfit": 520,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 1560,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 2,
+          "variants": [
+            "400ml"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 1040,
+          "customer": "Sadia Afrin",
+          "date": "2026-08-19",
+          "netProfit": 424.79,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 1479.59,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 2,
+          "variants": [
+            "400ml"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 1040,
+          "customer": "Sadia Afrin",
+          "date": "2026-09-13",
+          "netProfit": 504.4,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 1560,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 2,
+          "variants": [
+            "400ml"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 290,
+          "customer": "Rumana Haque",
+          "date": "2026-08-15",
+          "netProfit": 160,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 450,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "200ml"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 290,
+          "customer": "Sadia Afrin",
+          "date": "2026-08-03",
+          "netProfit": 139.02,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 426.68,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "200ml"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 520,
+          "customer": "Farhana Akter",
+          "date": "2026-08-22",
+          "netProfit": 215.65,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 733.85,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "400ml"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 520,
+          "customer": "Lamia Hossain",
+          "date": "2026-08-15",
+          "netProfit": 214.92,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 730,
+          "source": null,
+          "status": "SHIPPED",
+          "units": 1,
+          "variants": [
+            "400ml"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 520,
+          "customer": "Rima Das",
+          "date": "2026-08-15",
+          "netProfit": 260,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 780,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "400ml"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 520,
+          "customer": "Rima Das",
+          "date": "2026-08-25",
+          "netProfit": 242.3,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 780,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "400ml"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 520,
+          "customer": "Sabina Yasmin",
+          "date": "2026-08-20",
+          "netProfit": 249.39,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 780,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "400ml"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 520,
+          "customer": "Sadia Afrin",
+          "date": "2026-08-06",
+          "netProfit": 227.77,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 747.77,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "400ml"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 580,
+          "customer": "Rumana Haque",
+          "date": "2026-09-09",
+          "netProfit": 233.87,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 824.63,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 2,
+          "variants": [
+            "200ml"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 580,
+          "customer": "Shirin Akter",
+          "date": "2026-09-10",
+          "netProfit": 265.71,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 850,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 2,
+          "variants": [
+            "200ml"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 580,
+          "customer": "Tania Islam",
+          "date": "2026-08-05",
+          "netProfit": 263.86,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 852.38,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 2,
+          "variants": [
+            "200ml"
+          ]
+        },
+        {
+          "cancelled": true,
+          "cancelledCost": 13.24,
+          "cogs": 0,
+          "customer": "Nasrin Parvin",
+          "date": "2026-08-16",
+          "netProfit": 0,
+          "paymentStatus": "UNPAID",
+          "returned": 0,
+          "revenue": 0,
+          "source": null,
+          "status": "CANCELLED",
+          "units": 1,
+          "variants": [
+            "200ml"
+          ]
+        },
+        {
+          "cancelled": true,
+          "cancelledCost": 27.61,
+          "cogs": 0,
+          "customer": "Sharmin Sultana",
+          "date": "2026-08-21",
+          "netProfit": 0,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 0,
+          "source": null,
+          "status": "CANCELLED",
+          "units": 1,
+          "variants": [
+            "400ml"
+          ]
+        },
+        {
+          "cancelled": true,
+          "cancelledCost": 5.33,
+          "cogs": 0,
+          "customer": "Munira Begum",
+          "date": "2026-09-03",
+          "netProfit": 0,
+          "paymentStatus": "UNPAID",
+          "returned": 0,
+          "revenue": 0,
+          "source": null,
+          "status": "CANCELLED",
+          "units": 2,
+          "variants": [
+            "200ml"
+          ]
+        }
+      ],
+      "product": {
+        "barcode": null,
+        "category": "Skin care",
+        "imageUrl": null,
+        "lowStockThreshold": 5,
+        "name": "Baby Lotion",
+        "sku": null,
+        "unitsPerPack": null
+      },
+      "purchases": {
+        "quantity": 0,
+        "rows": [],
+        "spend": 0
+      },
+      "returns": [
+        {
+          "date": "2026-10-10",
+          "quantity": 1,
+          "reason": "Size / quality",
+          "refundAmount": 450,
+          "variant": "200ml"
+        }
+      ],
+      "series": [
+        {
+          "date": "2026-08-03",
+          "profit": 139.02,
+          "revenue": 426.68,
+          "units": 1
+        },
+        {
+          "date": "2026-08-05",
+          "profit": 263.86,
+          "revenue": 852.38,
+          "units": 2
+        },
+        {
+          "date": "2026-08-06",
+          "profit": 227.77,
+          "revenue": 747.77,
+          "units": 1
+        },
+        {
+          "date": "2026-08-14",
+          "profit": 474.75,
+          "revenue": 1510,
+          "units": 2
+        },
+        {
+          "date": "2026-08-15",
+          "profit": 634.92,
+          "revenue": 1960,
+          "units": 3
+        },
+        {
+          "date": "2026-08-19",
+          "profit": 424.79,
+          "revenue": 1479.59,
+          "units": 2
+        },
+        {
+          "date": "2026-08-20",
+          "profit": 249.39,
+          "revenue": 780,
+          "units": 1
+        },
+        {
+          "date": "2026-08-22",
+          "profit": 215.65,
+          "revenue": 733.85,
+          "units": 1
+        },
+        {
+          "date": "2026-08-25",
+          "profit": 242.3,
+          "revenue": 780,
+          "units": 1
+        },
+        {
+          "date": "2026-09-09",
+          "profit": 233.87,
+          "revenue": 824.63,
+          "units": 2
+        },
+        {
+          "date": "2026-09-10",
+          "profit": 265.71,
+          "revenue": 850,
+          "units": 2
+        },
+        {
+          "date": "2026-09-11",
+          "profit": 20,
+          "revenue": 0,
+          "units": 0
+        },
+        {
+          "date": "2026-09-13",
+          "profit": 504.4,
+          "revenue": 1560,
+          "units": 2
+        },
+        {
+          "date": "2026-09-15",
+          "profit": 520,
+          "revenue": 1560,
+          "units": 2
+        }
+      ],
+      "stock": {
+        "onHand": 82,
+        "value": 32290
+      },
+      "totals": {
+        "avgSellPrice": 639.31,
+        "avgUnitCost": 436.36,
+        "cancelledCost": 46.17,
+        "cancelledOrders": 3,
+        "cancelledUnits": 4,
+        "codFeeCost": 78.59,
+        "cogs": 9600,
+        "collectionShortfall": 0,
+        "deliveryMargin": 30.1,
+        "giftCost": 0,
+        "giftedCost": 0,
+        "giftedUnits": 0,
+        "grossMargin": 4464.89,
+        "marginPercent": 31.4,
+        "netProfit": 4416.41,
+        "netProfitAfterCancellations": 4370.24,
+        "orders": 16,
+        "packagingCost": 93.73,
+        "refunds": 450,
+        "revenue": 14064.89,
+        "unitsReturned": 1,
+        "unitsSold": 22
+      },
+      "variants": [
+        {
+          "cogs": 2320,
+          "grossMargin": 1083.69,
+          "label": "200ml",
+          "netProfit": 1082.45,
+          "revenue": 3403.69,
+          "salePrice": 450,
+          "sku": null,
+          "stock": 45,
+          "unitCost": 290,
+          "unitsReturned": 1,
+          "unitsSold": 8
+        },
+        {
+          "cogs": 7280,
+          "grossMargin": 3381.2,
+          "label": "400ml",
+          "netProfit": 3333.96,
+          "revenue": 10661.2,
+          "salePrice": 780,
+          "sku": null,
+          "stock": 37,
+          "unitCost": 520,
+          "unitsReturned": 0,
+          "unitsSold": 14
+        }
+      ]
+    },
+    "Baby Shampoo": {
+      "adjustments": [],
+      "orders": [
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 0,
+          "customer": "Tasnim Sultana",
+          "date": "2026-08-20",
+          "netProfit": 0,
+          "paymentStatus": "PAID",
+          "returned": 1,
+          "revenue": 0,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 0,
+          "variants": [
+            "200ml"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 240,
+          "customer": "Farhana Akter",
+          "date": "2026-09-12",
+          "netProfit": 140,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 380,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "200ml"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 240,
+          "customer": "Lamia Hossain",
+          "date": "2026-08-11",
+          "netProfit": 138.06,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 380,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "200ml"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 240,
+          "customer": "Maliha Chowdhury",
+          "date": "2026-09-07",
+          "netProfit": 137.35,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 380,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "200ml"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 240,
+          "customer": "Popy Akter",
+          "date": "2026-08-24",
+          "netProfit": 136.2,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 380,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "200ml"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 240,
+          "customer": "Sadia Afrin",
+          "date": "2026-08-19",
+          "netProfit": 116.81,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 360.41,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "200ml"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 240,
+          "customer": "Shirin Akter",
+          "date": "2026-08-28",
+          "netProfit": 96.6,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 330,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "200ml"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 240,
+          "customer": "Tasnim Sultana",
+          "date": "2026-09-12",
+          "netProfit": 136.2,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 380,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "200ml"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 480,
+          "customer": "Munira Begum",
+          "date": "2026-09-04",
+          "netProfit": 280,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 760,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 2,
+          "variants": [
+            "200ml"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 480,
+          "customer": "Rumana Haque",
+          "date": "2026-08-07",
+          "netProfit": 214.52,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 686.92,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 2,
+          "variants": [
+            "200ml"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 480,
+          "customer": "Sadia Afrin",
+          "date": "2026-09-13",
+          "netProfit": 272.4,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 760,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 2,
+          "variants": [
+            "200ml"
+          ]
+        }
+      ],
+      "product": {
+        "barcode": null,
+        "category": "Skin care",
+        "imageUrl": null,
+        "lowStockThreshold": 5,
+        "name": "Baby Shampoo",
+        "sku": null,
+        "unitsPerPack": null
+      },
+      "purchases": {
+        "quantity": 0,
+        "rows": [],
+        "spend": 0
+      },
+      "returns": [
+        {
+          "date": "2026-10-10",
+          "quantity": 1,
+          "reason": "Size / quality",
+          "refundAmount": 380,
+          "variant": "200ml"
+        }
+      ],
+      "series": [
+        {
+          "date": "2026-08-07",
+          "profit": 214.52,
+          "revenue": 686.92,
+          "units": 2
+        },
+        {
+          "date": "2026-08-11",
+          "profit": 138.06,
+          "revenue": 380,
+          "units": 1
+        },
+        {
+          "date": "2026-08-19",
+          "profit": 116.81,
+          "revenue": 360.41,
+          "units": 1
+        },
+        {
+          "date": "2026-08-20",
+          "profit": 0,
+          "revenue": 0,
+          "units": 0
+        },
+        {
+          "date": "2026-08-24",
+          "profit": 136.2,
+          "revenue": 380,
+          "units": 1
+        },
+        {
+          "date": "2026-08-28",
+          "profit": 96.6,
+          "revenue": 330,
+          "units": 1
+        },
+        {
+          "date": "2026-09-04",
+          "profit": 280,
+          "revenue": 760,
+          "units": 2
+        },
+        {
+          "date": "2026-09-07",
+          "profit": 137.35,
+          "revenue": 380,
+          "units": 1
+        },
+        {
+          "date": "2026-09-12",
+          "profit": 276.2,
+          "revenue": 760,
+          "units": 2
+        },
+        {
+          "date": "2026-09-13",
+          "profit": 272.4,
+          "revenue": 760,
+          "units": 2
+        }
+      ],
+      "stock": {
+        "onHand": 37,
+        "value": 8880
+      },
+      "totals": {
+        "avgSellPrice": 369.03,
+        "avgUnitCost": 240,
+        "cancelledCost": 0,
+        "cancelledOrders": 0,
+        "cancelledUnits": 0,
+        "codFeeCost": 36.85,
+        "cogs": 3120,
+        "collectionShortfall": 0,
+        "deliveryMargin": 27.66,
+        "giftCost": 0,
+        "giftedCost": 0,
+        "giftedUnits": 0,
+        "grossMargin": 1677.34,
+        "marginPercent": 34.77,
+        "netProfit": 1668.14,
+        "netProfitAfterCancellations": 1668.14,
+        "orders": 11,
+        "packagingCost": 42.02,
+        "refunds": 380,
+        "revenue": 4797.34,
+        "unitsReturned": 1,
+        "unitsSold": 13
+      },
+      "variants": [
+        {
+          "cogs": 3120,
+          "grossMargin": 1677.34,
+          "label": "200ml",
+          "netProfit": 1668.14,
+          "revenue": 4797.34,
+          "salePrice": 380,
+          "sku": null,
+          "stock": 37,
+          "unitCost": 240,
+          "unitsReturned": 1,
+          "unitsSold": 13
+        }
+      ]
+    },
+    "Baby Wipes": {
+      "adjustments": [],
+      "orders": [
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 170,
+          "customer": "Lamia Hossain",
+          "date": "2026-08-22",
+          "netProfit": 111.16,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 280,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "80 pcs"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 170,
+          "customer": "Mst. Rokeya Begum",
+          "date": "2026-08-01",
+          "netProfit": 60,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 230,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "80 pcs"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 170,
+          "customer": "Munira Begum",
+          "date": "2026-08-29",
+          "netProfit": 110,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 280,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "80 pcs"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 170,
+          "customer": "Nusrat Jahan",
+          "date": "2026-08-09",
+          "netProfit": 127,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 280,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "80 pcs"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 170,
+          "customer": "Rima Das",
+          "date": "2026-08-23",
+          "netProfit": 58.61,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 230,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "80 pcs"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 170,
+          "customer": "Rumana Haque",
+          "date": "2026-08-07",
+          "netProfit": 85.88,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 253.08,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "80 pcs"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 170,
+          "customer": "Sumaiya Rahman",
+          "date": "2026-08-30",
+          "netProfit": 116.76,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 280,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "80 pcs"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 170,
+          "customer": "Tasnim Sultana",
+          "date": "2026-08-20",
+          "netProfit": 109.14,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 280,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "80 pcs"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 340,
+          "customer": "Farhana Akter",
+          "date": "2026-08-22",
+          "netProfit": 188.16,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 526.86,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 2,
+          "variants": [
+            "80 pcs"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 340,
+          "customer": "Mahfuza Khatun",
+          "date": "2026-08-19",
+          "netProfit": 200.1,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 543.95,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 2,
+          "variants": [
+            "80 pcs"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 340,
+          "customer": "Mst. Rokeya Begum",
+          "date": "2026-08-08",
+          "netProfit": 224.3,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 560,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 2,
+          "variants": [
+            "80 pcs"
+          ]
+        },
+        {
+          "cancelled": true,
+          "cancelledCost": 16.47,
+          "cogs": 0,
+          "customer": "Nasrin Parvin",
+          "date": "2026-08-16",
+          "netProfit": 0,
+          "paymentStatus": "UNPAID",
+          "returned": 0,
+          "revenue": 0,
+          "source": null,
+          "status": "CANCELLED",
+          "units": 2,
+          "variants": [
+            "80 pcs"
+          ]
+        },
+        {
+          "cancelled": true,
+          "cancelledCost": 8.48,
+          "cogs": 0,
+          "customer": "Tasnim Sultana",
+          "date": "2026-08-29",
+          "netProfit": 0,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 0,
+          "source": null,
+          "status": "CANCELLED",
+          "units": 1,
+          "variants": [
+            "80 pcs"
+          ]
+        }
+      ],
+      "product": {
+        "barcode": null,
+        "category": "Hygiene",
+        "imageUrl": null,
+        "lowStockThreshold": 5,
+        "name": "Baby Wipes",
+        "sku": null,
+        "unitsPerPack": null
+      },
+      "purchases": {
+        "quantity": 0,
+        "rows": [],
+        "spend": 0
+      },
+      "returns": [],
+      "series": [
+        {
+          "date": "2026-08-01",
+          "profit": 60,
+          "revenue": 230,
+          "units": 1
+        },
+        {
+          "date": "2026-08-07",
+          "profit": 85.88,
+          "revenue": 253.08,
+          "units": 1
+        },
+        {
+          "date": "2026-08-08",
+          "profit": 224.3,
+          "revenue": 560,
+          "units": 2
+        },
+        {
+          "date": "2026-08-09",
+          "profit": 127,
+          "revenue": 280,
+          "units": 1
+        },
+        {
+          "date": "2026-08-19",
+          "profit": 200.1,
+          "revenue": 543.95,
+          "units": 2
+        },
+        {
+          "date": "2026-08-20",
+          "profit": 109.14,
+          "revenue": 280,
+          "units": 1
+        },
+        {
+          "date": "2026-08-22",
+          "profit": 299.32,
+          "revenue": 806.86,
+          "units": 3
+        },
+        {
+          "date": "2026-08-23",
+          "profit": 58.61,
+          "revenue": 230,
+          "units": 1
+        },
+        {
+          "date": "2026-08-29",
+          "profit": 110,
+          "revenue": 280,
+          "units": 1
+        },
+        {
+          "date": "2026-08-30",
+          "profit": 116.76,
+          "revenue": 280,
+          "units": 1
+        }
+      ],
+      "stock": {
+        "onHand": 35,
+        "value": 5950
+      },
+      "totals": {
+        "avgSellPrice": 267.42,
+        "avgUnitCost": 170,
+        "cancelledCost": 24.96,
+        "cancelledOrders": 2,
+        "cancelledUnits": 3,
+        "codFeeCost": 27.81,
+        "cogs": 2380,
+        "collectionShortfall": 0,
+        "deliveryMargin": 55.02,
+        "giftCost": 0,
+        "giftedCost": 0,
+        "giftedUnits": 0,
+        "grossMargin": 1363.89,
+        "marginPercent": 37.16,
+        "netProfit": 1391.11,
+        "netProfitAfterCancellations": 1366.15,
+        "orders": 11,
+        "packagingCost": 53.22,
+        "refunds": 0,
+        "revenue": 3743.89,
+        "unitsReturned": 0,
+        "unitsSold": 14
+      },
+      "variants": [
+        {
+          "cogs": 2380,
+          "grossMargin": 1363.89,
+          "label": "80 pcs",
+          "netProfit": 1391.11,
+          "revenue": 3743.89,
+          "salePrice": 280,
+          "sku": null,
+          "stock": 35,
+          "unitCost": 170,
+          "unitsReturned": 0,
+          "unitsSold": 14
+        }
+      ]
+    },
+    "Feeding Bottle": {
+      "adjustments": [],
+      "orders": [
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 1180,
+          "customer": "Rumana Haque",
+          "date": "2026-08-05",
+          "netProfit": 650,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 1830,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 4,
+          "variants": [
+            "150ml",
+            "250ml"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 260,
+          "customer": "Lamia Hossain",
+          "date": "2026-08-22",
+          "netProfit": 161.74,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 420,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "150ml"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 260,
+          "customer": "Mahfuza Khatun",
+          "date": "2026-08-14",
+          "netProfit": 161.32,
+          "paymentStatus": "PAID",
+          "returned": 1,
+          "revenue": 420,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "150ml"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 260,
+          "customer": "Mst. Rokeya Begum",
+          "date": "2026-08-01",
+          "netProfit": 160,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 420,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "150ml"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 260,
+          "customer": "Sabina Yasmin",
+          "date": "2026-09-06",
+          "netProfit": 156.75,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 420,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "150ml"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 260,
+          "customer": "Sharmin Sultana",
+          "date": "2026-09-08",
+          "netProfit": 158.28,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 420,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "150ml"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 260,
+          "customer": "Sumaiya Rahman",
+          "date": "2026-08-18",
+          "netProfit": 158.56,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 420,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "150ml"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 330,
+          "customer": "Rima Das",
+          "date": "2026-09-05",
+          "netProfit": 172.3,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 520,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "250ml"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 330,
+          "customer": "Rumana Haque",
+          "date": "2026-09-09",
+          "netProfit": 167.9,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 504.48,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "250ml"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 330,
+          "customer": "Sabina Yasmin",
+          "date": "2026-08-20",
+          "netProfit": 182.93,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 520,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "250ml"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 330,
+          "customer": "Tasnim Sultana",
+          "date": "2026-09-12",
+          "netProfit": 184.8,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 520,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "250ml"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 520,
+          "customer": "Maliha Chowdhury",
+          "date": "2026-08-23",
+          "netProfit": 321.5,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 840,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 2,
+          "variants": [
+            "150ml"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 520,
+          "customer": "Munira Begum",
+          "date": "2026-08-19",
+          "netProfit": 307.97,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 840,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 2,
+          "variants": [
+            "150ml"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 520,
+          "customer": "Nasrin Parvin",
+          "date": "2026-08-26",
+          "netProfit": 320,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 840,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 2,
+          "variants": [
+            "150ml"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 520,
+          "customer": "Popy Akter",
+          "date": "2026-08-21",
+          "netProfit": 311.6,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 840,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 2,
+          "variants": [
+            "150ml"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 520,
+          "customer": "Sadia Afrin",
+          "date": "2026-09-13",
+          "netProfit": 311.6,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 840,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 2,
+          "variants": [
+            "150ml"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 660,
+          "customer": "Ayesha Siddika",
+          "date": "2026-08-18",
+          "netProfit": 369.6,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 1040,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 2,
+          "variants": [
+            "250ml"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 660,
+          "customer": "Mst. Rokeya Begum",
+          "date": "2026-09-01",
+          "netProfit": 375.6,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 1040,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 2,
+          "variants": [
+            "250ml"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 660,
+          "customer": "Munira Begum",
+          "date": "2026-08-29",
+          "netProfit": 380,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 1040,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 2,
+          "variants": [
+            "250ml"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 660,
+          "customer": "Nasrin Parvin",
+          "date": "2026-08-12",
+          "netProfit": 373.01,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 1040,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 2,
+          "variants": [
+            "250ml"
+          ]
+        },
+        {
+          "cancelled": true,
+          "cancelledCost": 11.91,
+          "cogs": 0,
+          "customer": "Sumaiya Rahman",
+          "date": "2026-09-09",
+          "netProfit": 0,
+          "paymentStatus": "UNPAID",
+          "returned": 0,
+          "revenue": 0,
+          "source": null,
+          "status": "CANCELLED",
+          "units": 1,
+          "variants": [
+            "150ml"
+          ]
+        },
+        {
+          "cancelled": true,
+          "cancelledCost": 3.59,
+          "cogs": 0,
+          "customer": "Lamia Hossain",
+          "date": "2026-08-21",
+          "netProfit": 0,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 0,
+          "source": null,
+          "status": "CANCELLED",
+          "units": 1,
+          "variants": [
+            "150ml"
+          ]
+        },
+        {
+          "cancelled": true,
+          "cancelledCost": 31.52,
+          "cogs": 0,
+          "customer": "Tasnim Sultana",
+          "date": "2026-08-29",
+          "netProfit": 0,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 0,
+          "source": null,
+          "status": "CANCELLED",
+          "units": 2,
+          "variants": [
+            "250ml"
+          ]
+        },
+        {
+          "cancelled": true,
+          "cancelledCost": 40,
+          "cogs": 0,
+          "customer": "Lamia Hossain",
+          "date": "2026-08-31",
+          "netProfit": 0,
+          "paymentStatus": "UNPAID",
+          "returned": 0,
+          "revenue": 0,
+          "source": null,
+          "status": "CANCELLED",
+          "units": 2,
+          "variants": [
+            "250ml"
+          ]
+        },
+        {
+          "cancelled": true,
+          "cancelledCost": 5.67,
+          "cogs": 0,
+          "customer": "Popy Akter",
+          "date": "2026-08-17",
+          "netProfit": 0,
+          "paymentStatus": "UNPAID",
+          "returned": 0,
+          "revenue": 0,
+          "source": null,
+          "status": "CANCELLED",
+          "units": 1,
+          "variants": [
+            "250ml"
+          ]
+        },
+        {
+          "cancelled": true,
+          "cancelledCost": 9.56,
+          "cogs": 0,
+          "customer": "Mahfuza Khatun",
+          "date": "2026-08-08",
+          "netProfit": 0,
+          "paymentStatus": "UNPAID",
+          "returned": 0,
+          "revenue": 0,
+          "source": null,
+          "status": "CANCELLED",
+          "units": 2,
+          "variants": [
+            "250ml"
+          ]
+        }
+      ],
+      "product": {
+        "barcode": null,
+        "category": "Feeding",
+        "imageUrl": null,
+        "lowStockThreshold": 5,
+        "name": "Feeding Bottle",
+        "sku": null,
+        "unitsPerPack": null
+      },
+      "purchases": {
+        "quantity": 0,
+        "rows": [],
+        "spend": 0
+      },
+      "returns": [
+        {
+          "date": "2026-10-10",
+          "quantity": 1,
+          "reason": "Size / quality",
+          "refundAmount": 420,
+          "variant": "150ml"
+        }
+      ],
+      "series": [
+        {
+          "date": "2026-08-01",
+          "profit": 160,
+          "revenue": 420,
+          "units": 1
+        },
+        {
+          "date": "2026-08-05",
+          "profit": 650,
+          "revenue": 1830,
+          "units": 4
+        },
+        {
+          "date": "2026-08-12",
+          "profit": 373.01,
+          "revenue": 1040,
+          "units": 2
+        },
+        {
+          "date": "2026-08-14",
+          "profit": 161.32,
+          "revenue": 420,
+          "units": 1
+        },
+        {
+          "date": "2026-08-18",
+          "profit": 528.16,
+          "revenue": 1460,
+          "units": 3
+        },
+        {
+          "date": "2026-08-19",
+          "profit": 307.97,
+          "revenue": 840,
+          "units": 2
+        },
+        {
+          "date": "2026-08-20",
+          "profit": 182.93,
+          "revenue": 520,
+          "units": 1
+        },
+        {
+          "date": "2026-08-21",
+          "profit": 311.6,
+          "revenue": 840,
+          "units": 2
+        },
+        {
+          "date": "2026-08-22",
+          "profit": 161.74,
+          "revenue": 420,
+          "units": 1
+        },
+        {
+          "date": "2026-08-23",
+          "profit": 321.5,
+          "revenue": 840,
+          "units": 2
+        },
+        {
+          "date": "2026-08-26",
+          "profit": 320,
+          "revenue": 840,
+          "units": 2
+        },
+        {
+          "date": "2026-08-29",
+          "profit": 380,
+          "revenue": 1040,
+          "units": 2
+        },
+        {
+          "date": "2026-09-01",
+          "profit": 375.6,
+          "revenue": 1040,
+          "units": 2
+        },
+        {
+          "date": "2026-09-05",
+          "profit": 172.3,
+          "revenue": 520,
+          "units": 1
+        },
+        {
+          "date": "2026-09-06",
+          "profit": 156.75,
+          "revenue": 420,
+          "units": 1
+        },
+        {
+          "date": "2026-09-08",
+          "profit": 158.28,
+          "revenue": 420,
+          "units": 1
+        },
+        {
+          "date": "2026-09-09",
+          "profit": 167.9,
+          "revenue": 504.48,
+          "units": 1
+        },
+        {
+          "date": "2026-09-12",
+          "profit": 184.8,
+          "revenue": 520,
+          "units": 1
+        },
+        {
+          "date": "2026-09-13",
+          "profit": 311.6,
+          "revenue": 840,
+          "units": 2
+        }
+      ],
+      "stock": {
+        "onHand": 75,
+        "value": 22440
+      },
+      "totals": {
+        "avgSellPrice": 461.7,
+        "avgUnitCost": 290.63,
+        "cancelledCost": 102.25,
+        "cancelledOrders": 6,
+        "cancelledUnits": 9,
+        "codFeeCost": 110.76,
+        "cogs": 9300,
+        "collectionShortfall": 0,
+        "deliveryMargin": 21.75,
+        "giftCost": 0,
+        "giftedCost": 0,
+        "giftedUnits": 0,
+        "grossMargin": 5474.48,
+        "marginPercent": 36.45,
+        "netProfit": 5385.46,
+        "netProfitAfterCancellations": 5283.21,
+        "orders": 20,
+        "packagingCost": 113.26,
+        "refunds": 420,
+        "revenue": 14774.48,
+        "unitsReturned": 1,
+        "unitsSold": 32
+      },
+      "variants": [
+        {
+          "cogs": 4620,
+          "grossMargin": 2644.48,
+          "label": "250ml",
+          "netProfit": 2586.14,
+          "revenue": 7264.48,
+          "salePrice": 520,
+          "sku": null,
+          "stock": 42,
+          "unitCost": 330,
+          "unitsReturned": 0,
+          "unitsSold": 14
+        },
+        {
+          "cogs": 4680,
+          "grossMargin": 2830,
+          "label": "150ml",
+          "netProfit": 2799.32,
+          "revenue": 7510,
+          "salePrice": 420,
+          "sku": null,
+          "stock": 33,
+          "unitCost": 260,
+          "unitsReturned": 1,
+          "unitsSold": 18
+        }
+      ]
+    },
+    "Soft Toy Bear": {
+      "adjustments": [],
+      "orders": [
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 0,
+          "customer": "Rima Das",
+          "date": "2026-09-05",
+          "netProfit": 0,
+          "paymentStatus": "PAID",
+          "returned": 1,
+          "revenue": 0,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 0,
+          "variants": [
+            "Large"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 1140,
+          "customer": "Rima Das",
+          "date": "2026-09-02",
+          "netProfit": 747.51,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 1900,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 2,
+          "variants": [
+            "Large",
+            "Small"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 1140,
+          "customer": "Rumana Haque",
+          "date": "2026-08-28",
+          "netProfit": 760,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 1900,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 2,
+          "variants": [
+            "Large",
+            "Small"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 1520,
+          "customer": "Rima Das",
+          "date": "2026-08-04",
+          "netProfit": 964.07,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 2500,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 2,
+          "variants": [
+            "Large"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 1520,
+          "customer": "Sumaiya Rahman",
+          "date": "2026-08-18",
+          "netProfit": 971.44,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 2500,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 2,
+          "variants": [
+            "Large"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 1520,
+          "customer": "Tania Islam",
+          "date": "2026-08-30",
+          "netProfit": 980,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 2500,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 2,
+          "variants": [
+            "Large"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 380,
+          "customer": "Popy Akter",
+          "date": "2026-08-04",
+          "netProfit": 270,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 650,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "Small"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 380,
+          "customer": "Sadia Afrin",
+          "date": "2026-08-06",
+          "netProfit": 243.14,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 623.14,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "Small"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 380,
+          "customer": "Sumaiya Rahman",
+          "date": "2026-08-13",
+          "netProfit": 290,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 650,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "Small"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 760,
+          "customer": "Ayesha Siddika",
+          "date": "2026-09-11",
+          "netProfit": 532.62,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 1300,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 2,
+          "variants": [
+            "Small"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 760,
+          "customer": "Lamia Hossain",
+          "date": "2026-08-15",
+          "netProfit": 498.42,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 1250,
+          "source": null,
+          "status": "SHIPPED",
+          "units": 2,
+          "variants": [
+            "Small"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 760,
+          "customer": "Mahfuza Khatun",
+          "date": "2026-08-14",
+          "netProfit": 493.93,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 1250,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "Large"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 760,
+          "customer": "Maliha Chowdhury",
+          "date": "2026-08-07",
+          "netProfit": 531.96,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 1300,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 2,
+          "variants": [
+            "Small"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 760,
+          "customer": "Nasrin Parvin",
+          "date": "2026-09-07",
+          "netProfit": 540,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 1300,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 2,
+          "variants": [
+            "Small"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 760,
+          "customer": "Popy Akter",
+          "date": "2026-08-24",
+          "netProfit": 477.5,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 1250,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "Large"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 760,
+          "customer": "Rima Das",
+          "date": "2026-08-13",
+          "netProfit": 480.13,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 1250,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "Large"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 760,
+          "customer": "Sumaiya Rahman",
+          "date": "2026-09-14",
+          "netProfit": 477.5,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 1250,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 2,
+          "variants": [
+            "Small"
+          ]
+        },
+        {
+          "cancelled": true,
+          "cancelledCost": 11.11,
+          "cogs": 0,
+          "customer": "Lamia Hossain",
+          "date": "2026-08-21",
+          "netProfit": 0,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 0,
+          "source": null,
+          "status": "CANCELLED",
+          "units": 2,
+          "variants": [
+            "Small"
+          ]
+        },
+        {
+          "cancelled": true,
+          "cancelledCost": 34.33,
+          "cogs": 0,
+          "customer": "Popy Akter",
+          "date": "2026-08-17",
+          "netProfit": 0,
+          "paymentStatus": "UNPAID",
+          "returned": 0,
+          "revenue": 0,
+          "source": null,
+          "status": "CANCELLED",
+          "units": 3,
+          "variants": [
+            "Large",
+            "Small"
+          ]
+        }
+      ],
+      "product": {
+        "barcode": null,
+        "category": "Toys",
+        "imageUrl": null,
+        "lowStockThreshold": 5,
+        "name": "Soft Toy Bear",
+        "sku": null,
+        "unitsPerPack": null
+      },
+      "purchases": {
+        "quantity": 0,
+        "rows": [],
+        "spend": 0
+      },
+      "returns": [
+        {
+          "date": "2026-10-10",
+          "quantity": 1,
+          "reason": "Size / quality",
+          "refundAmount": 1250,
+          "variant": "Large"
+        }
+      ],
+      "series": [
+        {
+          "date": "2026-08-04",
+          "profit": 1234.07,
+          "revenue": 3150,
+          "units": 3
+        },
+        {
+          "date": "2026-08-06",
+          "profit": 243.14,
+          "revenue": 623.14,
+          "units": 1
+        },
+        {
+          "date": "2026-08-07",
+          "profit": 531.96,
+          "revenue": 1300,
+          "units": 2
+        },
+        {
+          "date": "2026-08-13",
+          "profit": 770.13,
+          "revenue": 1900,
+          "units": 2
+        },
+        {
+          "date": "2026-08-14",
+          "profit": 493.93,
+          "revenue": 1250,
+          "units": 1
+        },
+        {
+          "date": "2026-08-15",
+          "profit": 498.42,
+          "revenue": 1250,
+          "units": 2
+        },
+        {
+          "date": "2026-08-18",
+          "profit": 971.44,
+          "revenue": 2500,
+          "units": 2
+        },
+        {
+          "date": "2026-08-24",
+          "profit": 477.5,
+          "revenue": 1250,
+          "units": 1
+        },
+        {
+          "date": "2026-08-28",
+          "profit": 760,
+          "revenue": 1900,
+          "units": 2
+        },
+        {
+          "date": "2026-08-30",
+          "profit": 980,
+          "revenue": 2500,
+          "units": 2
+        },
+        {
+          "date": "2026-09-02",
+          "profit": 747.51,
+          "revenue": 1900,
+          "units": 2
+        },
+        {
+          "date": "2026-09-05",
+          "profit": 0,
+          "revenue": 0,
+          "units": 0
+        },
+        {
+          "date": "2026-09-07",
+          "profit": 540,
+          "revenue": 1300,
+          "units": 2
+        },
+        {
+          "date": "2026-09-11",
+          "profit": 532.62,
+          "revenue": 1300,
+          "units": 2
+        },
+        {
+          "date": "2026-09-14",
+          "profit": 477.5,
+          "revenue": 1250,
+          "units": 2
+        }
+      ],
+      "stock": {
+        "onHand": 86,
+        "value": 49400
+      },
+      "totals": {
+        "avgSellPrice": 898.97,
+        "avgUnitCost": 540.77,
+        "cancelledCost": 45.44,
+        "cancelledOrders": 2,
+        "cancelledUnits": 5,
+        "codFeeCost": 107.79,
+        "cogs": 14060,
+        "collectionShortfall": 0,
+        "deliveryMargin": 52.86,
+        "giftCost": 0,
+        "giftedCost": 0,
+        "giftedUnits": 0,
+        "grossMargin": 9313.14,
+        "marginPercent": 39.61,
+        "netProfit": 9258.21,
+        "netProfitAfterCancellations": 9212.77,
+        "orders": 17,
+        "packagingCost": 119.01,
+        "refunds": 1250,
+        "revenue": 23373.14,
+        "unitsReturned": 1,
+        "unitsSold": 26
+      },
+      "variants": [
+        {
+          "cogs": 5700,
+          "grossMargin": 3923.14,
+          "label": "Small",
+          "netProfit": 3919.36,
+          "revenue": 9623.14,
+          "salePrice": 650,
+          "sku": null,
+          "stock": 42,
+          "unitCost": 380,
+          "unitsReturned": 0,
+          "unitsSold": 15
+        },
+        {
+          "cogs": 8360,
+          "grossMargin": 5390,
+          "label": "Large",
+          "netProfit": 5338.84,
+          "revenue": 13750,
+          "salePrice": 1250,
+          "sku": null,
+          "stock": 44,
+          "unitCost": 760,
+          "unitsReturned": 1,
+          "unitsSold": 11
+        }
+      ]
+    },
+    "Teether Set": {
+      "adjustments": [],
+      "orders": [
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 0,
+          "customer": "Nasrin Parvin",
+          "date": "2026-08-27",
+          "netProfit": 0,
+          "paymentStatus": "PAID",
+          "returned": 1,
+          "revenue": 0,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 0,
+          "variants": [
+            "3 pcs"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 190,
+          "customer": "Ayesha Siddika",
+          "date": "2026-08-18",
+          "netProfit": 107,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 300,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "3 pcs"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 190,
+          "customer": "Farhana Akter",
+          "date": "2026-08-22",
+          "netProfit": 140.1,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 329.29,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "3 pcs"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 190,
+          "customer": "Nusrat Jahan",
+          "date": "2026-09-08",
+          "netProfit": 158.39,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 350,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "3 pcs"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 190,
+          "customer": "Shirin Akter",
+          "date": "2026-09-10",
+          "netProfit": 108.49,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 300,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "3 pcs"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 190,
+          "customer": "Sumaiya Rahman",
+          "date": "2026-08-30",
+          "netProfit": 117.24,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 300,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 1,
+          "variants": [
+            "3 pcs"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 380,
+          "customer": "Ayesha Siddika",
+          "date": "2026-08-20",
+          "netProfit": 313,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 700,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 2,
+          "variants": [
+            "3 pcs"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 380,
+          "customer": "Lamia Hossain",
+          "date": "2026-08-11",
+          "netProfit": 316.43,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 700,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 2,
+          "variants": [
+            "3 pcs"
+          ]
+        },
+        {
+          "cancelled": false,
+          "cancelledCost": 0,
+          "cogs": 380,
+          "customer": "Lamia Hossain",
+          "date": "2026-08-24",
+          "netProfit": 316.79,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 700,
+          "source": null,
+          "status": "DELIVERED",
+          "units": 2,
+          "variants": [
+            "3 pcs"
+          ]
+        },
+        {
+          "cancelled": true,
+          "cancelledCost": 10.29,
+          "cogs": 0,
+          "customer": "Nasrin Parvin",
+          "date": "2026-08-16",
+          "netProfit": 0,
+          "paymentStatus": "UNPAID",
+          "returned": 0,
+          "revenue": 0,
+          "source": null,
+          "status": "CANCELLED",
+          "units": 1,
+          "variants": [
+            "3 pcs"
+          ]
+        },
+        {
+          "cancelled": true,
+          "cancelledCost": 12.39,
+          "cogs": 0,
+          "customer": "Sharmin Sultana",
+          "date": "2026-08-21",
+          "netProfit": 0,
+          "paymentStatus": "PAID",
+          "returned": 0,
+          "revenue": 0,
+          "source": null,
+          "status": "CANCELLED",
+          "units": 1,
+          "variants": [
+            "3 pcs"
+          ]
+        },
+        {
+          "cancelled": true,
+          "cancelledCost": 3.22,
+          "cogs": 0,
+          "customer": "Mahfuza Khatun",
+          "date": "2026-08-08",
+          "netProfit": 0,
+          "paymentStatus": "UNPAID",
+          "returned": 0,
+          "revenue": 0,
+          "source": null,
+          "status": "CANCELLED",
+          "units": 1,
+          "variants": [
+            "3 pcs"
+          ]
+        },
+        {
+          "cancelled": true,
+          "cancelledCost": 40,
+          "cogs": 0,
+          "customer": "Popy Akter",
+          "date": "2026-08-01",
+          "netProfit": 0,
+          "paymentStatus": "UNPAID",
+          "returned": 0,
+          "revenue": 0,
+          "source": null,
+          "status": "CANCELLED",
+          "units": 1,
+          "variants": [
+            "3 pcs"
+          ]
+        }
+      ],
+      "product": {
+        "barcode": null,
+        "category": "Toys",
+        "imageUrl": null,
+        "lowStockThreshold": 5,
+        "name": "Teether Set",
+        "sku": null,
+        "unitsPerPack": null
+      },
+      "purchases": {
+        "quantity": 0,
+        "rows": [],
+        "spend": 0
+      },
+      "returns": [
+        {
+          "date": "2026-10-10",
+          "quantity": 1,
+          "reason": "Size / quality",
+          "refundAmount": 350,
+          "variant": "3 pcs"
+        }
+      ],
+      "series": [
+        {
+          "date": "2026-08-11",
+          "profit": 316.43,
+          "revenue": 700,
+          "units": 2
+        },
+        {
+          "date": "2026-08-18",
+          "profit": 107,
+          "revenue": 300,
+          "units": 1
+        },
+        {
+          "date": "2026-08-20",
+          "profit": 313,
+          "revenue": 700,
+          "units": 2
+        },
+        {
+          "date": "2026-08-22",
+          "profit": 140.1,
+          "revenue": 329.29,
+          "units": 1
+        },
+        {
+          "date": "2026-08-24",
+          "profit": 316.79,
+          "revenue": 700,
+          "units": 2
+        },
+        {
+          "date": "2026-08-27",
+          "profit": 0,
+          "revenue": 0,
+          "units": 0
+        },
+        {
+          "date": "2026-08-30",
+          "profit": 117.24,
+          "revenue": 300,
+          "units": 1
+        },
+        {
+          "date": "2026-09-08",
+          "profit": 158.39,
+          "revenue": 350,
+          "units": 1
+        },
+        {
+          "date": "2026-09-10",
+          "profit": 108.49,
+          "revenue": 300,
+          "units": 1
+        }
+      ],
+      "stock": {
+        "onHand": 38,
+        "value": 7220
+      },
+      "totals": {
+        "avgSellPrice": 334.48,
+        "avgUnitCost": 190,
+        "cancelledCost": 65.9,
+        "cancelledOrders": 4,
+        "cancelledUnits": 4,
+        "codFeeCost": 37.04,
+        "cogs": 2090,
+        "collectionShortfall": 0,
+        "deliveryMargin": 25.19,
+        "giftCost": 0,
+        "giftedCost": 0,
+        "giftedUnits": 0,
+        "grossMargin": 1589.29,
+        "marginPercent": 42.87,
+        "netProfit": 1577.44,
+        "netProfitAfterCancellations": 1511.53,
+        "orders": 9,
+        "packagingCost": 20.47,
+        "refunds": 350,
+        "revenue": 3679.29,
+        "unitsReturned": 1,
+        "unitsSold": 11
+      },
+      "variants": [
+        {
+          "cogs": 2090,
+          "grossMargin": 1589.29,
+          "label": "3 pcs",
+          "netProfit": 1577.44,
+          "revenue": 3679.29,
+          "salePrice": 350,
+          "sku": null,
+          "stock": 38,
+          "unitCost": 190,
+          "unitsReturned": 1,
+          "unitsSold": 11
+        }
+      ]
+    }
+  },
+  "reportAllTime": {
+    "byDistrict": [
+      {
+        "cancelRate": 0,
+        "cancelled": 0,
+        "cancelledCost": 0,
+        "delivered": 14,
+        "district": "Sylhet",
+        "inFlight": 1,
+        "orders": 15,
+        "revenue": 33090
+      },
+      {
+        "cancelRate": 0.08,
+        "cancelled": 1,
+        "cancelledCost": 40,
+        "delivered": 12,
+        "district": "Chattogram",
+        "inFlight": 1,
+        "orders": 14,
+        "revenue": 35210
+      },
+      {
+        "cancelRate": 0.1,
+        "cancelled": 1,
+        "cancelledCost": 40,
+        "delivered": 9,
+        "district": "Cumilla",
+        "inFlight": 0,
+        "orders": 10,
+        "revenue": 23530
+      },
+      {
+        "cancelRate": 0.16,
+        "cancelled": 6,
+        "cancelledCost": 240,
+        "delivered": 32,
+        "district": "Dhaka",
+        "inFlight": 8,
+        "orders": 46,
+        "revenue": 79400
+      },
+      {
+        "cancelRate": 0.17,
+        "cancelled": 2,
+        "cancelledCost": 80,
+        "delivered": 10,
+        "district": "Sherpur",
+        "inFlight": 1,
+        "orders": 13,
+        "revenue": 25500
+      },
+      {
+        "cancelRate": 0.18,
+        "cancelled": 2,
+        "cancelledCost": 80,
+        "delivered": 9,
+        "district": "Khulna",
+        "inFlight": 1,
+        "orders": 12,
+        "revenue": 23030
+      },
+      {
+        "cancelRate": 0.23,
+        "cancelled": 3,
+        "cancelledCost": 120,
+        "delivered": 10,
+        "district": "Rajshahi",
+        "inFlight": 1,
+        "orders": 14,
+        "revenue": 27082.1
+      }
+    ],
+    "bySource": [
+      {
+        "cancelRate": 0.12,
+        "cancelledCost": 600,
+        "cancelledOrders": 15,
+        "orders": 109,
+        "profit": 78630.6,
+        "revenue": 246842.1,
+        "source": null
+      }
+    ],
+    "collectedByMethod": [
+      {
+        "amount": 150460,
+        "method": "COURIER_COLLECTION",
+        "orders": 60
+      },
+      {
+        "amount": 34412.1,
+        "method": "CASH",
+        "orders": 17
+      },
+      {
+        "amount": 53050,
+        "method": "BKASH",
+        "orders": 23
+      }
+    ],
+    "combos": [],
+    "kpis": {
+      "adSpend": 18461,
+      "avgOrder": 2264.61,
+      "cancelledCost": 600,
+      "cancelledOrders": 15,
+      "internalPurchaseSpend": 18134.78,
+      "miscExpense": 0,
+      "netProfit": 42034.82,
+      "operatingExpenses": 36595.78,
+      "orders": 109,
+      "prepaidExpenses": 565.22,
+      "profit": 78630.6,
+      "profitAfterAds": 60169.6,
+      "revenue": 246842.1,
+      "stockLoss": 0
+    },
+    "partnerShares": [
+      {
+        "amount": 12610.45,
+        "effectivePercent": 30,
+        "name": "Rafiul Islam",
+        "percent": 30
+      },
+      {
+        "amount": 21017.41,
+        "effectivePercent": 50,
+        "name": "Shahriar Ahmed",
+        "percent": 50
+      },
+      {
+        "amount": 8406.96,
+        "effectivePercent": 20,
+        "name": "Mim Chowdhury",
+        "percent": 20
+      }
+    ],
+    "products": [
+      {
+        "name": "Baby Blanket",
+        "profit": 18319.42,
+        "qty": 50,
+        "revenue": 49043.56
+      },
+      {
+        "name": "Baby Diaper Pants",
+        "profit": 24209.16,
+        "qty": 67,
+        "revenue": 97709.36
+      },
+      {
+        "name": "Baby Lotion",
+        "profit": 7932.99,
+        "qty": 39,
+        "revenue": 24856.22
+      },
+      {
+        "name": "Baby Shampoo",
+        "profit": 2917.35,
+        "qty": 23,
+        "revenue": 8445.28
+      },
+      {
+        "name": "Baby Wipes",
+        "profit": 2562.01,
+        "qty": 26,
+        "revenue": 6953.89
+      },
+      {
+        "name": "Feeding Bottle",
+        "profit": 7526.73,
+        "qty": 46,
+        "revenue": 20829.3
+      },
+      {
+        "name": "Soft Toy Bear",
+        "profit": 12472.82,
+        "qty": 34,
+        "revenue": 31573.14
+      },
+      {
+        "name": "Teether Set",
+        "profit": 3262.83,
+        "qty": 22,
+        "revenue": 7431.34
+      }
+    ],
+    "returns": {
+      "lossRate": null,
+      "lost": 0,
+      "lostCost": 0,
+      "received": 0,
+      "sentBack": 0,
+      "stillOut": 0
+    },
+    "series": [
+      {
+        "date": "2026-07-19",
+        "profit": 116.9,
+        "sales": 300
+      },
+      {
+        "date": "2026-07-20",
+        "profit": 106.5,
+        "sales": 330
+      },
+      {
+        "date": "2026-07-21",
+        "profit": 484.2,
+        "sales": 1560
+      },
+      {
+        "date": "2026-07-22",
+        "profit": 320,
+        "sales": 840
+      },
+      {
+        "date": "2026-07-23",
+        "profit": 2622.1,
+        "sales": 7112.1
+      },
+      {
+        "date": "2026-07-24",
+        "profit": 1376.1,
+        "sales": 4720
+      },
+      {
+        "date": "2026-07-25",
+        "profit": 1202.5,
+        "sales": 3760
+      },
+      {
+        "date": "2026-07-26",
+        "profit": 1158.7,
+        "sales": 3100
+      },
+      {
+        "date": "2026-07-27",
+        "profit": 2422.6,
+        "sales": 7710
+      },
+      {
+        "date": "2026-07-28",
+        "profit": 616.9,
+        "sales": 2280
+      },
+      {
+        "date": "2026-07-29",
+        "profit": 1260,
+        "sales": 3190
+      },
+      {
+        "date": "2026-07-30",
+        "profit": 2447.3,
+        "sales": 7390
+      },
+      {
+        "date": "2026-07-31",
+        "profit": 3505.1,
+        "sales": 10470
+      },
+      {
+        "date": "2026-08-01",
+        "profit": 180,
+        "sales": 650
+      },
+      {
+        "date": "2026-08-02",
+        "profit": 1070.7,
+        "sales": 2920
+      },
+      {
+        "date": "2026-08-03",
+        "profit": 450,
+        "sales": 1830
+      },
+      {
+        "date": "2026-08-04",
+        "profit": 1975.2,
+        "sales": 6110
+      },
+      {
+        "date": "2026-08-05",
+        "profit": 1232.1,
+        "sales": 3620
+      },
+      {
+        "date": "2026-08-06",
+        "profit": 810,
+        "sales": 2320
+      },
+      {
+        "date": "2026-08-07",
+        "profit": 1928.3,
+        "sales": 6130
+      },
+      {
+        "date": "2026-08-08",
+        "profit": 895.3,
+        "sales": 3460
+      },
+      {
+        "date": "2026-08-09",
+        "profit": 127,
+        "sales": 280
+      },
+      {
+        "date": "2026-08-10",
+        "profit": -40,
+        "sales": 0
+      },
+      {
+        "date": "2026-08-11",
+        "profit": 779.7,
+        "sales": 2020
+      },
+      {
+        "date": "2026-08-12",
+        "profit": 1499.7,
+        "sales": 4010
+      },
+      {
+        "date": "2026-08-13",
+        "profit": 1882.8,
+        "sales": 5360
+      },
+      {
+        "date": "2026-08-14",
+        "profit": 1130,
+        "sales": 3180
+      },
+      {
+        "date": "2026-08-15",
+        "profit": 1900,
+        "sales": 5680
+      },
+      {
+        "date": "2026-08-16",
+        "profit": -40,
+        "sales": 0
+      },
+      {
+        "date": "2026-08-17",
+        "profit": 700,
+        "sales": 2900
+      },
+      {
+        "date": "2026-08-18",
+        "profit": 2317.6,
+        "sales": 7160
+      },
+      {
+        "date": "2026-08-19",
+        "profit": 2044.8,
+        "sales": 7520
+      },
+      {
+        "date": "2026-08-20",
+        "profit": 3397,
+        "sales": 12550
+      },
+      {
+        "date": "2026-08-21",
+        "profit": 601.7,
+        "sales": 1830
+      },
+      {
+        "date": "2026-08-22",
+        "profit": 816.8,
+        "sales": 2290
+      },
+      {
+        "date": "2026-08-23",
+        "profit": 701.5,
+        "sales": 2500
+      },
+      {
+        "date": "2026-08-24",
+        "profit": 2032.4,
+        "sales": 6740
+      },
+      {
+        "date": "2026-08-25",
+        "profit": 982.6,
+        "sales": 3740
+      },
+      {
+        "date": "2026-08-26",
+        "profit": 320,
+        "sales": 840
+      },
+      {
+        "date": "2026-08-27",
+        "profit": 1520,
+        "sales": 5860
+      },
+      {
+        "date": "2026-08-28",
+        "profit": 1196.6,
+        "sales": 3220
+      },
+      {
+        "date": "2026-08-29",
+        "profit": 450,
+        "sales": 1320
+      },
+      {
+        "date": "2026-08-30",
+        "profit": 1594,
+        "sales": 4070
+      },
+      {
+        "date": "2026-08-31",
+        "profit": 1016.2,
+        "sales": 4360
+      },
+      {
+        "date": "2026-09-01",
+        "profit": 1065.5,
+        "sales": 3430
+      },
+      {
+        "date": "2026-09-02",
+        "profit": 1121,
+        "sales": 2890
+      },
+      {
+        "date": "2026-09-03",
+        "profit": 320.2,
+        "sales": 990
+      },
+      {
+        "date": "2026-09-04",
+        "profit": 1790,
+        "sales": 4720
+      },
+      {
+        "date": "2026-09-05",
+        "profit": 1302.3,
+        "sales": 3950
+      },
+      {
+        "date": "2026-09-06",
+        "profit": 1266.2,
+        "sales": 4370
+      },
+      {
+        "date": "2026-09-07",
+        "profit": 2177.1,
+        "sales": 7540
+      },
+      {
+        "date": "2026-09-08",
+        "profit": 1427.9,
+        "sales": 5180
+      },
+      {
+        "date": "2026-09-09",
+        "profit": 1767.9,
+        "sales": 5230
+      },
+      {
+        "date": "2026-09-10",
+        "profit": 1049.8,
+        "sales": 4000
+      },
+      {
+        "date": "2026-09-11",
+        "profit": 927,
+        "sales": 2290
+      },
+      {
+        "date": "2026-09-12",
+        "profit": 831,
+        "sales": 2730
+      },
+      {
+        "date": "2026-09-13",
+        "profit": 1088.4,
+        "sales": 3160
+      },
+      {
+        "date": "2026-09-14",
+        "profit": 477.5,
+        "sales": 1250
+      },
+      {
+        "date": "2026-09-15",
+        "profit": 1560,
+        "sales": 4940
+      },
+      {
+        "date": "2026-09-16",
+        "profit": 815.9,
+        "sales": 2400
+      },
+      {
+        "date": "2026-09-17",
+        "profit": 1410.5,
+        "sales": 4250
+      },
+      {
+        "date": "2026-09-18",
+        "profit": 320.9,
+        "sales": 900
+      },
+      {
+        "date": "2026-09-19",
+        "profit": 1150.6,
+        "sales": 3930
+      },
+      {
+        "date": "2026-09-20",
+        "profit": 780,
+        "sales": 1980
+      },
+      {
+        "date": "2026-09-21",
+        "profit": 1426.9,
+        "sales": 4730
+      },
+      {
+        "date": "2026-09-22",
+        "profit": 1443.1,
+        "sales": 4750
+      }
+    ]
+  },
+  "reportRange": {
+    "byDistrict": [
+      {
+        "cancelRate": 0,
+        "cancelled": 0,
+        "cancelledCost": 0,
+        "delivered": 10,
+        "district": "Sylhet",
+        "inFlight": 1,
+        "orders": 11,
+        "revenue": 26540
+      },
+      {
+        "cancelRate": 0.13,
+        "cancelled": 1,
+        "cancelledCost": 40,
+        "delivered": 7,
+        "district": "Chattogram",
+        "inFlight": 0,
+        "orders": 8,
+        "revenue": 18130
+      },
+      {
+        "cancelRate": 0.13,
+        "cancelled": 1,
+        "cancelledCost": 40,
+        "delivered": 7,
+        "district": "Cumilla",
+        "inFlight": 0,
+        "orders": 8,
+        "revenue": 19230
+      },
+      {
+        "cancelRate": 0.17,
+        "cancelled": 5,
+        "cancelledCost": 200,
+        "delivered": 24,
+        "district": "Dhaka",
+        "inFlight": 1,
+        "orders": 30,
+        "revenue": 55610
+      },
+      {
+        "cancelRate": 0.18,
+        "cancelled": 2,
+        "cancelledCost": 80,
+        "delivered": 9,
+        "district": "Sherpur",
+        "inFlight": 0,
+        "orders": 11,
+        "revenue": 20150
+      },
+      {
+        "cancelRate": 0.25,
+        "cancelled": 2,
+        "cancelledCost": 80,
+        "delivered": 6,
+        "district": "Khulna",
+        "inFlight": 0,
+        "orders": 8,
+        "revenue": 14870
+      },
+      {
+        "cancelRate": 0.29,
+        "cancelled": 2,
+        "cancelledCost": 80,
+        "delivered": 5,
+        "district": "Rajshahi",
+        "inFlight": 1,
+        "orders": 8,
+        "revenue": 16610
+      }
+    ],
+    "bySource": [
+      {
+        "cancelRate": 0.15,
+        "cancelledCost": 520,
+        "cancelledOrders": 13,
+        "orders": 71,
+        "profit": 53643.8,
+        "revenue": 171140,
+        "source": null
+      }
+    ],
+    "collectedByMethod": [
+      {
+        "amount": 110570,
+        "method": "COURIER_COLLECTION",
+        "orders": 42
+      },
+      {
+        "amount": 25770,
+        "method": "CASH",
+        "orders": 12
+      },
+      {
+        "amount": 37490,
+        "method": "BKASH",
+        "orders": 16
+      }
+    ],
+    "combos": [],
+    "kpis": {
+      "adSpend": 12967,
+      "avgOrder": 2410.42,
+      "cancelledCost": 520,
+      "cancelledOrders": 13,
+      "internalPurchaseSpend": 1600,
+      "miscExpense": 0,
+      "netProfit": 39076.8,
+      "operatingExpenses": 14567,
+      "orders": 71,
+      "prepaidExpenses": 565.22,
+      "profit": 53643.8,
+      "profitAfterAds": 40676.8,
+      "revenue": 171140,
+      "stockLoss": 0
+    },
+    "partnerShares": [
+      {
+        "amount": 11723.04,
+        "effectivePercent": 30,
+        "name": "Rafiul Islam",
+        "percent": 30
+      },
+      {
+        "amount": 19538.4,
+        "effectivePercent": 50,
+        "name": "Shahriar Ahmed",
+        "percent": 50
+      },
+      {
+        "amount": 7815.36,
+        "effectivePercent": 20,
+        "name": "Mim Chowdhury",
+        "percent": 20
+      }
+    ],
+    "products": [
+      {
+        "name": "Baby Blanket",
+        "profit": 12007.51,
+        "qty": 33,
+        "revenue": 32317.61
+      },
+      {
+        "name": "Baby Diaper Pants",
+        "profit": 18459.52,
+        "qty": 51,
+        "revenue": 74389.36
+      },
+      {
+        "name": "Baby Lotion",
+        "profit": 4396.41,
+        "qty": 22,
+        "revenue": 14064.89
+      },
+      {
+        "name": "Baby Shampoo",
+        "profit": 1668.14,
+        "qty": 13,
+        "revenue": 4797.34
+      },
+      {
+        "name": "Baby Wipes",
+        "profit": 1391.11,
+        "qty": 14,
+        "revenue": 3743.89
+      },
+      {
+        "name": "Feeding Bottle",
+        "profit": 5385.46,
+        "qty": 32,
+        "revenue": 14774.48
+      },
+      {
+        "name": "Soft Toy Bear",
+        "profit": 9258.21,
+        "qty": 26,
+        "revenue": 23373.14
+      },
+      {
+        "name": "Teether Set",
+        "profit": 1577.44,
+        "qty": 11,
+        "revenue": 3679.29
+      }
+    ],
+    "returns": {
+      "lossRate": null,
+      "lost": 0,
+      "lostCost": 0,
+      "received": 0,
+      "sentBack": 0,
+      "stillOut": 0
+    },
+    "series": [
+      {
+        "date": "2026-08-01",
+        "profit": 180,
+        "sales": 650
+      },
+      {
+        "date": "2026-08-02",
+        "profit": 1070.7,
+        "sales": 2920
+      },
+      {
+        "date": "2026-08-03",
+        "profit": 450,
+        "sales": 1830
+      },
+      {
+        "date": "2026-08-04",
+        "profit": 1975.2,
+        "sales": 6110
+      },
+      {
+        "date": "2026-08-05",
+        "profit": 1232.1,
+        "sales": 3620
+      },
+      {
+        "date": "2026-08-06",
+        "profit": 810,
+        "sales": 2320
+      },
+      {
+        "date": "2026-08-07",
+        "profit": 1928.3,
+        "sales": 6130
+      },
+      {
+        "date": "2026-08-08",
+        "profit": 895.3,
+        "sales": 3460
+      },
+      {
+        "date": "2026-08-09",
+        "profit": 127,
+        "sales": 280
+      },
+      {
+        "date": "2026-08-10",
+        "profit": -40,
+        "sales": 0
+      },
+      {
+        "date": "2026-08-11",
+        "profit": 779.7,
+        "sales": 2020
+      },
+      {
+        "date": "2026-08-12",
+        "profit": 1499.7,
+        "sales": 4010
+      },
+      {
+        "date": "2026-08-13",
+        "profit": 1882.8,
+        "sales": 5360
+      },
+      {
+        "date": "2026-08-14",
+        "profit": 1130,
+        "sales": 3180
+      },
+      {
+        "date": "2026-08-15",
+        "profit": 1900,
+        "sales": 5680
+      },
+      {
+        "date": "2026-08-16",
+        "profit": -40,
+        "sales": 0
+      },
+      {
+        "date": "2026-08-17",
+        "profit": 700,
+        "sales": 2900
+      },
+      {
+        "date": "2026-08-18",
+        "profit": 2317.6,
+        "sales": 7160
+      },
+      {
+        "date": "2026-08-19",
+        "profit": 2044.8,
+        "sales": 7520
+      },
+      {
+        "date": "2026-08-20",
+        "profit": 3397,
+        "sales": 12550
+      },
+      {
+        "date": "2026-08-21",
+        "profit": 601.7,
+        "sales": 1830
+      },
+      {
+        "date": "2026-08-22",
+        "profit": 816.8,
+        "sales": 2290
+      },
+      {
+        "date": "2026-08-23",
+        "profit": 701.5,
+        "sales": 2500
+      },
+      {
+        "date": "2026-08-24",
+        "profit": 2032.4,
+        "sales": 6740
+      },
+      {
+        "date": "2026-08-25",
+        "profit": 982.6,
+        "sales": 3740
+      },
+      {
+        "date": "2026-08-26",
+        "profit": 320,
+        "sales": 840
+      },
+      {
+        "date": "2026-08-27",
+        "profit": 1520,
+        "sales": 5860
+      },
+      {
+        "date": "2026-08-28",
+        "profit": 1196.6,
+        "sales": 3220
+      },
+      {
+        "date": "2026-08-29",
+        "profit": 450,
+        "sales": 1320
+      },
+      {
+        "date": "2026-08-30",
+        "profit": 1594,
+        "sales": 4070
+      },
+      {
+        "date": "2026-08-31",
+        "profit": 1016.2,
+        "sales": 4360
+      },
+      {
+        "date": "2026-09-01",
+        "profit": 1065.5,
+        "sales": 3430
+      },
+      {
+        "date": "2026-09-02",
+        "profit": 1121,
+        "sales": 2890
+      },
+      {
+        "date": "2026-09-03",
+        "profit": 320.2,
+        "sales": 990
+      },
+      {
+        "date": "2026-09-04",
+        "profit": 1790,
+        "sales": 4720
+      },
+      {
+        "date": "2026-09-05",
+        "profit": 1302.3,
+        "sales": 3950
+      },
+      {
+        "date": "2026-09-06",
+        "profit": 1266.2,
+        "sales": 4370
+      },
+      {
+        "date": "2026-09-07",
+        "profit": 2177.1,
+        "sales": 7540
+      },
+      {
+        "date": "2026-09-08",
+        "profit": 1427.9,
+        "sales": 5180
+      },
+      {
+        "date": "2026-09-09",
+        "profit": 1767.9,
+        "sales": 5230
+      },
+      {
+        "date": "2026-09-10",
+        "profit": 1049.8,
+        "sales": 4000
+      },
+      {
+        "date": "2026-09-11",
+        "profit": 927,
+        "sales": 2290
+      },
+      {
+        "date": "2026-09-12",
+        "profit": 831,
+        "sales": 2730
+      },
+      {
+        "date": "2026-09-13",
+        "profit": 1088.4,
+        "sales": 3160
+      },
+      {
+        "date": "2026-09-14",
+        "profit": 477.5,
+        "sales": 1250
+      },
+      {
+        "date": "2026-09-15",
+        "profit": 1560,
+        "sales": 4940
+      }
+    ]
+  },
+  "stock": {
+    "Baby Blanket / [{\"name\":\"Variant\",\"value\":\"Blue\"}]": 31,
+    "Baby Blanket / [{\"name\":\"Variant\",\"value\":\"Pink\"}]": 39,
+    "Baby Diaper Pants / [{\"name\":\"Variant\",\"value\":\"L (44 pcs)\"}]": 27,
+    "Baby Diaper Pants / [{\"name\":\"Variant\",\"value\":\"M (48 pcs)\"}]": 27,
+    "Baby Lotion / [{\"name\":\"Variant\",\"value\":\"200ml\"}]": 45,
+    "Baby Lotion / [{\"name\":\"Variant\",\"value\":\"400ml\"}]": 37,
+    "Baby Shampoo / [{\"name\":\"Variant\",\"value\":\"200ml\"}]": 37,
+    "Baby Wipes / [{\"name\":\"Variant\",\"value\":\"80 pcs\"}]": 35,
+    "Feeding Bottle / [{\"name\":\"Variant\",\"value\":\"150ml\"}]": 33,
+    "Feeding Bottle / [{\"name\":\"Variant\",\"value\":\"250ml\"}]": 42,
+    "Soft Toy Bear / [{\"name\":\"Variant\",\"value\":\"Large\"}]": 44,
+    "Soft Toy Bear / [{\"name\":\"Variant\",\"value\":\"Small\"}]": 42,
+    "Teether Set / [{\"name\":\"Variant\",\"value\":\"3 pcs\"}]": 38
+  },
+  "supplierDues": [
+    {
+      "amount": 126000,
+      "rows": 3,
+      "supplierName": "Bashundhara Wholesale"
+    }
+  ],
+  "treasuryBalance": 352478.5
+}
