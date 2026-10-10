@@ -32,7 +32,13 @@ for (const [command, args] of steps) {
   // shell: true so `npx` resolves on Windows too — otherwise this script can
   // only ever be run on the CI box it was written for, and a change to it
   // can't be tried out before it ships.
-  const result = spawnSync(command, args, { stdio: "inherit", shell: true });
+  // The type-check step of `next build` needs more than Node's default heap on
+  // an app this size; without this it can die with "heap out of memory".
+  const env = {
+    ...process.env,
+    NODE_OPTIONS: process.env.NODE_OPTIONS ?? "--max-old-space-size=6144",
+  };
+  const result = spawnSync(command, args, { stdio: "inherit", shell: true, env });
   if (result.error) {
     // Without this a spawn failure exits 1 printing nothing at all, which
     // reads in the deploy log as "the build died for no reason".

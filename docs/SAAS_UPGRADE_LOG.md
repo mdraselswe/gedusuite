@@ -225,3 +225,37 @@ phase are phases 3–4 features). Golden Master unchanged.
 
 Verification: `tsc` clean (app + tests), 617 unit + 46 integration tests green,
 production `next build` succeeds.
+
+## Phase 6 — courier providers ⚠️ partly done, on purpose
+
+No migration.
+
+- `lib/couriers/provider.ts`: the interface a second courier fills.
+- `lib/couriers/pathao.ts`: a Pathao client (sign-in, book, status) with the
+  documented request shapes, status mapping, and 4 tests against mocked
+  responses.
+- **Not wired into the booking screen.** The booking, status-sync and cash
+  reconciliation paths are Steadfast-specific and move money; connecting a
+  courier whose fee and COD behaviour could not be checked against a real
+  (sandbox) account would put unverified numbers into the books. To finish:
+  get Pathao sandbox credentials, book one parcel, compare the fee and COD with
+  `quoteCourier` for the same order, then generalise `courier-booking.ts` and
+  `courier-status-sync.ts` behind `CourierProvider`.
+
+## Phase 7 — demo, verification, video ✅
+
+- **Demo workspace** (`yarn demo:seed`): 90 days, ~250 orders, built through the
+  app's own actions plus the real webhook path for website leads.
+- **Integrity suite** over a generated business: treasury = in − out, no
+  negative stock, every banked order's treasury entry equals what the courier
+  remitted (signed), distributions lose no taka, order numbers gapless, report
+  revenue equals an independent re-add.
+- **Roles**: every role × 9 representative actions matches `rbac.ts` exactly;
+  only owners change roles or remove members.
+- **Tenant isolation**: a second workspace's owner, using valid ids from the
+  first, changes nothing (status, payment, delete order/product/customer/
+  treasury entry, change/remove member, bank cash).
+- **Screens**: 22 screens × desktop/phone, production build, no 5xx/console
+  errors. **Video**: 2m10s desktop walkthrough + phone clip, captioned.
+- Final state: 621 unit + 59 integration tests green, `tsc` clean (app and
+  tests), production `next build` succeeds.
