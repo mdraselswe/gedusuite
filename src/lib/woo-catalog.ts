@@ -11,6 +11,8 @@
  * a button somebody has to press.
  */
 
+import { envWooConfig, hasWriteKeys, type WooConfig } from "@/lib/woo-config";
+
 const CATALOGUE_TTL_MS = 5 * 60 * 1000;
 
 export type WooCatalogEntry = {
@@ -43,24 +45,23 @@ type WooRestVariation = WooRestProduct & {
   attributes?: { option?: string }[];
 };
 
-export function wooAdminConfigured() {
-  return Boolean(wooKey() && wooSecret());
+/**
+ * Whether write access to a website is available.
+ *
+ * `cfg` is the workspace's resolved connection (see lib/woo-config). Left out,
+ * it means "whatever the environment says", which is what every caller did
+ * before connections were per workspace.
+ */
+export function wooAdminConfigured(cfg?: WooConfig | null) {
+  return hasWriteKeys(cfg === undefined ? envWooConfig() : cfg);
 }
 
-function wooKey() {
-  return process.env.WC_WRITE_KEY || process.env.WC_CONSUMER_KEY;
+export function wooBase(cfg?: WooConfig | null) {
+  return (cfg ?? envWooConfig()).base;
 }
 
-function wooSecret() {
-  return process.env.WC_WRITE_SECRET || process.env.WC_CONSUMER_SECRET;
-}
-
-export function wooBase() {
-  return (process.env.WP_URL || "https://wp.gedushop.com").replace(/\/$/, "");
-}
-
-function authHeader() {
-  return "Basic " + Buffer.from(`${wooKey()}:${wooSecret()}`).toString("base64");
+function authHeader(cfg: WooConfig) {
+  return "Basic " + Buffer.from(`${cfg.writeKey}:${cfg.writeSecret}`).toString("base64");
 }
 
 /**
@@ -70,11 +71,15 @@ function authHeader() {
  * header, the no-store cache and the timeout, because a website that has gone
  * quiet should fail the button rather than hang the page.
  */
-export async function wooFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${wooBase()}/wp-json/wc/v3${path}`, {
+export async function wooFetch<T>(
+  path: string,
+  init?: RequestInit,
+  cfg: WooConfig = envWooConfig(),
+): Promise<T> {
+  const res = await fetch(`${cfg.base}/wp-json/wc/v3${path}`, {
     ...init,
     headers: {
-      Authorization: authHeader(),
+      Authorization: authHeader(cfg),
       "Content-Type": "application/json",
       ...(init?.headers ?? {}),
     },
@@ -94,7 +99,9 @@ export async function wooFetch<T>(path: string, init?: RequestInit): Promise<T> 
   return (await res.json()) as T;
 }
 
-let cache: { at: number; entries: WooCatalogEntry[] } | null = null;
+// One cached catalogue per website, never shared between workspaces.
+const cache = new Map<string, { at: number; entries: WooCatalogEntry[] }>();
+const cacheKey = (cfg: WooConfig) => `${cfg.base}|${cfg.writeKey}`;
 
 /**
  * Every sellable thing on the website, variations flattened in.
@@ -103,12 +110,16 @@ let cache: { at: number; entries: WooCatalogEntry[] } | null = null;
  * the answer only changes when somebody edits the catalogue; refetching it on
  * every keystroke of a search box would be rude to the website and slow here.
  */
-export async function fetchWooCatalog(force = false): Promise<WooCatalogEntry[]> {
-  if (!force && cache && Date.now() - cache.at < CATALOGUE_TTL_MS) {
-    return cache.entries;
-  }
-  if (!wooAdminConfigured()) {
+export async function fetchWooCatalog(
+  force = false,
+  cfg: WooConfig | null = envWooConfig(),
+): Promise<WooCatalogEntry[]> {
+  if (!hasWriteKeys(cfg)) {
     throw new Error("Website connection is not configured");
+  }
+  const hit = cache.get(cacheKey(cfg));
+  if (!force && hit && Date.now() - hit.at < CATALOGUE_TTL_MS) {
+    return hit.entries;
   }
 
   const products: WooRestProduct[] = [];
@@ -117,6 +128,8 @@ export async function fetchWooCatalog(force = false): Promise<WooCatalogEntry[]>
   for (let page = 1; page <= 20; page++) {
     const batch = await wooFetch<WooRestProduct[]>(
       `/products?per_page=100&page=${page}&status=publish&orderby=title&order=asc`,
+      undefined,
+      cfg,
     );
     products.push(...batch);
     if (batch.length < 100) break;
@@ -147,6 +160,8 @@ export async function fetchWooCatalog(force = false): Promise<WooCatalogEntry[]>
   for (const parent of variableIds) {
     const variations = await wooFetch<WooRestVariation[]>(
       `/products/${parent.id}/variations?per_page=100`,
+      undefined,
+      cfg,
     );
     for (const v of variations) {
       if (!v.id) continue;
@@ -169,13 +184,14 @@ export async function fetchWooCatalog(force = false): Promise<WooCatalogEntry[]>
   }
 
   entries.sort((a, b) => a.label.localeCompare(b.label));
-  cache = { at: Date.now(), entries };
+  cache.set(cacheKey(cfg), { at: Date.now(), entries });
   return entries;
 }
 
 /** Drops the cache, so the next read sees a product that was just created. */
-export function clearWooCatalogCache() {
-  cache = null;
+export function clearWooCatalogCache(cfg?: WooConfig | null) {
+  if (cfg) cache.delete(cacheKey(cfg));
+  else cache.clear();
 }
 
 /** Loose match: case, spaces and punctuation are not what anybody means. */

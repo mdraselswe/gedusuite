@@ -204,3 +204,32 @@ describe("pre-hijack protection on Google linking", () => {
     expect(ok).toBe(false);
   });
 });
+
+describe("account deletion", () => {
+  it("is refused for a sole owner, and for a partner; allowed for a plain member", async () => {
+    const { deleteMyAccount } = await import("@/server/actions/auth");
+    const owner = await createUser("solo@example.com", "Solo");
+    const ws = await createWorkspaceWithOwner("Solo Shop", "solo-shop", owner.id);
+    await actAs(owner.id);
+    const refused = await deleteMyAccount(fd({ confirmEmail: "solo@example.com" }));
+    expect(refused.ok).toBe(false);
+    expect((refused as { error: string }).error).toContain("only owner");
+
+    const member = await createUser("member@example.com", "Member");
+    await prisma.membership.create({ data: { workspaceId: ws.id, userId: member.id, role: "STAFF" } });
+    await actAs(member.id);
+    const wrong = await deleteMyAccount(fd({ confirmEmail: "someone@else.com" }));
+    expect(wrong.ok).toBe(false);
+
+    await prisma.partner.create({ data: { workspaceId: ws.id, userId: member.id, profitSharePercent: 10 } });
+    const partnerRefused = await deleteMyAccount(fd({ confirmEmail: "member@example.com" }));
+    expect(partnerRefused.ok).toBe(false);
+    await prisma.partner.deleteMany({ where: { userId: member.id } });
+
+    const ok = await deleteMyAccount(fd({ confirmEmail: "member@example.com" }));
+    expect(ok.ok).toBe(true);
+    expect(await prisma.user.findUnique({ where: { id: member.id } })).toBeNull();
+    // the business is untouched
+    expect(await prisma.workspace.findUnique({ where: { id: ws.id } })).not.toBeNull();
+  });
+});

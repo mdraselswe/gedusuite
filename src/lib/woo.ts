@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { districtFromIso } from "@/lib/bd-locations";
 import { clearAbandonedCartFor } from "@/lib/abandoned-cart-store";
+import { envWooConfig, hasReadKeys, resolveWooConfig, type WooConfig } from "@/lib/woo-config";
 
 /**
  * Turning a WooCommerce order into a call-list lead.
@@ -201,8 +202,12 @@ export function wooLineProductIds(rawPayload: unknown): { productId: number; qua
 /** Statuses that need no phone call, so pulling them in would only be noise. */
 const SKIP_STATUSES = new Set(["cancelled", "refunded", "failed", "trash"]);
 
-export function wooConfigured() {
-  return Boolean(process.env.WC_CONSUMER_KEY && process.env.WC_CONSUMER_SECRET);
+/**
+ * Whether a website connection with read access exists. `cfg` is the
+ * workspace's resolved connection; omitted, it means the environment's.
+ */
+export function wooConfigured(cfg?: WooConfig | null) {
+  return hasReadKeys(cfg === undefined ? envWooConfig() : cfg);
 }
 
 /**
@@ -216,12 +221,11 @@ export async function syncWooOrders(
   workspaceId: string,
   { pages = 1, perPage = 50 }: { pages?: number; perPage?: number } = {},
 ): Promise<{ seen: number; upserted: number; skipped: number }> {
-  const base = (process.env.WP_URL || "https://wp.gedushop.com").replace(/\/$/, "");
+  const cfg = await resolveWooConfig(workspaceId);
+  if (!hasReadKeys(cfg)) throw new Error("Website connection is not configured");
+  const base = cfg.base;
   const auth =
-    "Basic " +
-    Buffer.from(`${process.env.WC_CONSUMER_KEY}:${process.env.WC_CONSUMER_SECRET}`).toString(
-      "base64",
-    );
+    "Basic " + Buffer.from(`${cfg.readKey}:${cfg.readSecret}`).toString("base64");
 
   let seen = 0;
   let upserted = 0;

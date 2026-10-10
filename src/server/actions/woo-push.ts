@@ -19,6 +19,7 @@ import {
   wooFetch,
   type WooCatalogEntry,
 } from "@/lib/woo-catalog";
+import { resolveWooConfig } from "@/lib/woo-config";
 
 export type PushResult = { ok: true; wooProductId: number; created: boolean } | ActionFailure;
 export type LinkResult = { ok: true; unlinkedSiblings: number } | ActionFailure;
@@ -41,7 +42,7 @@ function notConfigured(): ActionFailure {
   return {
     ok: false,
     error:
-      "Website connection is not set up. Add WP_URL, WC_WRITE_KEY and WC_WRITE_SECRET to this app's environment.",
+      "Website connection is not set up. Add your website address and API keys in Settings → Website.",
   };
 }
 
@@ -75,10 +76,11 @@ export async function searchWebsiteProducts(
 ): Promise<{ ok: true; options: WebsiteOption[] } | ActionFailure> {
   const gate = await requireAccess(slug, "products", "view");
   if (!gate.ok) return gate;
-  if (!wooAdminConfigured()) return notConfigured();
+  const cfg = await resolveWooConfig(gate.access.workspaceId);
+  if (!cfg || !wooAdminConfigured(cfg)) return notConfigured();
 
   try {
-    const entries = await fetchWooCatalog();
+    const entries = await fetchWooCatalog(false, cfg);
     return { ok: true, options: searchCatalog(entries, query).map(toOption) };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Could not reach the website" };
@@ -166,7 +168,8 @@ export async function suggestWebsiteLinks(
 ): Promise<{ ok: true; matches: Record<string, WebsiteOption> } | ActionFailure> {
   const gate = await requireAccess(slug, "products", "view");
   if (!gate.ok) return gate;
-  if (!wooAdminConfigured()) return notConfigured();
+  const cfg = await resolveWooConfig(gate.access.workspaceId);
+  if (!cfg || !wooAdminConfigured(cfg)) return notConfigured();
   if (variantIds.length === 0) return { ok: true, matches: {} };
 
   const variants = await prisma.productVariant.findMany({
@@ -176,7 +179,7 @@ export async function suggestWebsiteLinks(
 
   let entries: WooCatalogEntry[];
   try {
-    entries = await fetchWooCatalog();
+    entries = await fetchWooCatalog(false, cfg);
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Could not reach the website" };
   }
@@ -211,7 +214,8 @@ type WooProductResponse = { id?: number; status?: string; permalink?: string };
 export async function pushComboToWebsite(slug: string, comboId: string): Promise<PushResult> {
   const gate = await requireAccess(slug, "products", "edit");
   if (!gate.ok) return gate;
-  if (!wooAdminConfigured()) return notConfigured();
+  const cfg = await resolveWooConfig(gate.access.workspaceId);
+  if (!cfg || !wooAdminConfigured(cfg)) return notConfigured();
 
   const combo = await prisma.comboSet.findFirst({
     where: { id: comboId, workspaceId: gate.access.workspaceId },
@@ -277,20 +281,27 @@ export async function pushComboToWebsite(slug: string, comboId: string): Promise
       // hand from being flattened in that case.
       const existing = await wooFetch<{ regular_price?: string }>(
         `/products/${combo.wooProductId}`,
+        undefined,
+        cfg,
       );
       Object.assign(payload, comboPricePayload(price, round2(Number(existing?.regular_price ?? 0))));
-      result = await wooFetch<WooProductResponse>(`/products/${combo.wooProductId}`, {
-        method: "PUT",
-        body: JSON.stringify(payload),
-      });
+      result = await wooFetch<WooProductResponse>(
+        `/products/${combo.wooProductId}`,
+        { method: "PUT", body: JSON.stringify(payload) },
+        cfg,
+      );
     } else {
       Object.assign(payload, comboPricePayload(price, 0));
       created = true;
-      result = await wooFetch<WooProductResponse>("/products", {
-        method: "POST",
-        // Draft on purpose — see the note above.
-        body: JSON.stringify({ ...payload, status: "draft", catalog_visibility: "visible" }),
-      });
+      result = await wooFetch<WooProductResponse>(
+        "/products",
+        {
+          method: "POST",
+          // Draft on purpose — see the note above.
+          body: JSON.stringify({ ...payload, status: "draft", catalog_visibility: "visible" }),
+        },
+        cfg,
+      );
     }
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Push to website failed" };
@@ -309,7 +320,7 @@ export async function pushComboToWebsite(slug: string, comboId: string): Promise
   }
   // The new product would otherwise be invisible to the picker for five
   // minutes, which is exactly when somebody would go looking for it.
-  clearWooCatalogCache();
+  clearWooCatalogCache(cfg);
 
   await recordActivity(gate.access, {
     action: "UPDATE",

@@ -3,6 +3,7 @@ import { auth } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { workspaceAccess } from "@/lib/authz";
 import { AppearanceForm } from "@/components/settings/appearance-form";
+import { DeleteAccountCard } from "@/components/settings/delete-account";
 import { BrandingForm } from "@/components/settings/branding-form";
 import { serverT } from "@/lib/session";
 import { PageHeader } from "@/components/ui/page-header";
@@ -23,7 +24,7 @@ export default async function AppearancePage({
   const [user, workspace] = await Promise.all([
     prisma.user.findUnique({
       where: { id: session.user.id },
-      select: { theme: true, colorPreset: true, locale: true },
+      select: { theme: true, colorPreset: true, locale: true, email: true },
     }),
     prisma.workspace.findUnique({
       where: { id: access.workspaceId },
@@ -49,6 +50,7 @@ export default async function AppearancePage({
           locale: (user?.locale as "en" | "bn") ?? "en",
         }}
       />
+      {user?.email ? <DeleteAccountCard email={user.email} /> : null}
     </div>
   );
 }

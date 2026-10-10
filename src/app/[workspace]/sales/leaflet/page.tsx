@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
+import { isOriginalShop } from "@/lib/original-shop";
 import QRCode from "qrcode";
 import { workspaceAccess } from "@/lib/authz";
 import { can } from "@/lib/rbac";
@@ -48,6 +49,8 @@ export default async function LeafletPage({
   const { workspace: slug } = await params;
   const access = await workspaceAccess(slug);
   if (!access) redirect("/");
+  // Fixed content about one particular shop — see lib/original-shop.
+  if (!isOriginalShop(slug)) notFound();
   if (!can(access.role, "sales", "view", access.permissions)) {
     redirect(`/${slug}/dashboard`);
   }

@@ -9,6 +9,7 @@ import { requireAccess } from "@/lib/authz";
 import { requireUser } from "@/lib/session";
 import { createCustomer, findCustomerByPhone } from "@/server/actions/customers";
 import { syncWooOrders, wooConfigured } from "@/lib/woo";
+import { resolveWooConfig } from "@/lib/woo-config";
 import { refreshAbandonedCartAlerts } from "@/lib/abandoned-cart-store";
 import { isOrderSource } from "@/lib/order-source";
 import { nextOrderNo } from "@/lib/lead-order-no";
@@ -648,9 +649,9 @@ export async function syncFromWebsite(
 ): Promise<ActionResult & { imported?: number; skipped?: boolean }> {
   const gate = await requireAccess(slug, MODULE, "add");
   if (!gate.ok) return gate;
-  if (!wooConfigured()) return { ok: false, error: "Website connection is not configured" };
-
   const workspaceId = gate.access.workspaceId;
+  const cfg = await resolveWooConfig(workspaceId);
+  if (!wooConfigured(cfg)) return { ok: false, error: "Website connection is not configured" };
 
   if (!force) {
     const state = await prisma.wooSyncState.findUnique({ where: { workspaceId } });

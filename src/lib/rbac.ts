@@ -148,6 +148,8 @@ export function moduleForSegment(segment: string, subSegment?: string): Module |
   if (segment === "settings") {
     if (subSegment === "team") return "team";
     if (subSegment === "backup") return "backup";
+    // The website connection holds API keys that can read every order.
+    if (subSegment === "website") return "team";
     return null;
   }
   const map: Record<string, Module> = {

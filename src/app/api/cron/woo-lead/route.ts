@@ -1,9 +1,7 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { upsertLeadFromWooOrder, type WooOrder } from "@/lib/woo";
-import { recordSystemActivity } from "@/lib/activity";
+import { isWooPing, processWooOrderWebhook, wooSignatureMatches } from "@/lib/woo-webhook";
 
 /**
  * WooCommerce order webhook -> the call list.
@@ -17,15 +15,6 @@ import { recordSystemActivity } from "@/lib/activity";
  * lib/woo so the pull-based sync produces byte-identical rows.
  */
 
-/** WooCommerce signs the raw body; parsing first would change the bytes. */
-function signatureMatches(raw: string, header: string | null, secret: string) {
-  if (!header) return false;
-  const expected = createHmac("sha256", secret).update(raw, "utf8").digest("base64");
-  const a = Buffer.from(expected);
-  const b = Buffer.from(header);
-  return a.length === b.length && timingSafeEqual(a, b);
-}
-
 export async function POST(req: NextRequest) {
   const secret = process.env.WOO_WEBHOOK_SECRET;
   const slug = process.env.WOO_WORKSPACE_SLUG;
@@ -35,45 +24,18 @@ export async function POST(req: NextRequest) {
 
   const raw = await req.text();
 
-  // Saving a webhook makes WooCommerce call deliver_ping(), which posts the
-  // form body "webhook_id=N" with NO signature header, and refuses to activate
-  // the webhook unless it gets a 200 back. Answering it costs nothing: the
-  // body carries no data and nothing below this line runs.
-  if (/^webhook_id=\d+$/.test(raw.trim())) {
+  if (isWooPing(raw)) {
     return NextResponse.json({ ok: true, pong: true });
   }
 
-  if (!signatureMatches(raw, req.headers.get("x-wc-webhook-signature"), secret)) {
+  if (!wooSignatureMatches(raw, req.headers.get("x-wc-webhook-signature"), secret)) {
     return NextResponse.json({ error: "Bad signature" }, { status: 401 });
   }
-
-  let order: WooOrder;
-  try {
-    order = JSON.parse(raw) as WooOrder;
-  } catch {
-    return NextResponse.json({ error: "Bad JSON" }, { status: 400 });
-  }
-  if (!order.id) return NextResponse.json({ ok: true, skipped: "ping" });
 
   const workspace = await prisma.workspace.findUnique({ where: { slug }, select: { id: true } });
   if (!workspace) {
     return NextResponse.json({ error: `Unknown workspace "${slug}"` }, { status: 500 });
   }
 
-  const lead = await upsertLeadFromWooOrder(workspace.id, order, JSON.parse(raw));
-
-  // Nobody was logged in, and the call list gained a row. A history with a
-  // gap where the shop's own website writes data is a history that can't be
-  // trusted to be complete.
-  if (lead) {
-    await recordSystemActivity(workspace.id, "WooCommerce", {
-      action: "CREATE",
-      entity: "OrderLead",
-      entityId: lead.id,
-      entityLabel: lead.customerName,
-      summary: `Website order #${order.number ?? order.id} arrived in the call list`,
-    });
-  }
-
-  return NextResponse.json({ ok: true });
+  return processWooOrderWebhook(workspace.id, raw);
 }

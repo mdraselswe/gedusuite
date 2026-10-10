@@ -65,6 +65,7 @@ model Workspace {
   courierPayouts        CourierPayout[]
   courierFraudChecks    CourierFraudCheck[]
   activity              ActivityLog[]
+  integration           WorkspaceIntegration?
 }
 
 model User {
@@ -155,6 +156,30 @@ model Session {
   userId       String
   expires      DateTime
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// A workspace's own connection to its WooCommerce website. Before this, the
+// connection lived in environment variables, which can describe exactly one
+// shop. Every secret is stored encrypted (lib/crypto). The workspace whose slug
+// equals WOO_WORKSPACE_SLUG keeps working from the environment when it has no
+// row here, so the original shop needs no migration of its own.
+model WorkspaceIntegration {
+  workspaceId          String   @id
+  wooUrl               String?
+  wooConsumerKeyEnc    String?
+  wooConsumerSecretEnc String?
+  wooWriteKeyEnc       String?
+  wooWriteSecretEnc    String?
+  // What WooCommerce signs its webhook with (HMAC).
+  wooWebhookSecretEnc  String?
+  // The unguessable path segment that tells the webhook which workspace it is.
+  hookToken            String?  @unique
+  // What the storefront's cart beacon signs its snapshots with.
+  cartBeaconSecretEnc  String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 }
 
 // Fixed-window counters for throttling sign-in, sign-up and password reset.

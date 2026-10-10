@@ -617,8 +617,14 @@ export function OrderManager({
   sort,
   listFilters,
   matchCount,
+  showBrandPrints = true,
 }: {
   slug: string;
+  /**
+   * The gift-tag and leaflet sheets carry one shop's own branding, so they are
+   * only offered on that shop's workspace.
+   */
+  showBrandPrints?: boolean;
   hasProducts: boolean;
   members: { id: string; label: string }[];
   /** Campaigns worth tagging an order to — empty when boosting isn't used. */
@@ -1770,22 +1776,26 @@ export function OrderManager({
           {/* Also independent of the order list, for the same reason as
               blank forms above — this sheet is identical every time, so
               there's nothing to select before printing it. */}
-          <Link
-            href={`/${slug}/sales/gift-tags`}
-            target="_blank"
-            className={buttonVariants({ variant: "outline", size: "sm", className: "max-sm:w-full" })}
-          >
-            <Gift data-icon="inline-start" />
-            Gift tags
-          </Link>
-          <Link
-            href={`/${slug}/sales/leaflet`}
-            target="_blank"
-            className={buttonVariants({ variant: "outline", size: "sm", className: "max-sm:w-full" })}
-          >
-            <Newspaper data-icon="inline-start" />
-            Leaflet
-          </Link>
+          {showBrandPrints && (
+            <>
+              <Link
+                href={`/${slug}/sales/gift-tags`}
+                target="_blank"
+                className={buttonVariants({ variant: "outline", size: "sm", className: "max-sm:w-full" })}
+              >
+                <Gift data-icon="inline-start" />
+                Gift tags
+              </Link>
+              <Link
+                href={`/${slug}/sales/leaflet`}
+                target="_blank"
+                className={buttonVariants({ variant: "outline", size: "sm", className: "max-sm:w-full" })}
+              >
+                <Newspaper data-icon="inline-start" />
+                Leaflet
+              </Link>
+            </>
+          )}
         </div>
         {perms.canAdd && (
           <Button

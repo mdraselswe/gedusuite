@@ -12,6 +12,7 @@ const PUBLIC_PREFIXES = [
   "/reset-password",
   "/verify-email",
   "/api/csp-report",
+  "/api/hooks",
   "/invite",
   "/api/auth",
   "/api/cron",

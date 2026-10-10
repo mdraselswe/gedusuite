@@ -5,8 +5,18 @@ import { denyCron } from "@/lib/cron-auth";
 import { buildSnapshot } from "@/lib/backup";
 import { pruneOldActivity } from "@/lib/activity-retention";
 import { purgeExpiredRateLimits } from "@/lib/rate-limit";
+import { uploadOffsiteSnapshot } from "@/lib/offsite-backup";
 
 const KEEP = 10;
+
+/**
+ * One invocation has a hard ceiling on serverless. Workspaces are taken
+ * least-recently-backed-up first and the loop stops with time to spare, so a
+ * run that cannot reach everybody simply picks up where it left off next time
+ * instead of being killed halfway through somebody's snapshot.
+ */
+export const maxDuration = 60;
+const TIME_BUDGET_MS = 45_000;
 
 /** How long an offline-queue idempotency key is worth keeping. */
 const PROCESSED_MUTATION_DAYS = 14;
@@ -17,14 +27,21 @@ export async function GET(req: NextRequest) {
   const denied = denyCron(req);
   if (denied) return denied;
 
+  const started = Date.now();
   const settings = await prisma.backupSetting.findMany({
     where: { autoJson: true },
     select: { workspaceId: true },
+    orderBy: { lastJsonAt: { sort: "asc", nulls: "first" } },
   });
 
-  const results: { workspaceId: string; status: string }[] = [];
+  const results: { workspaceId: string; status: string; offsite?: string }[] = [];
+  let deferred = 0;
 
   for (const s of settings) {
+    if (Date.now() - started > TIME_BUDGET_MS) {
+      deferred++;
+      continue;
+    }
     const workspaceId = s.workspaceId;
     try {
       const snapshot = await buildSnapshot(workspaceId);
@@ -62,7 +79,29 @@ export async function GET(req: NextRequest) {
         data: { payload: null },
       });
 
-      results.push({ workspaceId, status: "SUCCESS" });
+      // A second copy somewhere that does not share this database's fate. A
+      // failure here is reported, never allowed to undo the backup above.
+      const off = await uploadOffsiteSnapshot(workspaceId, json);
+      if (!off.ok && !off.skipped) {
+        const ws = await prisma.workspace.findUnique({
+          where: { id: workspaceId },
+          select: { slug: true },
+        });
+        await prisma.notification.create({
+          data: {
+            workspaceId,
+            type: "GENERAL",
+            message: `Off-site backup copy failed: ${off.error}`,
+            link: ws ? `/${ws.slug}/settings/backup` : null,
+          },
+        });
+      }
+
+      results.push({
+        workspaceId,
+        status: "SUCCESS",
+        offsite: off.ok ? "uploaded" : off.skipped ? "not configured" : "failed",
+      });
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Unknown error";
       const ws = await prisma.workspace.findUnique({
@@ -100,6 +139,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     ok: true,
     ran: results.length,
+    deferred,
     results,
     pruned: pruned.count,
     activityPruned,

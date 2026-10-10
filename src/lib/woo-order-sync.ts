@@ -20,6 +20,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { wooAdminConfigured, wooFetch } from "@/lib/woo-catalog";
+import { resolveWooConfig } from "@/lib/woo-config";
 
 /** The two gedusuite outcomes this pushes, and what WooCommerce calls them. */
 const WOO_STATUS = {
@@ -71,23 +72,32 @@ export async function syncOrderStatusToWoo(
   orderId: string,
   status: "DELIVERED" | "CANCELLED",
 ): Promise<void> {
-  if (!wooAdminConfigured()) return;
   if (inFlight.has(orderId)) return;
   inFlight.add(orderId);
 
   try {
+    // Which website this order's workspace talks to — none, for most orders.
+    const owner = await prisma.order.findUnique({
+      where: { id: orderId },
+      select: { workspaceId: true },
+    });
+    if (!owner) return;
+    const cfg = await resolveWooConfig(owner.workspaceId);
+    if (!wooAdminConfigured(cfg) || !cfg) return;
+
     const wooId = await wooOrderIdFor(orderId);
     if (wooId == null) return;
 
     const target = WOO_STATUS[status];
-    const current = await wooFetch<{ status: string }>(`/orders/${wooId}`);
+    const current = await wooFetch<{ status: string }>(`/orders/${wooId}`, undefined, cfg);
     if (current.status === target) return;
     if (WONT_OVERRIDE[target]?.includes(current.status)) return;
 
-    await wooFetch(`/orders/${wooId}`, {
-      method: "PUT",
-      body: JSON.stringify({ status: target }),
-    });
+    await wooFetch(
+      `/orders/${wooId}`,
+      { method: "PUT", body: JSON.stringify({ status: target }) },
+      cfg,
+    );
   } catch (e) {
     // The website being unreachable, or the order having vanished there,
     // costs a stale status shown to a customer — never a broken sale here.

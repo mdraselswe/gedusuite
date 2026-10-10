@@ -69,3 +69,50 @@ refused); 5 new unit tests; Golden Master unchanged; `tsc` clean.
 sending domain); optionally `SENTRY_DSN`; a distinct `BACKUP_ENCRYPTION_KEY`
 only if you also re-save stored credentials (changing it makes existing
 encrypted courier/Google tokens unreadable).
+
+## Phase 2 — multi-tenant integrations and backups ✅
+
+Migration `20261012000000_workspace_integration` (additive): one new table.
+
+- **Per-workspace website connection** (`WorkspaceIntegration`, secrets
+  encrypted). `resolveWooConfig()`: the workspace's own saved connection, else
+  the environment's — but only for the workspace named by `WOO_WORKSPACE_SLUG`
+  (or for every workspace when that variable is unset, i.e. today's behaviour).
+  The original shop therefore needs no change at all.
+- **Settings → Website** (owner only): address + API keys, test connection,
+  webhook URL/secret/beacon to paste into WooCommerce, regenerate, disconnect.
+  Keys are never shown again; leaving a key blank keeps it.
+- **Webhooks**: `/api/cron/woo-lead` and `/api/cron/abandoned-cart` untouched in
+  behaviour (the shared logic moved to `lib/woo-webhook.ts`). New
+  `/api/hooks/woo/[token]` and `/api/hooks/cart/[token]` for other workspaces:
+  token selects the workspace, HMAC authenticates the body.
+- **Callers updated** to take the workspace's config: catalogue search/link
+  suggestions, combo push, combo drift check, order-status mirroring, lead sync.
+  The catalogue cache is now per website.
+- **GeduShop-specific content**: gift tags and the promo leaflet (fixed brand
+  text, QR codes, WhatsApp number) are offered only on the original shop's
+  workspace; other workspaces get no button and a 404 on the URL.
+- **Off-site backups**: S3-compatible (R2/S3/B2) upload of an encrypted, gzipped
+  snapshot after each scheduled JSON backup when `BACKUP_S3_*` is set. SigV4
+  implemented without an SDK and verified against AWS's published example.
+- **Backup cron**: least-recently-backed-up first, 45 s budget, remainder
+  deferred to the next run (reported as `deferred`); expired rate-limit rows are
+  purged nightly.
+- **Data export**: already present (owner's "Download JSON backup"); unchanged.
+- **Account deletion**: self-service, refused with the reason while the person
+  is a workspace's only owner or a partner of record.
+
+Verification: 12 new integration tests (config resolution, owner-only save,
+encryption at rest, key retention on edit, legacy webhook still works, tenant
+isolation on per-workspace webhooks, bad signature/unknown token/ping,
+regeneration voids the old address, disconnect, account deletion rules); 3 unit
+tests (SigV4 vs AWS vector, request shape, seal/open/tamper). Golden Master
+unchanged; `tsc` clean; 602 unit tests green.
+
+**Needs from you before deploy:**
+- Nothing for GeduShop to keep working — it continues on the environment.
+- Off-site backup: create an R2/S3 bucket and set `BACKUP_S3_ENDPOINT`,
+  `BACKUP_S3_BUCKET`, `BACKUP_S3_ACCESS_KEY`, `BACKUP_S3_SECRET_KEY`
+  (optional `BACKUP_S3_REGION`, default `auto`).
+- Vercel cron runs once a day; with many tenants shorten the schedule in
+  `vercel.json` (needs Pro for sub-daily).

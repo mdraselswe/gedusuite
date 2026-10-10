@@ -15,6 +15,7 @@ import { variantFullName } from "@/lib/variants";
 import { loadFlexibleComboVariants } from "@/lib/combo-variants";
 import { allocateFlexiblePrice, recipeBuildable, withProductVariants, comboWebsiteRecipe, type RecipeComponent } from "@/lib/flexible-combos";
 import { round2 } from "@/lib/money";
+import { resolveWooConfig } from "@/lib/woo-config";
 
 export type ActionResult = { ok: true; id?: string } | ActionFailure;
 
@@ -531,7 +532,9 @@ export async function checkComboDrift(slug: string, id: string): Promise<ComboDr
   });
   if (!combo?.wooProductId) return unchecked;
 
-  const base = (process.env.WP_URL || "https://wp.gedushop.com").replace(/\/$/, "");
+  const cfg = await resolveWooConfig(gate.access.workspaceId);
+  if (!cfg) return unchecked;
+  const base = cfg.base;
   let remote: {
     prices?: { price?: string; currency_minor_unit?: number };
     extensions?: { gedushop?: { combo?: { flexible_variants?: boolean; items?: { id?: number; qty?: number }[] } } };

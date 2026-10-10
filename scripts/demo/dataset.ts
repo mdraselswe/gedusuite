@@ -44,9 +44,9 @@ export type DatasetOptions = {
 };
 
 type Res = { ok: boolean; error?: string; id?: string };
-function must<T extends Res>(r: T, what: string): T {
+function must<T extends Res>(r: T, what: string): T & { id?: string } {
   if (!r.ok) throw new Error(`dataset: ${what} failed — ${r.error ?? "unknown"}`);
-  return r;
+  return r as T & { id?: string };
 }
 
 // mulberry32 — tiny deterministic PRNG.

@@ -13,6 +13,7 @@ import { OrderManager } from "@/components/sales/order-manager";
 import { PendingReturns } from "@/components/sales/pending-returns";
 import { listCombosForOrder } from "@/server/actions/combos";
 import { wooLineProductIds } from "@/lib/woo";
+import { isOriginalShop } from "@/lib/original-shop";
 import { parseLeadItem, splitLeadItems } from "@/lib/lead-items";
 import { STOCK_CONSUMING_STATUSES } from "@/lib/inventory";
 import { variantFullName } from "@/lib/variants";
@@ -589,6 +590,7 @@ export default async function OrdersPage({
       />
       <OrderManager
         slug={slug}
+        showBrandPrints={isOriginalShop(slug)}
         hasProducts={productCount > 0}
         members={memberOptions}
         campaigns={campaigns.map((c) => ({ id: c.id, label: c.name }))}

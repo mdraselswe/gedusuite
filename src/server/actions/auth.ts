@@ -185,3 +185,62 @@ export async function verifyEmailToken(token: string): Promise<boolean> {
   });
   return true;
 }
+
+/**
+ * Delete the signed-in person's own account.
+ *
+ * Refused — with the reason named — while deleting it would orphan somebody
+ * else's business: being the only owner of a workspace, or being a partner on
+ * whose capital account other records depend. Both have a proper way out
+ * (hand the workspace over or delete it; have an owner remove the partner
+ * record), and a silent cascade through someone's accounts is not one.
+ */
+export async function deleteMyAccount(formData: FormData): Promise<ActionResult> {
+  const session = await auth();
+  const userId = session?.user?.id;
+  if (!userId) return { ok: false, error: "Please sign in first" };
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, email: true },
+  });
+  if (!user) return { ok: false, error: "Account not found" };
+  if (String(formData.get("confirmEmail") ?? "").trim().toLowerCase() !== user.email.toLowerCase()) {
+    return { ok: false, error: "Type your email address exactly to confirm" };
+  }
+
+  const memberships = await prisma.membership.findMany({
+    where: { userId },
+    select: { role: true, workspaceId: true, workspace: { select: { name: true } } },
+  });
+  const soleOwner: string[] = [];
+  for (const m of memberships) {
+    if (m.role !== "OWNER") continue;
+    const owners = await prisma.membership.count({
+      where: { workspaceId: m.workspaceId, role: "OWNER" },
+    });
+    if (owners <= 1) soleOwner.push(m.workspace.name);
+  }
+  if (soleOwner.length > 0) {
+    return {
+      ok: false,
+      error: `You are the only owner of ${soleOwner.join(", ")}. Make someone else an owner, or delete the workspace, first.`,
+    };
+  }
+
+  const partnerOn = await prisma.partner.findMany({
+    where: { userId },
+    select: { workspace: { select: { name: true } } },
+  });
+  if (partnerOn.length > 0) {
+    return {
+      ok: false,
+      error: `You are recorded as a partner in ${partnerOn
+        .map((p) => p.workspace.name)
+        .join(", ")}. Ask an owner to remove your partner record first — it holds capital and profit history.`,
+    };
+  }
+
+  await prisma.user.delete({ where: { id: userId } });
+  return { ok: true };
+}

@@ -18,6 +18,7 @@ import {
   DatabaseBackup,
   Palette,
   PhoneCall,
+  Globe,
 } from "lucide-react";
 import { requireMembership } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
@@ -196,6 +197,13 @@ async function WorkspaceChrome({
       icon: <UserCog className="size-4" />,
       color: "slate",
       show: can(role, "team", "view"),
+    }),
+    navItem({
+      href: `/${slug}/settings/website`,
+      label: "Website",
+      icon: <Globe className="size-4" />,
+      color: "sky",
+      show: can(role, "team", "full"),
     }),
     navItem({
       href: `/${slug}/settings/backup`,

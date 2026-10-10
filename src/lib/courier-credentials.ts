@@ -111,7 +111,7 @@ export async function courierByWebhookToken(token: string) {
 export function webhookUrlFor(token: string | null): string | null {
   if (!token) return null;
   const base =
-    process.env.NEXTAUTH_URL?.replace(/\/$/, "") ?? "https://app.gedushop.com";
+    process.env.NEXTAUTH_URL?.replace(/\/$/, "") ?? "http://localhost:3000";
   return `${base}/api/cron/steadfast/${token}`;
 }
 
