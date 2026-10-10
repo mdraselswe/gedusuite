@@ -44,6 +44,18 @@ function normalise(v: unknown): unknown {
   }
   const o: Record<string, unknown> = {};
   for (const k of Object.keys(v as object).sort()) {
+    // A return's date defaults to the database clock at the moment it is
+    // recorded, which is wall-clock time, not part of the dataset.
+    if (k === "returns" && Array.isArray((v as Record<string, unknown>)[k])) {
+      o[k] = normalise(
+        ((v as Record<string, unknown>)[k] as Record<string, unknown>[]).map((r) => {
+          const { date: _date, ...rest } = r;
+          void _date;
+          return rest;
+        }),
+      );
+      continue;
+    }
     if (k === "id" || k.endsWith("Id") || k === "userId") continue;
     // Stamped by the database clock at insert time — differs every run.
     if (["entered", "time", "dateInput", "createdAt", "updatedAt"].includes(k)) continue;

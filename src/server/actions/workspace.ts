@@ -8,6 +8,7 @@ import { workspaceAccess } from "@/lib/authz";
 import { uniqueWorkspaceSlug } from "@/lib/slug";
 import { failed, type ActionFailure } from "@/lib/form";
 import { rateLimit } from "@/lib/rate-limit";
+import { startTrial } from "@/lib/billing";
 
 const CreateSchema = z.object({
   name: z.string().trim().min(2, "Business name is required").max(100),
@@ -55,7 +56,7 @@ export async function createWorkspace(
 
   const slug = await uniqueWorkspaceSlug(parsed.data.name);
 
-  await prisma.workspace.create({
+  const created = await prisma.workspace.create({
     data: {
       name: parsed.data.name,
       slug,
@@ -65,6 +66,9 @@ export async function createWorkspace(
       },
     },
   });
+  // Every new workspace starts a free trial. Recorded even while enforcement is
+  // off, so switching it on later finds the trial clock already running.
+  await startTrial(created.id).catch(() => undefined);
 
   return { ok: true, slug };
 }

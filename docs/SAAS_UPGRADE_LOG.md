@@ -116,3 +116,48 @@ unchanged; `tsc` clean; 602 unit tests green.
   (optional `BACKUP_S3_REGION`, default `auto`).
 - Vercel cron runs once a day; with many tenants shorten the schedule in
   `vercel.json` (needs Pro for sub-daily).
+
+## Phase 3 — plans, billing, limits, platform admin ✅
+
+Migration `20261013000000_plans_and_billing` (additive): `Subscription`,
+`BillingInvoice`, three enums; **every existing workspace is given a `LEGACY`
+subscription (unlimited, never expires)** so the original shop is untouched.
+
+- **Plans in code** (`lib/plans.ts`): Starter ৳499, Business ৳1,299, Pro ৳2,999
+  per month; yearly = ten months. Limits: members, orders/month, products,
+  couriers; Pro adds the website connection. Prices/limits are one file.
+- **Lifecycle is derived from dates, never from a cron**: trial → read-only at
+  end; paid → 7-day grace → read-only; suspended/cancelled → read-only. A missed
+  cron run cannot strand a workspace.
+- **Read-only, not locked-out**: lapsed workspaces can still read, export,
+  back up and pay. Nothing is hidden or deleted.
+- **Enforcement is OFF until `BILLING_ENFORCEMENT=on`** and fails open on error.
+  With it off, no check touches the database.
+- **Where limits bite**: create order / product / courier, invite member, save
+  website connection; plus a single write-gate inside `requireAccess`.
+- **Payments (manual first)**: owner picks plan+cycle → payment request → pays
+  by bKash/Nagad/bank → submits transaction ID → platform admin approves →
+  subscription moves (early renewal extends from the current end). Same
+  transaction ID cannot buy two invoices; two admins can't double-settle.
+- **Platform admin**: `/admin` (tenants, plan, state, usage; set plan, +7/+30
+  days, suspend/restore) and `/admin/payments`. Admins are an **env allow-list**
+  (`PLATFORM_ADMIN_EMAILS`), checked in every action — no screen can create one.
+- **Owner UI**: Settings → Plan & billing (usage vs limits, plans, history),
+  trial/renewal banner.
+- **Daily reminder cron** `/api/cron/billing` (3 days, 1 day, expiry, end of
+  grace) — notification + email to owners; added to `vercel.json`.
+- New workspaces start a 14-day Business trial. App-reserved slugs
+  (`admin`, `pricing`, …) can't be taken by a workspace.
+
+Verification: 17 + 2 new integration tests (limits, read-only reasons, grace,
+LEGACY immunity, Pro-only website, payment flow, double-approval, trx reuse,
+early renewal, rejection, admin allow-list, suspend/extend, trial on create,
+reserved slug, reminder thresholds), 14 unit tests (lifecycle, pricing, dates).
+Golden Master: the regenerated baseline equals the committed one except
+`returns[].date`, which turned out to be wall-clock (DB `now()`); it is now
+excluded from the comparison.
+
+**Needs from you before deploy:** `BILLING_BKASH_NUMBER` / `BILLING_NAGAD_NUMBER`
+/ `BILLING_BANK_DETAILS` (shown to customers), `PLATFORM_ADMIN_EMAILS` (your
+address), and the decision of when to flip `BILLING_ENFORCEMENT=on` — keep it off
+for the first deploy.

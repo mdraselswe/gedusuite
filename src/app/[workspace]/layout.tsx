@@ -19,6 +19,7 @@ import {
   Palette,
   PhoneCall,
   Globe,
+  CreditCard,
 } from "lucide-react";
 import { requireMembership } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
@@ -29,6 +30,8 @@ import { AppShell, type NavItem } from "@/components/layout/app-shell";
 import { AppShellSkeleton } from "@/components/layout/app-shell-skeleton";
 import { LiveRefresh } from "@/components/live-refresh";
 import { VerifyEmailBanner } from "@/components/verify-email-banner";
+import { SubscriptionBanner } from "@/components/billing/subscription-banner";
+import { billingEnforced, entitlementOf } from "@/lib/billing";
 
 // Identity helper so each object literal below is individually contextually
 // typed against NavItem (narrowing `color` to the SectionColor union) instead
@@ -66,6 +69,25 @@ async function WorkspaceChrome({
 }) {
   const { workspace: slug } = await params;
   const { user, membership, account } = await requireMembership(slug);
+  // Only worth saying something when it matters and limits are really applied.
+  let subscriptionBanner: {
+    slug: string;
+    state: "trial" | "grace" | "readonly";
+    daysLeft: number | null;
+    owner: boolean;
+  } | null = null;
+  if (billingEnforced()) {
+    const ent = await entitlementOf(membership.workspaceId);
+    const soon = ent.state === "trial" && (ent.daysLeft ?? 99) <= 5;
+    if (ent.state === "grace" || ent.state === "readonly" || soon) {
+      subscriptionBanner = {
+        slug,
+        state: ent.state === "trial" ? "trial" : (ent.state as "grace" | "readonly"),
+        daysLeft: ent.daysLeft,
+        owner: membership.role === "OWNER",
+      };
+    }
+  }
 
   // Was 3 sequential DB round trips (workspace -> locale -> notif count) on
   // every navigation; each round trip costs ~300ms over a long-haul network
@@ -199,6 +221,13 @@ async function WorkspaceChrome({
       show: can(role, "team", "view"),
     }),
     navItem({
+      href: `/${slug}/settings/billing`,
+      label: "Plan & billing",
+      icon: <CreditCard className="size-4" />,
+      color: "emerald",
+      show: can(role, "team", "full"),
+    }),
+    navItem({
       href: `/${slug}/settings/website`,
       label: "Website",
       icon: <Globe className="size-4" />,
@@ -227,6 +256,7 @@ async function WorkspaceChrome({
           lose track of how long the tab has been away — or of a change another
           tab announced while this one was hidden. */}
       <LiveRefresh workspace={slug} />
+      {subscriptionBanner ? <SubscriptionBanner {...subscriptionBanner} /> : null}
       {!account.emailVerified ? (
         <VerifyEmailBanner email={account.email} />
       ) : null}

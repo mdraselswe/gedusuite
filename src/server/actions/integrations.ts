@@ -9,6 +9,7 @@ import { decrypt, encrypt } from "@/lib/crypto";
 import { recordActivity } from "@/lib/activity";
 import { failed, type ActionFailure } from "@/lib/form";
 import { appUrl } from "@/lib/mailer";
+import { assertWebsiteAllowed } from "@/lib/billing";
 import { resolveWooConfig, keyHint } from "@/lib/woo-config";
 import { wooFetch } from "@/lib/woo-catalog";
 
@@ -92,6 +93,8 @@ export async function saveWebsiteIntegration(slug: string, formData: FormData): 
   });
   if (!parsed.success) return failed(parsed.error);
   const d = parsed.data;
+  const allowed = await assertWebsiteAllowed(workspaceId);
+  if (!allowed.ok) return allowed;
 
   if (!/^https:\/\//i.test(d.url) && !/^http:\/\/(localhost|127\.0\.0\.1)/i.test(d.url)) {
     return { ok: false, error: "The website address must start with https://" };

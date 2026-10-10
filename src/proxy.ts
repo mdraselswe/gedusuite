@@ -19,7 +19,7 @@ const PUBLIC_PREFIXES = [
   "/offline",
 ];
 // Top-level app routes that need auth but aren't workspace-scoped.
-const NON_WORKSPACE = new Set(["", "workspaces", "api"]);
+const NON_WORKSPACE = new Set(["", "workspaces", "api", "admin"]);
 
 export default async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;

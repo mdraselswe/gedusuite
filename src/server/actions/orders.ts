@@ -29,6 +29,7 @@ import { isOrderSource } from "@/lib/order-source";
 import { codFeeOn, quoteCourier } from "@/lib/courier";
 import { syncCourierStatuses } from "@/lib/courier-status-sync";
 import { syncOrderStatusToWoo } from "@/lib/woo-order-sync";
+import { assertWithinPlan } from "@/lib/billing";
 import type { OrderStatus, PaymentStatus, Prisma, ReturnLeg } from "@prisma/client";
 import { checkboxField, failed, type ActionFailure } from "@/lib/form";
 import { diffFields, newActivityGroup, recordActivity } from "@/lib/activity";
@@ -458,6 +459,8 @@ export async function createOrder(
   const gate = await requireAccess(slug, "sales", "add");
   if (!gate.ok) return gate;
   const workspaceId = gate.access.workspaceId;
+  const plan = await assertWithinPlan(workspaceId, "ordersPerMonth");
+  if (!plan.ok) return plan;
 
   let itemsRaw: unknown = [];
   try {

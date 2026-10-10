@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAccess } from "@/lib/authz";
+import { assertWithinPlan } from "@/lib/billing";
 import { failed, type ActionFailure } from "@/lib/form";
 import { diffFields, recordActivity } from "@/lib/activity";
 import { variantFullName } from "@/lib/variants";
@@ -161,6 +162,8 @@ export async function createProduct(
 ): Promise<ActionResult> {
   const gate = await requireAccess(slug, "products", "add");
   if (!gate.ok) return gate;
+  const plan = await assertWithinPlan(gate.access.workspaceId, "products");
+  if (!plan.ok) return plan;
 
   const parsed = parseProduct(formData);
   if (!parsed.success) {

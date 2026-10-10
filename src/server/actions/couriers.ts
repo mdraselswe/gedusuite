@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAccess } from "@/lib/authz";
+import { assertWithinPlan } from "@/lib/billing";
 import { failed, type ActionFailure } from "@/lib/form";
 import { diffFields, recordActivity } from "@/lib/activity";
 import { getBalance } from "@/lib/steadfast";
@@ -69,6 +70,8 @@ export async function createCourier(slug: string, input: CourierInput): Promise<
   const gate = await requireAccess(slug, MODULE, "edit");
   if (!gate.ok) return gate;
   const workspaceId = gate.access.workspaceId;
+  const plan = await assertWithinPlan(workspaceId, "couriers");
+  if (!plan.ok) return plan;
 
   const parsed = CourierSchema.safeParse(input);
   if (!parsed.success) {

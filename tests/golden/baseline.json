@@ -2213,7 +2213,6 @@
       },
       "returns": [
         {
-          "date": "2026-10-10",
           "quantity": 1,
           "reason": "Size / quality",
           "refundAmount": 450,
@@ -2570,7 +2569,6 @@
       },
       "returns": [
         {
-          "date": "2026-10-10",
           "quantity": 1,
           "reason": "Size / quality",
           "refundAmount": 380,
@@ -3492,7 +3490,6 @@
       },
       "returns": [
         {
-          "date": "2026-10-10",
           "quantity": 1,
           "reason": "Size / quality",
           "refundAmount": 420,
@@ -4018,7 +4015,6 @@
       },
       "returns": [
         {
-          "date": "2026-10-10",
           "quantity": 1,
           "reason": "Size / quality",
           "refundAmount": 1250,
@@ -4415,7 +4411,6 @@
       },
       "returns": [
         {
-          "date": "2026-10-10",
           "quantity": 1,
           "reason": "Size / quality",
           "refundAmount": 350,

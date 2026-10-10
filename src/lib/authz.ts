@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { can, type Access, type Module } from "@/lib/rbac";
 import { sessionIsVoid } from "@/lib/session-validity";
+import { assertWritable } from "@/lib/billing";
 import type { Role } from "@prisma/client";
 
 export type WorkspaceAccess = {
@@ -60,6 +61,14 @@ export async function requireAccess(
   if (!access) return { ok: false, error: "Workspace not found or access denied" };
   if (!can(access.role, module, need, access.permissions)) {
     return { ok: false, error: "You do not have permission to do that" };
+  }
+  // A lapsed subscription makes the workspace read-only. Reading, exporting and
+  // backing up stay open (and so does team management, so an owner can still
+  // tidy up) — nothing is ever hidden or deleted because a payment is late.
+  // Costs nothing while billing enforcement is off.
+  if (need !== "view" && module !== "backup" && module !== "team") {
+    const writable = await assertWritable(access.workspaceId);
+    if (!writable.ok) return writable;
   }
   return { ok: true, access };
 }

@@ -4,6 +4,7 @@ import { randomBytes } from "crypto";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { assertWithinPlan } from "@/lib/billing";
 import { requireUser } from "@/lib/session";
 import { requireAccess } from "@/lib/authz";
 import { can } from "@/lib/rbac";
@@ -59,6 +60,8 @@ export async function inviteMember(formData: FormData): Promise<InviteResult> {
     return { ok: false, error: "You do not have permission to invite members" };
   }
   const workspaceId = membership.workspaceId;
+  const plan = await assertWithinPlan(workspaceId, "members");
+  if (!plan.ok) return plan;
 
   // Already a member? (only needs a round trip when the email is a known user)
   if (existingUser) {
