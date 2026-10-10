@@ -10,7 +10,10 @@
   --font-sans: var(--font-lang-primary), var(--font-lang-secondary), "Noto Sans Bengali",
     "Noto Sans", ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-mono), ui-monospace, monospace;
-  --font-heading: var(--font-sans), "Noto Sans Bengali", sans-serif;
+  --font-display: var(--font-bricolage), var(--font-lang-primary), var(--font-lang-secondary),
+    "Noto Sans Bengali", sans-serif;
+  --font-heading: var(--font-display), var(--font-lang-primary), var(--font-lang-secondary),
+    "Noto Sans Bengali", sans-serif;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -52,72 +55,76 @@
 :root {
   --font-lang-primary: var(--font-en);
   --font-lang-secondary: var(--font-bn);
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
+  /* Ink on paper: a cool, slightly blue grey rather than neutral white/black,
+     so figures and borders read as printed on something. */
+  --background: oklch(0.978 0.003 250);
+  --foreground: oklch(0.255 0.045 255);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
+  --card-foreground: oklch(0.255 0.045 255);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.255 0.045 255);
+  --primary: oklch(0.54 0.088 197);
   --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --secondary: oklch(0.955 0.006 250);
+  --secondary-foreground: oklch(0.255 0.045 255);
+  --muted: oklch(0.955 0.006 250);
+  --muted-foreground: oklch(0.50 0.03 255);
+  --accent: oklch(0.945 0.012 215);
+  --accent-foreground: oklch(0.255 0.045 255);
+  --destructive: oklch(0.55 0.2 29);
+  --border: oklch(0.905 0.008 250);
+  --input: oklch(0.88 0.01 250);
+  --ring: oklch(0.54 0.088 197);
+  --chart-1: oklch(0.54 0.088 197);
+  --chart-2: oklch(0.80 0.15 80);
+  --chart-3: oklch(0.255 0.045 255);
+  --chart-4: oklch(0.55 0.2 29);
+  --chart-5: oklch(0.65 0.1 150);
+  --radius: 0.5rem;
+  /* The sidebar is the ink, the one dark block in a light app: it anchors the
+     page and lets the content area be quiet. */
+  --sidebar: oklch(0.225 0.042 255);
+  --sidebar-foreground: oklch(0.93 0.01 250);
+  --sidebar-primary: oklch(0.72 0.11 195);
+  --sidebar-primary-foreground: oklch(0.2 0.04 255);
+  --sidebar-accent: oklch(0.3 0.045 255);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.72 0.11 195);
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
+  --background: oklch(0.185 0.03 255);
+  --foreground: oklch(0.955 0.008 250);
+  --card: oklch(0.23 0.035 255);
+  --card-foreground: oklch(0.955 0.008 250);
+  --popover: oklch(0.23 0.035 255);
+  --popover-foreground: oklch(0.955 0.008 250);
+  --primary: oklch(0.72 0.11 195);
+  --primary-foreground: oklch(0.2 0.04 255);
+  --secondary: oklch(0.29 0.04 255);
+  --secondary-foreground: oklch(0.955 0.008 250);
+  --muted: oklch(0.29 0.04 255);
+  --muted-foreground: oklch(0.72 0.02 250);
+  --accent: oklch(0.3 0.045 240);
+  --accent-foreground: oklch(0.955 0.008 250);
+  --destructive: oklch(0.68 0.18 25);
+  --border: oklch(1 0 0 / 11%);
+  --input: oklch(1 0 0 / 16%);
+  --ring: oklch(0.72 0.11 195);
+  --chart-1: oklch(0.72 0.11 195);
+  --chart-2: oklch(0.82 0.14 82);
+  --chart-3: oklch(0.9 0.01 250);
+  --chart-4: oklch(0.68 0.18 25);
+  --chart-5: oklch(0.75 0.1 150);
+  --sidebar: oklch(0.15 0.03 255);
+  --sidebar-foreground: oklch(0.93 0.01 250);
+  --sidebar-primary: oklch(0.72 0.11 195);
+  --sidebar-primary-foreground: oklch(0.2 0.04 255);
+  --sidebar-accent: oklch(0.25 0.04 255);
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --sidebar-ring: oklch(0.72 0.11 195);
 }
 
 /* Public-site palette. Ink and paper are the two the site is built from; the
@@ -131,6 +138,12 @@
   --color-stamp: #c7392b;
 }
 
+/* The sidebar scrolls; its bar should not be the brightest thing on it. */
+aside nav {
+  scrollbar-width: thin;
+  scrollbar-color: oklch(1 0 0 / 22%) transparent;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -141,6 +154,16 @@
   html {
     @apply font-sans;
   }
+  h1,
+  h2 {
+    font-family: var(--font-heading);
+    letter-spacing: -0.012em;
+  }
+  /* Figures line up in columns wherever they appear. */
+  table,
+  [data-slot="card"] {
+    font-variant-numeric: tabular-nums;
+  }
 }
 /* ── Fonts: swap which script is primary based on html[lang] ───────── */
 html[lang="bn"] {
@@ -149,10 +172,16 @@ html[lang="bn"] {
 }
 
 /* ── Phase 7: color presets (set via html[data-preset]) ───────────── */
+/* "indigo" is the stored key of the default preset; it is the brand teal. */
 [data-preset="indigo"] {
-  --primary: oklch(0.51 0.23 277);
+  --primary: oklch(0.54 0.088 197);
   --primary-foreground: oklch(0.985 0 0);
-  --ring: oklch(0.51 0.23 277);
+  --ring: oklch(0.54 0.088 197);
+}
+.dark[data-preset="indigo"], .dark [data-preset="indigo"] {
+  --primary: oklch(0.72 0.11 195);
+  --primary-foreground: oklch(0.2 0.04 255);
+  --ring: oklch(0.72 0.11 195);
 }
 [data-preset="green"] {
   --primary: oklch(0.60 0.17 150);

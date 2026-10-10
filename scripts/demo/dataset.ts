@@ -41,6 +41,8 @@ export type DatasetOptions = {
   /** Orders per day on average (scales the dataset). */
   ordersPerDay: number;
   password?: string;
+  /** Override the generated addresses (the demo wants memorable ones). */
+  emails?: Partial<Record<"owner" | "partnerA" | "partnerB" | "manager" | "staff", string>>;
 };
 
 type Res = { ok: boolean; error?: string; id?: string };
@@ -101,14 +103,20 @@ export async function buildDataset(opts: DatasetOptions): Promise<DatasetResult>
   const rnd = prng(20261001);
   const pick = <T,>(arr: readonly T[]): T => arr[Math.floor(rnd() * arr.length)];
   const pw = opts.password ?? "Demo#12345";
-  const email = (n: string) => `${n}@${opts.emailDomain}`;
+  const addr = {
+    owner: opts.emails?.owner ?? `owner@${opts.emailDomain}`,
+    partnerA: opts.emails?.partnerA ?? `partner.rafi@${opts.emailDomain}`,
+    partnerB: opts.emails?.partnerB ?? `partner.mim@${opts.emailDomain}`,
+    manager: opts.emails?.manager ?? `manager@${opts.emailDomain}`,
+    staff: opts.emails?.staff ?? `staff@${opts.emailDomain}`,
+  };
 
   // ── people ─────────────────────────────────────────────────────────
-  const owner = await createUser(email("owner"), "Shahriar Ahmed", pw);
-  const partnerA = await createUser(email("partner.rafi"), "Rafiul Islam", pw);
-  const partnerB = await createUser(email("partner.mim"), "Mim Chowdhury", pw);
-  const manager = await createUser(email("manager"), "Kamal Hossain", pw);
-  const staff = await createUser(email("staff"), "Sumon Mia", pw);
+  const owner = await createUser(addr.owner, "Shahriar Ahmed", pw);
+  const partnerA = await createUser(addr.partnerA, "Rafiul Islam", pw);
+  const partnerB = await createUser(addr.partnerB, "Mim Chowdhury", pw);
+  const manager = await createUser(addr.manager, "Kamal Hossain", pw);
+  const staff = await createUser(addr.staff, "Sumon Mia", pw);
 
   const ws = await createWorkspaceWithOwner(opts.workspaceName, opts.slug, owner.id);
   await addMember(ws.id, partnerA.id, "PARTNER");
@@ -359,12 +367,6 @@ export async function buildDataset(opts: DatasetOptions): Promise<DatasetResult>
     workspaceId: ws.id,
     slug,
     users: { owner: owner.id, partnerA: partnerA.id, partnerB: partnerB.id, manager: manager.id, staff: staff.id },
-    emails: {
-      owner: email("owner"),
-      partnerA: email("partner.rafi"),
-      partnerB: email("partner.mim"),
-      manager: email("manager"),
-      staff: email("staff"),
-    },
+    emails: addr,
   };
 }

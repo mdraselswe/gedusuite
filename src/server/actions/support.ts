@@ -16,7 +16,7 @@ const Schema = z.object({
 });
 
 /** Where support messages go: the support inbox, else the first platform admin. */
-export function supportInbox(): string | null {
+function supportInbox(): string | null {
   return process.env.BILLING_SUPPORT_EMAIL || platformAdminEmails()[0] || null;
 }
 

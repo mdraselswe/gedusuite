@@ -348,16 +348,18 @@ export function ReportView({
     doc.save(`gedusuite-report-${isAllTime ? "all-time" : `${from}_${to}`}.pdf`);
   }
 
+  // Shown the way every other screen shows money — ৳, grouped digits — rather
+  // than as a bare "137110.00". The exports above keep their plain figures.
   const kpis: [string, string | number][] = [
-    ["Revenue", report.kpis.revenue.toFixed(2)],
-    ["Order profit", report.kpis.profit.toFixed(2)],
-    ["Operating expenses", report.kpis.operatingExpenses.toFixed(2)],
+    ["Revenue", formatMoney(report.kpis.revenue)],
+    ["Order profit", formatMoney(report.kpis.profit)],
+    ["Operating expenses", formatMoney(report.kpis.operatingExpenses)],
     // Order profit less everything it took to run the shop over this range —
     // the figure partner shares are paid on, so it leads rather than hides
     // behind "profit after ads", which only ever covered one of the three.
-    ["Net profit", report.kpis.netProfit.toFixed(2)],
+    ["Net profit", formatMoney(report.kpis.netProfit)],
     ["Orders", report.kpis.orders],
-    ["Avg order", report.kpis.avgOrder.toFixed(2)],
+    ["Avg order", formatMoney(report.kpis.avgOrder)],
   ];
 
   const expenseLines: [string, number][] = [

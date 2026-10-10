@@ -38,3 +38,6 @@ tsconfig.tsbuildinfo
 # SaaS-upgrade local environment
 .env.saas.local
 .local-db/
+
+# Generated demo screenshots and video
+demo-assets/

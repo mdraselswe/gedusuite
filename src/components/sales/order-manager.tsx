@@ -1690,7 +1690,11 @@ export function OrderManager({
           >
             <SelectTrigger className="w-44 max-sm:w-full">
               <span className="shrink-0 text-muted-foreground">Status:</span>
-              <SelectValue />
+              {/* The closed trigger only knows the raw value, which for "all"
+                  is an internal sentinel — name what it means instead. */}
+              <SelectValue>
+                {(v: string) => (v === "__all__" ? "All" : formatEnum(v))}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="__all__">All</SelectItem>
@@ -1707,7 +1711,9 @@ export function OrderManager({
           >
             <SelectTrigger className="w-40 max-sm:w-full">
               <span className="shrink-0 text-muted-foreground">Payment:</span>
-              <SelectValue />
+              <SelectValue>
+                {(v: string) => (v === "__all__" ? "All" : formatEnum(v))}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="__all__">All</SelectItem>
@@ -1721,7 +1727,9 @@ export function OrderManager({
           <Select value={sort} onValueChange={(v) => v && pushListParams({ sort: v })}>
             <SelectTrigger className="w-44 max-sm:w-full">
               <span className="shrink-0 text-muted-foreground">Sort:</span>
-              <SelectValue />
+              <SelectValue>
+                {(v: string) => (v === "date_asc" ? "Oldest first" : "Newest first")}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="date_desc">Newest first</SelectItem>

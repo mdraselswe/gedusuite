@@ -195,3 +195,33 @@ landing rendered and checked in a browser.
 
 **Needs from you:** `BILLING_SUPPORT_EMAIL` / `BILLING_SUPPORT_PHONE`; a lawyer's
 pass over the three legal pages.
+
+## Phase 5 — redesign (presentation layer only) ✅
+
+No migration. **No file under `src/lib/**` financial logic or `src/server/**`
+business logic was touched by the redesign** (the only server-side edits in this
+phase are phases 3–4 features). Golden Master unchanged.
+
+- **Design system through tokens**: `globals.css` palette (ink/paper/teal,
+  radius, dark mode), the stored `indigo` preset now renders the brand teal
+  (no data migration), Bricolage Grotesque for headings and figures, tabular
+  numerals in cards and tables.
+- **Shell**: dark ink sidebar with a single teal "you are here" marker; quiet
+  icon chips instead of a dozen competing colours; mobile drawer to match.
+- **PageHeader / StatTile**: sentence-case labels, display-face figures.
+- **Fixes found while reviewing**: order filters showed the internal value
+  `__all__` / `date_desc` in their closed state — now "All" / "Newest first";
+  report KPI tiles showed bare `137110.00` — now ৳ with grouped digits (CSV/PDF
+  exports unchanged).
+- **Build safety (important)**: running the real `next build` caught two
+  problems that `tsc` and the tests cannot — a non-async export in a `"use
+  server"` file, and the new local-DB driver being pulled into the browser
+  bundle. Both fixed. `tests/` and `scripts/` moved to `tsconfig.tests.json`
+  (`yarn typecheck` runs both) so `next build`'s type-check fits its memory
+  budget. **Do the production build before every deploy.**
+- **Evidence**: `scripts/demo/shots.mjs` walks all 22 screens in a real browser
+  at desktop and phone size against the production build: no HTTP 5xx, no
+  console errors, no page errors.
+
+Verification: `tsc` clean (app + tests), 617 unit + 46 integration tests green,
+production `next build` succeeds.

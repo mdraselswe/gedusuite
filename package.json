@@ -8,7 +8,7 @@
     "vercel-build": "node scripts/vercel-build.mjs",
     "start": "next start",
     "db:deploy": "dotenv -e .env.local -- prisma migrate deploy",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.tests.json",
     "test": "vitest run",
     "test:watch": "vitest",
     "postinstall": "prisma generate",
@@ -18,9 +18,11 @@
     "db:studio": "dotenv -e .env.local -- prisma studio",
     "db:local": "node scripts/dev/db.mjs start",
     "local:migrate": "dotenv -e .env.saas.local -- prisma migrate deploy",
+    "local:start": "dotenv -e .env.saas.local -- next start -p 3000",
     "local:dev": "dotenv -e .env.saas.local -- next dev --webpack",
     "local:studio": "dotenv -e .env.saas.local -- prisma studio",
     "test:integration": "dotenv -e .env.saas.local -- vitest run -c vitest.integration.config.mts",
+    "demo:seed": "dotenv -e .env.saas.local -- vitest run -c vitest.integration.config.mts scripts/demo/seed.seed.ts",
     "report:district": "dotenv -e .env.local -- node scripts/district-cancel-report.mjs"
   },
   "dependencies": {
@@ -57,6 +59,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.0",
     "@tailwindcss/postcss": "^4",
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^20",

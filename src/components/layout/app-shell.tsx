@@ -53,17 +53,26 @@ function NavLink({
       // skeletons still do their job on a real click; we just don't
       // speculatively render the whole app behind the user's back.
       prefetch={false}
+      aria-current={active ? "page" : undefined}
       className={cn(
-        "group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors md:py-2",
+        "group relative flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors md:py-2",
         active
-          ? "bg-muted text-foreground"
-          : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+          ? "bg-sidebar-accent text-sidebar-accent-foreground"
+          : "text-sidebar-foreground/75 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground",
       )}
     >
+      {/* The marker is the whole signal for "you are here" — the icon chips
+          stay one quiet colour so a dozen sections do not shout at once. */}
+      {active && (
+        <span
+          aria-hidden
+          className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-sidebar-primary"
+        />
+      )}
       <span
         className={cn(
-          "flex size-7 shrink-0 items-center justify-center rounded-md transition-transform group-hover:scale-110",
-          sectionColorClasses[item.color],
+          "flex size-7 shrink-0 items-center justify-center rounded-md",
+          active ? "bg-sidebar-primary/20 text-sidebar-primary" : "bg-white/5 text-sidebar-foreground/80",
         )}
       >
         {item.icon}
@@ -107,10 +116,10 @@ export function AppShell({
   return (
     <div className="flex min-h-screen">
       {/* Desktop sidebar */}
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r bg-background md:flex print:hidden">
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground md:flex print:hidden">
         <Link
           href={`/${slug}/dashboard`}
-          className="flex h-16 shrink-0 items-center gap-2 border-b px-4 font-bold"
+          className="flex h-16 shrink-0 items-center gap-2 border-b border-sidebar-border px-4 font-display text-lg font-bold tracking-tight"
         >
           <BrandMark logoUrl={logoUrl} name={workspaceName} />
         </Link>
@@ -125,8 +134,8 @@ export function AppShell({
             </div>
           ))}
         </nav>
-        <div className="flex items-center justify-between gap-2 border-t p-3">
-          <span className="text-xs font-medium text-muted-foreground">{role}</span>
+        <div className="flex items-center justify-between gap-2 border-t border-sidebar-border p-3">
+          <span className="text-xs font-medium text-sidebar-foreground/60">{role}</span>
           <SignOutButton />
         </div>
       </aside>
@@ -176,7 +185,10 @@ export function AppShell({
 
       {/* Mobile nav drawer */}
       <Sheet open={open} onOpenChange={setOpen}>
-        <SheetContent side="left" className="w-72 max-w-[85vw]">
+        <SheetContent
+          side="left"
+          className="w-72 max-w-[85vw] border-sidebar-border bg-sidebar text-sidebar-foreground"
+        >
           <SheetHeader>
             <SheetTitle>
               <BrandMark logoUrl={logoUrl} name={workspaceName} />

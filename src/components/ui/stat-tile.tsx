@@ -56,19 +56,17 @@ export function StatTile({
         {icon && (
           <span
             className={cn(
-              "flex size-8 shrink-0 items-center justify-center rounded-lg [&_svg]:size-4",
+              "flex size-7 shrink-0 items-center justify-center rounded-md [&_svg]:size-3.5",
               color ? sectionColorClasses[color] : "bg-muted text-muted-foreground",
             )}
           >
             {icon}
           </span>
         )}
-        <CardTitle className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-          {label}
-        </CardTitle>
+        <CardTitle className="text-[13px] font-medium text-muted-foreground">{label}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-1">
-        <div className="text-2xl leading-tight font-semibold tracking-tight">
+        <div className="font-display text-[1.7rem] leading-tight font-semibold tracking-tight tabular-nums">
           {typeof value === "number" ? (
             <Money value={value} tone={tone} exact={exact} />
           ) : (

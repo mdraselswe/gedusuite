@@ -19,7 +19,7 @@ import {
 
 const PRESETS = ["indigo", "green", "rose", "amber"] as const;
 const PRESET_COLOR: Record<string, string> = {
-  indigo: "oklch(0.51 0.23 277)",
+  indigo: "oklch(0.54 0.088 197)",
   green: "oklch(0.60 0.17 150)",
   rose: "oklch(0.59 0.22 12)",
   amber: "oklch(0.77 0.16 70)",

@@ -1,5 +1,6 @@
 import { defineConfig } from "vitest/config";
 import { loadEnvFile } from "node:process";
+import { fileURLToPath } from "node:url";
 
 /**
  * Integration tests: the real server actions and finance code against the
@@ -13,7 +14,8 @@ try {
 }
 
 export default defineConfig({
-  resolve: { tsconfigPaths: true },
+  // tests/ and scripts/ sit outside the app tsconfig, so alias @ explicitly.
+  resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
   test: {
     environment: "node",
     include: ["tests/integration/**/*.itest.ts", "scripts/demo/**/*.seed.ts"],

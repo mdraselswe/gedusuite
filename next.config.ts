@@ -30,6 +30,22 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   poweredByHeader: false,
 
+  // src/lib/prisma.ts can choose the plain `pg` driver (local development and
+  // tests), and one client component reaches it through lib/spending. That
+  // path is dead in the browser; give the browser an empty module for it
+  // rather than let webpack try to bundle a Postgres driver.
+  webpack: (config, { isServer }) => {
+    if (!isServer) {
+      config.resolve = config.resolve ?? {};
+      config.resolve.alias = {
+        ...(config.resolve.alias ?? {}),
+        "@prisma/adapter-pg": false,
+        pg: false,
+      };
+    }
+    return config;
+  },
+
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

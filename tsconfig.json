@@ -30,5 +30,7 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules"]
+  // tests/ and scripts/ are checked by tsconfig.tests.json. Keeping them out of
+  // this one keeps `next build`'s type-check inside its memory budget.
+  "exclude": ["node_modules", "tests", "scripts", "demo-assets", ".local-db"]
 }

@@ -22,17 +22,17 @@ export function PageHeader({
       <div className="flex items-center gap-3">
         <span
           className={cn(
-            "flex size-10 shrink-0 items-center justify-center rounded-xl [&_svg]:size-5",
+            "flex size-9 shrink-0 items-center justify-center rounded-md [&_svg]:size-[18px]",
             sectionColorClasses[color],
           )}
         >
           {icon}
         </span>
-        <h1 className="text-2xl font-bold">{title}</h1>
+        <h1 className="font-display text-[1.65rem] leading-none font-bold tracking-tight">{title}</h1>
         {typeof count === "number" && (
           <span
             className={cn(
-              "rounded-full px-2.5 py-0.5 text-sm font-semibold tabular-nums",
+              "rounded-md px-2 py-0.5 text-sm font-semibold tabular-nums",
               sectionColorClasses[color],
             )}
           >

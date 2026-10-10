@@ -6,6 +6,7 @@ import { ConfirmDialogHost } from "@/components/ui/confirm-dialog";
 import { auth } from "@/lib/session";
 import { getUserPrefs } from "@/lib/user-prefs";
 import { isLocale, type Locale } from "@/lib/i18n";
+import { display } from "@/components/marketing/fonts";
 
 // Separate, script-optimized fonts instead of one font for both: Inter reads
 // better for English UI text, Hind Siliguri reads better for Bangla. Which one
@@ -67,7 +68,7 @@ export default async function RootLayout({
     <html
       lang={locale}
       data-preset={preset}
-      className={`${inter.variable} ${hindSiliguri.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${inter.variable} ${hindSiliguri.variable} ${geistMono.variable} ${display.variable} h-full antialiased`}
       suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col" suppressHydrationWarning>
