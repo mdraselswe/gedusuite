@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { PrismaNeon } from "@prisma/adapter-neon";
+import { PrismaPg } from "@prisma/adapter-pg";
 import { neonConfig } from "@neondatabase/serverless";
 import ws from "ws";
 
@@ -36,7 +37,34 @@ function driverUrl(url: string | undefined) {
   return parsed.toString();
 }
 
+/**
+ * Neon's WebSocket driver only speaks to Neon's proxy. A plain Postgres (the
+ * local database used for development and tests) needs the ordinary driver.
+ * Anything on a neon.tech host — i.e. production — takes the same path it
+ * always has.
+ */
+function isNeonUrl(url: string | undefined) {
+  if (!url) return true; // keep the original behaviour when unset
+  try {
+    return new URL(url).hostname.endsWith(".neon.tech");
+  } catch {
+    return true;
+  }
+}
+
+function makeLocalClient() {
+  const adapter = new PrismaPg({
+    connectionString: driverUrl(process.env.DATABASE_URL),
+    max: Number(process.env.PRISMA_CONNECTION_LIMIT ?? 10),
+  });
+  return new PrismaClient({
+    adapter,
+    log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
+  });
+}
+
 function makeClient() {
+  if (!isNeonUrl(process.env.DATABASE_URL)) return makeLocalClient();
   // Neon's pooled (-pooler) endpoint runs pgbouncer in transaction mode and
   // comfortably handles far more than 5 concurrent logical connections. A
   // limit of 5 was too tight for pages that fan out several queries at once

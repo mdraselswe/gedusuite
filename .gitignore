@@ -34,3 +34,7 @@ public/swe-worker-*.js
 tsconfig.tsbuildinfo
 .vercel
 .env.local.bak
+
+# SaaS-upgrade local environment
+.env.saas.local
+.local-db/
