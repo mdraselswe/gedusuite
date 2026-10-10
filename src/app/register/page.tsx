@@ -86,6 +86,17 @@ function RegisterForm() {
               autoComplete="new-password"
             />
           </Field>
+          <p className="text-xs text-muted-foreground">
+            By creating an account you agree to the{" "}
+            <Link href="/terms" className="underline underline-offset-4">
+              Terms
+            </Link>{" "}
+            and{" "}
+            <Link href="/privacy" className="underline underline-offset-4">
+              Privacy policy
+            </Link>
+            .
+          </p>
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? "Creating…" : "Create account"}
           </Button>

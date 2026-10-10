@@ -120,6 +120,17 @@
   --sidebar-ring: oklch(0.556 0 0);
 }
 
+/* Public-site palette. Ink and paper are the two the site is built from; the
+   rest each do one job: teal marks money that arrives, tape is the courier's
+   thread, stamp is a mistake or a warning. */
+@theme {
+  --color-ink: #0f1f33;
+  --color-paper: #f6f8fa;
+  --color-teal: #0f7f80;
+  --color-tape: #f2b134;
+  --color-stamp: #c7392b;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

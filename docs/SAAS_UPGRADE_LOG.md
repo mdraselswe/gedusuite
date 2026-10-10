@@ -161,3 +161,37 @@ excluded from the comparison.
 / `BILLING_BANK_DETAILS` (shown to customers), `PLATFORM_ADMIN_EMAILS` (your
 address), and the decision of when to flip `BILLING_ENFORCEMENT=on` — keep it off
 for the first deploy.
+
+## Phase 4 — public site and onboarding ✅
+
+No migration.
+
+- **Public front door**: `/` shows the landing page to signed-out visitors and
+  the workspace picker, unchanged, to signed-in ones. `/pricing`, `/terms`,
+  `/privacy`, `/refund` are public.
+- **Landing design**: the hero is one real order followed to the partners'
+  shares, produced by the app's own `computeOrderTotals`, `depositAmount` and
+  `splitByShare` — so the page that promises "one number, one place" is built
+  from exactly that. Ink/paper palette, display face Bricolage Grotesque, a
+  numbered five-step money path (a real sequence), plain-language FAQ.
+- **Pricing** reads `lib/plans.ts`, so the page can never disagree with what is
+  charged. Monthly/yearly toggle, comparison table.
+- **Legal pages** are drafted text matching what the product actually does
+  (read-only after grace, export, data held, providers). **They are a starting
+  point, not legal advice — have them reviewed before launch.**
+- **Sign-up** links Terms and Privacy.
+- **Onboarding checklist** on the dashboard of a new workspace: product →
+  purchase → first order, plus optional courier / partners / team / branding.
+  Computed from the database; one indexed count hides it for every established
+  shop (including the original one).
+- **Help & support**: in-app page with a message form (emailed to
+  `BILLING_SUPPORT_EMAIL`, falling back to the first platform admin), contact
+  details, links.
+
+Verification: 4 new integration tests (checklist progress, hides for
+established shop, support mail contents, validation/tenant check). Whole suite
+46 integration + 617 unit tests green; Golden Master unchanged; `tsc` clean;
+landing rendered and checked in a browser.
+
+**Needs from you:** `BILLING_SUPPORT_EMAIL` / `BILLING_SUPPORT_PHONE`; a lawyer's
+pass over the three legal pages.

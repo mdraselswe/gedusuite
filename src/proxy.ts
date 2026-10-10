@@ -8,6 +8,10 @@ import type { SessionMembership } from "@/lib/auth";
 const PUBLIC_PREFIXES = [
   "/login",
   "/register",
+  "/pricing",
+  "/terms",
+  "/privacy",
+  "/refund",
   "/forgot-password",
   "/reset-password",
   "/verify-email",
@@ -29,6 +33,9 @@ export default async function proxy(req: NextRequest) {
   }
 
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
+
+  // The front door: a signed-out visitor at "/" sees the public site.
+  if (!token?.uid && pathname === "/") return NextResponse.next();
 
   // Unauthenticated → send to login, preserving intended destination.
   if (!token?.uid) {

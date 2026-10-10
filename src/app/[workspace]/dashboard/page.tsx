@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { requireMembership, serverT } from "@/lib/session";
+import { onboardingFor } from "@/lib/onboarding";
+import { OnboardingChecklist } from "@/components/onboarding/checklist";
 import { workspaceAccess } from "@/lib/authz";
 import { can } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
@@ -52,6 +54,7 @@ export default async function DashboardPage({
   const { membership } = await requireMembership(slug);
   const workspaceId = membership.workspaceId;
   const t = await serverT();
+  const onboarding = await onboardingFor(workspaceId, slug);
 
   const access = await workspaceAccess(slug);
   const canViewPartners =
@@ -208,6 +211,8 @@ export default async function DashboardPage({
           </span>
         }
       />
+
+      {onboarding.show && <OnboardingChecklist data={onboarding} />}
 
       {quickActions.length > 0 && (
         <div className="flex flex-wrap gap-2">

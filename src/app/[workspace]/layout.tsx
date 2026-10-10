@@ -20,6 +20,7 @@ import {
   PhoneCall,
   Globe,
   CreditCard,
+  LifeBuoy,
 } from "lucide-react";
 import { requireMembership } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
@@ -240,6 +241,13 @@ async function WorkspaceChrome({
       icon: <DatabaseBackup className="size-4" />,
       color: "rose",
       show: can(role, "backup", "view"),
+    }),
+    navItem({
+      href: `/${slug}/help`,
+      label: "Help & support",
+      icon: <LifeBuoy className="size-4" />,
+      color: "sky",
+      show: true,
     }),
     navItem({
       href: `/${slug}/settings/appearance`,

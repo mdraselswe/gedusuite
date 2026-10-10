@@ -1,5 +1,7 @@
 import Link from "next/link";
-import { requireUser } from "@/lib/session";
+import { auth, requireUser } from "@/lib/session";
+import { Landing } from "@/components/marketing/landing";
+import { display } from "@/components/marketing/fonts";
 import { prisma } from "@/lib/prisma";
 import { SignOutButton } from "@/components/sign-out-button";
 import { buttonVariants } from "@/components/ui/button";
@@ -15,6 +17,15 @@ const ROLE_BADGE: Record<string, string> = {
 };
 
 export default async function HomePage() {
+  // Signed out: the public site. Signed in: your workspaces, as before.
+  const session = await auth();
+  if (!session?.user?.id) {
+    return (
+      <div className={display.variable}>
+        <Landing />
+      </div>
+    );
+  }
   const user = await requireUser();
   // Display names come fresh from the DB — the JWT membership snapshot only
   // carries slugs, and names/logos can change at any time.
