@@ -5,11 +5,14 @@
  * the shop's own copy and contact QR codes, so this takes no order prop.
  */
 
+import type { ResolvedPrintProfile } from "@/lib/print-profile";
+
 export type GiftTagQr = {
-  /** data: URL PNGs, generated once per print run — see gift-tags/page.tsx. */
-  site: string;
-  facebook: string;
-  whatsapp: string;
+  /** data: URL PNGs, generated once per print run — see gift-tags/page.tsx.
+   *  A channel the shop does not have is simply absent. */
+  site?: string;
+  facebook?: string;
+  whatsapp?: string;
 };
 
 /**
@@ -24,16 +27,7 @@ const RULE = "#9b96c0";
 const MUTED = "#6b6785";
 const BODY = "#241f38";
 
-const LEAD = "🎁 ছোট্ট একটি উপহার, আমাদের পক্ষ থেকে ভালোবাসার নিদর্শন।";
-const QUOTE = "একবারের বিশ্বাস, বারবারের ভালোবাসা।";
-const PARAGRAPH =
-  "GeduShop পরিবারের অংশ হওয়ার জন্য আন্তরিক ধন্যবাদ। আশা করি উপহারটি আপনার ভালো লাগবে। আবারও আপনার পরবর্তী অর্ডারে আপনাকে স্বাগত!";
-// Deliberately not another "next order" line — the closing line originally
-// read almost the same as the paragraph above it ("...আপনার পরবর্তী অর্ডারে..."
-// twice). This one stays on the same warm note without repeating the CTA.
-const CLOSING = "💜 আপনার সোনামণির হাসিমুখই আমাদের সবচেয়ে বড় পাওয়া!";
-
-const FOOT_ROWS: { key: keyof GiftTagQr; icon: React.ReactNode; label: string; link: string }[] = [
+const FOOT_ROWS: { key: keyof GiftTagQr; icon: React.ReactNode; label: string }[] = [
   {
     key: "site",
     icon: (
@@ -42,7 +36,6 @@ const FOOT_ROWS: { key: keyof GiftTagQr; icon: React.ReactNode; label: string; l
       </svg>
     ),
     label: "ওয়েবসাইটে অর্ডার",
-    link: "gedushop.com",
   },
   {
     key: "facebook",
@@ -52,7 +45,6 @@ const FOOT_ROWS: { key: keyof GiftTagQr; icon: React.ReactNode; label: string; l
       </svg>
     ),
     label: "ফেসবুক পেজে ইনবক্স",
-    link: "facebook.com/gedushop",
   },
   {
     key: "whatsapp",
@@ -62,55 +54,68 @@ const FOOT_ROWS: { key: keyof GiftTagQr; icon: React.ReactNode; label: string; l
       </svg>
     ),
     label: "হোয়াটসঅ্যাপ বা কল",
-    link: "01552-958606",
   },
 ];
 
-export function GiftTag({ qr }: { qr: GiftTagQr }) {
+export function GiftTag({ qr, profile }: { qr: GiftTagQr; profile: ResolvedPrintProfile }) {
+  const links: Record<keyof GiftTagQr, string | undefined> = {
+    site: profile.website?.display,
+    facebook: profile.facebook?.display,
+    whatsapp: profile.whatsapp?.display,
+  };
+  const rows = FOOT_ROWS.filter((r) => qr[r.key] && links[r.key]);
+
   return (
     <div className="flex h-full min-w-0 flex-col overflow-hidden px-[6mm] pt-[7mm] pb-[5mm]" style={{ color: BODY }}>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/branding/gedushop-logo.png" alt="GeduShop" className="mx-auto mb-[4mm] block h-[12mm] w-auto" />
+      {profile.logoUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={profile.logoUrl} alt={profile.shopName} className="mx-auto mb-[4mm] block h-[12mm] w-auto max-w-full object-contain" />
+      ) : (
+        <div className="mx-auto mb-[4mm] text-center text-[15px] font-bold" style={{ color: INK }}>
+          {profile.shopName}
+        </div>
+      )}
 
-      <p className="text-center text-[10px] leading-[1.65]">{LEAD}</p>
+      <p className="text-center text-[10px] leading-[1.65]">{profile.giftLead}</p>
 
-      <p
-        className="mt-[5mm] text-center text-[15px] leading-[1.4] font-semibold before:content-['\201C'] after:content-['\201D']"
-        style={{ color: ACCENT }}
-      >
-        {QUOTE}
-      </p>
+      {profile.giftQuote ? (
+        <p
+          className="mt-[5mm] text-center text-[15px] leading-[1.4] font-semibold before:content-['\201C'] after:content-['\201D']"
+          style={{ color: ACCENT }}
+        >
+          {profile.giftQuote}
+        </p>
+      ) : null}
 
-      <p className="mt-[5mm] text-center text-[10px] leading-[1.7]">{PARAGRAPH}</p>
+      <p className="mt-[5mm] text-center text-[10px] leading-[1.7]">{profile.giftThanks}</p>
 
       <p className="mt-[5.5mm] text-center text-[12.5px] leading-[1.45] font-semibold" style={{ color: INK }}>
-        {CLOSING}
+        {profile.giftClosing}
       </p>
 
-      {/* Bridges the leftover vertical space above the footer with one small
-          brand mark instead of leaving it as a bare gap — the star already
-          lives in the wordmark, so it reads as a flourish, not filler. */}
       <div className="mt-auto pt-[4mm] pb-[3mm] text-center text-[12px]" style={{ color: RULE }}>
         ✦
       </div>
 
-      <div className="pt-[3mm]" style={{ borderTop: "0.35mm solid #ece7f7" }}>
-        {FOOT_ROWS.map((row) => (
-          <div key={row.key} className="flex items-center gap-[2.2mm] py-[1mm]">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={qr[row.key]} alt="" className="size-[10mm] shrink-0" />
-            <div className="min-w-0">
-              <div className="flex items-center gap-[1.1mm] text-[6.8px] whitespace-nowrap" style={{ color: MUTED }}>
-                {row.icon}
-                <span>{row.label}</span>
-              </div>
-              <div className="mt-[0.3mm] text-[8.8px] font-bold whitespace-nowrap" style={{ color: ACCENT }}>
-                {row.link}
+      {rows.length > 0 ? (
+        <div className="pt-[3mm]" style={{ borderTop: "0.35mm solid #ece7f7" }}>
+          {rows.map((row) => (
+            <div key={row.key} className="flex items-center gap-[2.2mm] py-[1mm]">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={qr[row.key]} alt="" className="size-[10mm] shrink-0" />
+              <div className="min-w-0">
+                <div className="flex items-center gap-[1.1mm] text-[6.8px] whitespace-nowrap" style={{ color: MUTED }}>
+                  {row.icon}
+                  <span>{row.label}</span>
+                </div>
+                <div className="mt-[0.3mm] text-[8.8px] font-bold whitespace-nowrap" style={{ color: ACCENT }}>
+                  {links[row.key]}
+                </div>
               </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }

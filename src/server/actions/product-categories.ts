@@ -9,20 +9,20 @@ import { recordActivity } from "@/lib/activity";
 
 export type ActionResult = { ok: true } | ActionFailure;
 
-// Baseline categories for a baby-products business (GeduShop). Seeded once
-// per workspace the first time its category list is empty — existing
-// workspaces get seeded retroactively the first time they load the Products
-// page, new workspaces get them immediately.
+// Starting categories, general enough for any small shop. Seeded once per
+// workspace the first time its category list is empty; the owner edits them
+// freely. (A workspace that already has categories is never touched, so shops
+// that were seeded with an earlier list keep theirs.)
 const DEFAULT_CATEGORIES = [
-  "Baby Clothing",
-  "Diapers",
-  "Feeding & Nursing",
-  "Baby Food & Formula",
-  "Toys",
-  "Skincare & Bath",
-  "Strollers & Carriers",
-  "Health & Safety",
-  "Nursery & Bedding",
+  "Clothing",
+  "Footwear",
+  "Accessories",
+  "Beauty & Personal Care",
+  "Food & Grocery",
+  "Home & Kitchen",
+  "Electronics",
+  "Toys & Kids",
+  "Health & Wellness",
   "Other",
 ];
 

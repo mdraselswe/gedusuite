@@ -141,7 +141,7 @@ export async function deleteWorkspace(
  * Set or clear the shop's website, printed on order forms.
  *
  * Stored bare (no scheme) because that's how it's printed and how a customer
- * types it — "gedushop.com", not "https://gedushop.com/". Anything the owner
+ * types it — "yourshop.com", not "https://yourshop.com/". Anything the owner
  * pastes with a scheme or a trailing slash is normalised down to that, so the
  * printed line doesn't depend on how carefully it was pasted.
  */
@@ -163,7 +163,7 @@ export async function updateWorkspaceWebsite(
   // Deliberately loose — a shop address can be a bare domain, a subdomain or a
   // Facebook page path. It only has to look like a host, not resolve.
   if (cleaned && !/^[a-z0-9.-]+\.[a-z]{2,}(\/\S*)?$/i.test(cleaned)) {
-    return { ok: false, error: "Enter a website like gedushop.com" };
+    return { ok: false, error: "Enter a website like yourshop.com" };
   }
 
   await prisma.workspace.update({

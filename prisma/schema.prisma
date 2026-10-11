@@ -33,6 +33,10 @@ model Workspace {
   // order again. Stored per workspace rather than hardcoded — the printed
   // documents are shared code and every shop's address is its own.
   websiteUrl String?
+  // What the shop's printed extras (gift tags, leaflet) say: social links,
+  // WhatsApp, tagline, thank-you wording. Free-form JSON, parsed by
+  // lib/print-profile. Null = print only what is true of every shop.
+  printProfile Json?
   createdAt  DateTime @default(now())
 
   memberships           Membership[]

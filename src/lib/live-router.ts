@@ -22,7 +22,7 @@ import { broadcastRefresh } from "@/lib/live-refresh";
  */
 export function useRouter(): ReturnType<typeof useNextRouter> {
   const router = useNextRouter();
-  // "/gedushop/sales/orders" -> "gedushop". Read from the path rather than
+  // "/my-shop/sales/orders" -> "my-shop". Read from the path rather than
   // passed in, so a call site needs to know nothing about any of this — and
   // depended on as the string, not as the pathname it came from: Next's own
   // router is stable across navigations, and an effect that lists `router` in

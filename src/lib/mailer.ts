@@ -52,7 +52,9 @@ export async function sendMail(mail: Mail): Promise<MailResult> {
       method: "POST",
       headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        from: process.env.MAIL_FROM || "GeduSuite <no-reply@gedushop.com>",
+        // Resend's shared sandbox sender works with no domain set up, to the
+        // account owner only. Real sending needs MAIL_FROM on a verified domain.
+        from: process.env.MAIL_FROM || "GeduSuite <onboarding@resend.dev>",
         to: [mail.to],
         subject: mail.subject,
         text: mail.text,

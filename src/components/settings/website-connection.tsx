@@ -81,6 +81,26 @@ export function WebsiteConnection({
 
       <Card>
         <CardHeader>
+          <CardTitle>Combo plugin (optional)</CardTitle>
+          <CardDescription>
+            Only needed if you sell combo sets (several products at one price). Install it on your
+            WooCommerce site: Plugins → Add New → Upload Plugin. Everything else on this page works
+            without it.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <a
+            href="/downloads/gedusuite-combo.zip"
+            download
+            className="inline-flex h-8 items-center rounded-md border px-3 text-sm hover:bg-muted"
+          >
+            Download GeduSuite Combo Sets (.zip)
+          </a>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle>WooCommerce store</CardTitle>
           <CardDescription>
             In WooCommerce go to Settings → Advanced → REST API and create a key with Read/Write

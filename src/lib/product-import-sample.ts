@@ -65,4 +65,4 @@ export const PRODUCT_IMPORT_SAMPLE = [
 /** Pretty-printed, because a human reads this before editing it. */
 export const PRODUCT_IMPORT_SAMPLE_JSON = JSON.stringify(PRODUCT_IMPORT_SAMPLE, null, 2);
 
-export const PRODUCT_IMPORT_SAMPLE_FILENAME = "gedushop-products-sample.json";
+export const PRODUCT_IMPORT_SAMPLE_FILENAME = "gedusuite-products-sample.json";

@@ -4,6 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { workspaceAccess } from "@/lib/authz";
 import { AppearanceForm } from "@/components/settings/appearance-form";
 import { DeleteAccountCard } from "@/components/settings/delete-account";
+import { PrintProfileForm } from "@/components/settings/print-profile-form";
+import { parsePrintProfile } from "@/lib/print-profile";
 import { BrandingForm } from "@/components/settings/branding-form";
 import { serverT } from "@/lib/session";
 import { PageHeader } from "@/components/ui/page-header";
@@ -28,7 +30,7 @@ export default async function AppearancePage({
     }),
     prisma.workspace.findUnique({
       where: { id: access.workspaceId },
-      select: { name: true, logoUrl: true, websiteUrl: true },
+      select: { name: true, logoUrl: true, websiteUrl: true, printProfile: true },
     }),
   ]);
 
@@ -41,6 +43,13 @@ export default async function AppearancePage({
           initialName={workspace?.name ?? ""}
           initialLogoUrl={workspace?.logoUrl ?? null}
           initialWebsiteUrl={workspace?.websiteUrl ?? null}
+        />
+      )}
+      {access.role === "OWNER" && (
+        <PrintProfileForm
+          slug={slug}
+          initial={parsePrintProfile(workspace?.printProfile)}
+          websiteUrl={workspace?.websiteUrl ?? null}
         />
       )}
       <AppearanceForm

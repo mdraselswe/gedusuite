@@ -1,12 +1,12 @@
 import { Baloo_Da_2 } from "next/font/google";
+import type { ResolvedPrintProfile } from "@/lib/print-profile";
 
 /**
- * One panel of the GeduShop promo leaflet — four to an A4 portrait sheet
- * (see leaflet/page.tsx). Ported from the shop's existing leaflet design
- * (gedushop-leaflet-a4-4up.pdf) rather than redrawn: every size below is
- * that design's original pixel value halved, since the source was built at
- * ~2x the CSS-px-per-mm density this app's print sheets render at — same
- * panel, same proportions, just re-based onto this app's mm-sized sheet.
+ * One panel of the shop's leaflet — four to an A4 portrait sheet (see
+ * leaflet/page.tsx). Name, logo, tagline, headline and contact channels come
+ * from the workspace (lib/print-profile); a channel the shop does not have is
+ * not printed. Sizes are the original design's pixel values halved, since it
+ * was built at ~2x the CSS-px-per-mm density this app's print sheets use.
  *
  * Loaded locally rather than in the root layout: this display face is only
  * used on this one print page, so it shouldn't cost every other page in the
@@ -23,13 +23,13 @@ const BADGE_BORDER = "#f5aba5";
 const RULE = "#e7e3f4";
 
 export type LeafletQr = {
-  /** data: URL PNGs — see leaflet/page.tsx. */
-  site: string;
-  facebook: string;
-  whatsapp: string;
+  /** data: URL PNGs — see leaflet/page.tsx. Absent = the shop has no such channel. */
+  site?: string;
+  facebook?: string;
+  whatsapp?: string;
 };
 
-const CONTACT_ROWS: { key: keyof LeafletQr; icon: React.ReactNode; label: string; link: string }[] = [
+const CONTACT_ROWS: { key: keyof LeafletQr; icon: React.ReactNode; label: string }[] = [
   {
     key: "site",
     icon: (
@@ -40,7 +40,6 @@ const CONTACT_ROWS: { key: keyof LeafletQr; icon: React.ReactNode; label: string
       </svg>
     ),
     label: "ওয়েবসাইটে অর্ডার",
-    link: "gedushop.com",
   },
   {
     key: "facebook",
@@ -50,7 +49,6 @@ const CONTACT_ROWS: { key: keyof LeafletQr; icon: React.ReactNode; label: string
       </svg>
     ),
     label: "ফেসবুক পেজে ইনবক্স",
-    link: "facebook.com/gedushop",
   },
   {
     key: "whatsapp",
@@ -60,29 +58,47 @@ const CONTACT_ROWS: { key: keyof LeafletQr; icon: React.ReactNode; label: string
       </svg>
     ),
     label: "হোয়াটসঅ্যাপ বা কল",
-    link: "01552-958606",
   },
 ];
 
-export function LeafletPanel({ qr }: { qr: LeafletQr }) {
+export function LeafletPanel({ qr, profile }: { qr: LeafletQr; profile: ResolvedPrintProfile }) {
+  const links: Record<keyof LeafletQr, string | undefined> = {
+    site: profile.website?.display,
+    facebook: profile.facebook?.display,
+    whatsapp: profile.whatsapp?.display,
+  };
+  const rows = CONTACT_ROWS.filter((r) => qr[r.key] && links[r.key]);
+  const headlineLines = profile.headline.split("\n");
+
   return (
     <div
       className="flex h-full flex-col justify-center overflow-hidden p-[20px]"
       style={{ color: INK, fontFamily: "'Hind Siliguri', 'Noto Sans Bengali', sans-serif" }}
     >
       <div className="flex flex-col items-center gap-[4px]">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/branding/gedushop-logo.png" alt="GeduShop" className="block h-auto w-[90px]" />
-        <div className="text-[15px] font-semibold tracking-[0.25px]" style={{ color: INK_SOFT }}>
-          শিশুর জন্য যা কিছু দরকার
-        </div>
+        {profile.logoUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={profile.logoUrl} alt={profile.shopName} className="block h-auto max-h-[60px] w-[90px] object-contain" />
+        ) : (
+          <div className={`${balooDa2.className} text-[22px] font-extrabold`} style={{ color: INK }}>
+            {profile.shopName}
+          </div>
+        )}
+        {profile.tagline ? (
+          <div className="text-[15px] font-semibold tracking-[0.25px]" style={{ color: INK_SOFT }}>
+            {profile.tagline}
+          </div>
+        ) : null}
       </div>
 
       <div className="flex flex-col items-center gap-[6px] pt-[9px] text-center">
         <h1 className={`${balooDa2.className} m-0 text-[22px] leading-[1.3] font-extrabold`} style={{ color: INK }}>
-          বাচ্চাদের খেলনা ও
-          <br />
-          বেবি কেয়ারের সবকিছু
+          {headlineLines.map((line, i) => (
+            <span key={i}>
+              {i > 0 && <br />}
+              {line}
+            </span>
+          ))}
         </h1>
         <div className="h-[3.5px] w-[50px] rounded-[2px]" style={{ background: ACCENT }} />
       </div>
@@ -135,7 +151,7 @@ export function LeafletPanel({ qr }: { qr: LeafletQr }) {
           centering each independently would stagger the QR codes instead of
           lining them up under one another. */}
       <div className="flex flex-col items-start gap-[7px] self-center pt-[11px]">
-        {CONTACT_ROWS.map((row) => (
+        {rows.map((row) => (
           <div key={row.key} className="flex items-center gap-[8px]">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={qr[row.key]} alt="" className="size-[56px] shrink-0" />
@@ -147,7 +163,7 @@ export function LeafletPanel({ qr }: { qr: LeafletQr }) {
                 </span>
               </span>
               <span className="text-[16px] font-semibold whitespace-nowrap" style={{ color: ACCENT_DARK }}>
-                {row.link}
+                {links[row.key]}
               </span>
             </span>
           </div>

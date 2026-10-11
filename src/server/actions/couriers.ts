@@ -391,22 +391,20 @@ function revalidateCouriers(slug: string) {
 export async function createSteadfastPreset(slug: string): Promise<ActionResult> {
   return createCourier(slug, {
     name: "Steadfast",
-    // Half a kilo, not a whole one: a 0.8kg parcel outside Dhaka is billed 135,
-    // which is 115 for the first slab and 20 for the next. Set to 1kg, that
-    // parcel quoted 115 and the difference turned up on the balance page with
-    // nothing to explain it.
+    // Half a kilo, not a whole one: Steadfast bills in half-kilo slabs, so a
+    // 0.8kg parcel is the first slab plus one more. Set to 1kg, the quote and
+    // the courier's balance disagree by a slab with nothing to explain it.
     baseWeightKg: 0.5,
     extraKgRate: 20,
     codFeePercent: 1,
-    // Verified against a real balance: 1% is taken on what's handed over,
-    // not on the whole COD.
+    // 1% is taken on what is handed over, not on the whole COD.
     codFeeBase: "NET",
     returnChargeType: "NONE",
     returnChargeValue: 0,
     isDefault: true,
     isActive: true,
     notes:
-      "Rates as negotiated — the public calculator quotes less. Add weight steps per zone if light parcels are billed less.",
+      "Starting template: the rates below are examples. Replace them with the rates in YOUR agreement with Steadfast, and add weight steps per zone if light parcels are billed less.",
     zones: [
       { name: "Dhaka City", rate: 65 },
       { name: "Outside Dhaka", rate: 115 },

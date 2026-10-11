@@ -1,34 +1,29 @@
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
-import { isOriginalShop } from "@/lib/original-shop";
+import { redirect } from "next/navigation";
 import QRCode from "qrcode";
 import { workspaceAccess } from "@/lib/authz";
 import { can } from "@/lib/rbac";
+import { prisma } from "@/lib/prisma";
 import { PrintSheetView } from "@/components/ui/print-sheet-view";
 import { GiftTag, type GiftTagQr } from "@/components/sales/gift-tag";
+import { resolvePrintProfile, type ResolvedPrintProfile } from "@/lib/print-profile";
 
 /**
  * Printable gift tags, six to an A4 portrait sheet — dropped into a parcel
- * whenever an order gets a free gift. Every tag is identical (shop copy and
- * contact QR codes, no order data), so unlike the order-forms page this
- * takes no selection and needs no ids — it's always just "give me a sheet".
+ * whenever an order gets a free gift. Every tag is identical (the shop's own
+ * wording and contact QR codes, no order data), so this takes no selection.
+ *
+ * Everything on the tag comes from the workspace's profile (Settings →
+ * Appearance → Printed extras); a channel the shop has not filled in is left
+ * off rather than faked.
  */
 
-const QR_LINKS: Record<keyof GiftTagQr, string> = {
-  site: "https://gedushop.com",
-  facebook: "https://facebook.com/gedushop",
-  // The label reads "WhatsApp or call", but WhatsApp is the action a scanned
-  // QR can actually jump into — a tel: link just opens the dialer, which
-  // isn't the "or call" case, but wa.me covers texting AND lets the customer
-  // start a call from inside the chat too.
-  whatsapp: "https://wa.me/8801552958606",
-};
-
-async function buildQr(): Promise<GiftTagQr> {
+async function buildQr(profile: ResolvedPrintProfile): Promise<GiftTagQr> {
+  const opts = { margin: 0, color: { dark: "#2f2a5c", light: "#ffffff" } };
   const [site, facebook, whatsapp] = await Promise.all([
-    QRCode.toDataURL(QR_LINKS.site, { margin: 0, color: { dark: "#2f2a5c", light: "#ffffff" } }),
-    QRCode.toDataURL(QR_LINKS.facebook, { margin: 0, color: { dark: "#2f2a5c", light: "#ffffff" } }),
-    QRCode.toDataURL(QR_LINKS.whatsapp, { margin: 0, color: { dark: "#2f2a5c", light: "#ffffff" } }),
+    profile.website ? QRCode.toDataURL(profile.website.url, opts) : undefined,
+    profile.facebook ? QRCode.toDataURL(profile.facebook.url, opts) : undefined,
+    profile.whatsapp ? QRCode.toDataURL(profile.whatsapp.url, opts) : undefined,
   ]);
   return { site, facebook, whatsapp };
 }
@@ -41,13 +36,17 @@ export default async function GiftTagsPage({
   const { workspace: slug } = await params;
   const access = await workspaceAccess(slug);
   if (!access) redirect("/");
-  // Fixed content about one particular shop — see lib/original-shop.
-  if (!isOriginalShop(slug)) notFound();
   if (!can(access.role, "sales", "view", access.permissions)) {
     redirect(`/${slug}/dashboard`);
   }
 
-  const qr = await buildQr();
+  const ws = await prisma.workspace.findUniqueOrThrow({
+    where: { id: access.workspaceId },
+    select: { name: true, logoUrl: true, websiteUrl: true, printProfile: true },
+  });
+  const profile = resolvePrintProfile(ws);
+  const qr = await buildQr(profile);
+  const nothingToLink = !profile.website && !profile.facebook && !profile.whatsapp;
 
   return (
     <div className="space-y-4">
@@ -58,12 +57,23 @@ export default async function GiftTagsPage({
         <div className="text-sm text-muted-foreground">Gift tags · 6 per A4 sheet</div>
       </div>
 
-      <PrintSheetView filename="gedushop-gift-tags" widthMm={210} heightMm={297}>
+      {nothingToLink ? (
+        <p className="rounded-lg border bg-muted/40 p-3 text-sm print:hidden">
+          These tags have no contact QR codes yet. Add your website, Facebook page or WhatsApp
+          number under{" "}
+          <Link className="underline" href={`/${slug}/settings/appearance`}>
+            Settings → Appearance → Printed extras
+          </Link>
+          .
+        </p>
+      ) : null}
+
+      <PrintSheetView filename={`${slug}-gift-tags`} widthMm={210} heightMm={297}>
         <div data-sheet-frame>
           <div data-sheet data-density="6">
             {Array.from({ length: 6 }, (_, i) => (
               <div key={i} data-slot>
-                <GiftTag qr={qr} />
+                <GiftTag qr={qr} profile={profile} />
               </div>
             ))}
           </div>

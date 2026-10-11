@@ -259,3 +259,21 @@ No migration.
   errors. **Video**: 2m10s desktop walkthrough + phone clip, captioned.
 - Final state: 621 unit + 59 integration tests green, `tsc` clean (app and
   tests), production `next build` succeeds.
+
+## Independence pass ✅ (the product no longer knows about the first shop)
+
+Migration `20261014000000_print_profile` (additive: `Workspace.printProfile`
+JSONB; plus a guarded data update that carries the founding shop's old wording
+across as data, selected by its own website and only where no profile is set).
+
+Full list, with status of every dependency found: **docs/INDEPENDENCE_AUDIT.md**.
+Highlights: gift tags and leaflet are per-workspace templates (settings form,
+blank = not printed); no default website, mail sender, categories or courier
+rates belong to one business; the WooCommerce combo plugin ships with the
+product (same wire contract); one-off production scripts moved to
+`scripts/legacy-gedushop/`; README/docs rewritten as a product;
+**docs/DEPLOY_NEW_INSTANCE.md** for a separate Neon + Vercel + domain install.
+
+Verification: 627 unit + 61 integration tests green, Golden Master unchanged,
+`tsc` clean (app and tests), production `next build` succeeds, gift tag and
+leaflet rendered from the demo workspace's own settings.

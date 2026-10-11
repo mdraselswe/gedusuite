@@ -50,7 +50,7 @@ export default function NewWorkspacePage() {
         <CardContent>
           <form onSubmit={onSubmit} className="space-y-4">
             <Field name="name" label="Business name" required>
-              <Input id="name" name="name" required placeholder="e.g. GeduShop" />
+              <Input id="name" name="name" required placeholder="e.g. Nila Fashion House" />
             </Field>
             <Field name="themeColor" label="Theme color (optional)">
               <Input id="themeColor" name="themeColor" placeholder="#4f46e5" />

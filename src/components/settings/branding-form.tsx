@@ -149,7 +149,7 @@ export function BrandingForm({
               id="ws-website"
               value={website}
               onChange={(e) => setWebsite(e.target.value)}
-              placeholder="gedushop.com"
+              placeholder="yourshop.com"
               maxLength={100}
               className="max-w-xs flex-1"
             />

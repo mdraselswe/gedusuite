@@ -1,38 +1,31 @@
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
-import { isOriginalShop } from "@/lib/original-shop";
+import { redirect } from "next/navigation";
 import QRCode from "qrcode";
 import { workspaceAccess } from "@/lib/authz";
 import { can } from "@/lib/rbac";
+import { prisma } from "@/lib/prisma";
 import { PrintSheetView } from "@/components/ui/print-sheet-view";
 import { LeafletPanel, type LeafletQr } from "@/components/sales/leaflet-panel";
+import { resolvePrintProfile, type ResolvedPrintProfile } from "@/lib/print-profile";
 
 /**
- * Printable promo leaflet, four to an A4 portrait sheet — ported from the
- * shop's existing gedushop-leaflet-a4-4up.pdf so it can be reprinted from
- * the app instead of going back to the source design files. Same as
- * gift-tags: every panel is identical shop copy, no order data, so this
- * takes no selection.
+ * The shop's leaflet, four to an A4 portrait sheet. Every panel is identical
+ * (no order data), so there is no selection — and every word and link on it is
+ * the workspace's own (Settings → Appearance → Printed extras).
  */
 
-const QR_LINKS: Record<keyof LeafletQr, string> = {
-  site: "https://gedushop.com",
-  facebook: "https://facebook.com/gedushop",
-  whatsapp: "https://wa.me/8801552958606",
-};
-
-async function buildQr(): Promise<LeafletQr> {
+async function buildQr(profile: ResolvedPrintProfile): Promise<LeafletQr> {
+  const opts = { margin: 0, color: { dark: "#4f4274", light: "#ffffff" } };
   const [site, facebook, whatsapp] = await Promise.all([
-    QRCode.toDataURL(QR_LINKS.site, { margin: 0, color: { dark: "#4f4274", light: "#ffffff" } }),
-    QRCode.toDataURL(QR_LINKS.facebook, { margin: 0, color: { dark: "#4f4274", light: "#ffffff" } }),
-    QRCode.toDataURL(QR_LINKS.whatsapp, { margin: 0, color: { dark: "#4f4274", light: "#ffffff" } }),
+    profile.website ? QRCode.toDataURL(profile.website.url, opts) : undefined,
+    profile.facebook ? QRCode.toDataURL(profile.facebook.url, opts) : undefined,
+    profile.whatsapp ? QRCode.toDataURL(profile.whatsapp.url, opts) : undefined,
   ]);
   return { site, facebook, whatsapp };
 }
 
-// Border per panel, matching the source design's sheet4.html: a right edge
-// on the left column, a bottom edge on the top row, nothing past the sheet's
-// own outer edge.
+// Border per panel: a right edge on the left column, a bottom edge on the top
+// row, nothing past the sheet's own outer edge.
 const RULE = "1px solid #cfc7e8";
 function panelBorder(i: number): React.CSSProperties {
   return {
@@ -49,13 +42,17 @@ export default async function LeafletPage({
   const { workspace: slug } = await params;
   const access = await workspaceAccess(slug);
   if (!access) redirect("/");
-  // Fixed content about one particular shop — see lib/original-shop.
-  if (!isOriginalShop(slug)) notFound();
   if (!can(access.role, "sales", "view", access.permissions)) {
     redirect(`/${slug}/dashboard`);
   }
 
-  const qr = await buildQr();
+  const ws = await prisma.workspace.findUniqueOrThrow({
+    where: { id: access.workspaceId },
+    select: { name: true, logoUrl: true, websiteUrl: true, printProfile: true },
+  });
+  const profile = resolvePrintProfile(ws);
+  const qr = await buildQr(profile);
+  const nothingToLink = !profile.website && !profile.facebook && !profile.whatsapp;
 
   return (
     <div className="space-y-4">
@@ -66,12 +63,23 @@ export default async function LeafletPage({
         <div className="text-sm text-muted-foreground">Leaflet · 4 per A4 sheet</div>
       </div>
 
-      <PrintSheetView filename="gedushop-leaflet-a4-4up" widthMm={210} heightMm={297}>
+      {nothingToLink ? (
+        <p className="rounded-lg border bg-muted/40 p-3 text-sm print:hidden">
+          This leaflet has no contact QR codes yet. Add your website, Facebook page or WhatsApp
+          number under{" "}
+          <Link className="underline" href={`/${slug}/settings/appearance`}>
+            Settings → Appearance → Printed extras
+          </Link>
+          .
+        </p>
+      ) : null}
+
+      <PrintSheetView filename={`${slug}-leaflet-a4-4up`} widthMm={210} heightMm={297}>
         <div data-sheet-frame>
           <div data-sheet style={{ gridTemplateRows: "1fr 1fr" }}>
             {Array.from({ length: 4 }, (_, i) => (
               <div key={i} data-slot style={panelBorder(i)}>
-                <LeafletPanel qr={qr} />
+                <LeafletPanel qr={qr} profile={profile} />
               </div>
             ))}
           </div>

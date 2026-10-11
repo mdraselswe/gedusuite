@@ -5,7 +5,7 @@ import { decrypt, encrypt } from "@/lib/crypto";
  * Which WooCommerce website a workspace talks to, and with what keys.
  *
  * It used to be three environment variables, which can describe exactly one
- * shop — fine for GeduShop, impossible for a second customer. Now every
+ * shop — fine for one business, impossible for a second customer. Now every
  * workspace can carry its own connection (WorkspaceIntegration, secrets
  * encrypted), and the environment remains as the fallback the original shop
  * keeps running on without any change of its own.
@@ -27,7 +27,9 @@ const trimSlash = (u: string) => u.replace(/\/+$/, "");
 /** The deployment-wide connection described by the environment, if any. */
 export function envWooConfig(): WooConfig {
   return {
-    base: trimSlash(process.env.WP_URL || "https://wp.gedushop.com"),
+    // No default: a deployment with no WP_URL has no website, rather than
+    // quietly talking to somebody else's.
+    base: trimSlash(process.env.WP_URL ?? ""),
     readKey: process.env.WC_CONSUMER_KEY ?? "",
     readSecret: process.env.WC_CONSUMER_SECRET ?? "",
     writeKey: process.env.WC_WRITE_KEY || process.env.WC_CONSUMER_KEY || "",
@@ -37,10 +39,10 @@ export function envWooConfig(): WooConfig {
 }
 
 export const hasReadKeys = (c: WooConfig | null | undefined): c is WooConfig =>
-  Boolean(c && c.readKey && c.readSecret);
+  Boolean(c && c.base && c.readKey && c.readSecret);
 
 export const hasWriteKeys = (c: WooConfig | null | undefined): c is WooConfig =>
-  Boolean(c && c.writeKey && c.writeSecret);
+  Boolean(c && c.base && c.writeKey && c.writeSecret);
 
 /**
  * The connection for one workspace, or null when it has none.

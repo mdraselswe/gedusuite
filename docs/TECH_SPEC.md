@@ -277,7 +277,7 @@ tiers of dedicated platforms instead:
 | Database (PostgreSQL) | **Neon — Free tier** | ~0.5GB storage, generous compute hours. Auto-suspends after a period of inactivity and wakes on the next request (a few hundred ms delay on the first query after idle) — no data loss, just a cold-start pause. Fine for a business tool that isn't hit 24/7. |
 | Backups | Google Sheets + Drive API | Already free (section 6) — uses your own Google account's storage quota. |
 | Auth | NextAuth + Google OAuth | Free — only needs a Google Cloud project (also free to create) for OAuth credentials. |
-| Domain | `app.gedushop.com` | A CNAME in the shop's **Cloudflare** zone (not Hostinger — the domain's nameservers are Cloudflare's), DNS-only, pointing at Vercel, which issues the certificate. The shop's own server never sees this traffic. Full setup, and why the app is not on `gedusuite.vercel.app` any more, in [`HOSTING.md`](HOSTING.md). |
+| Domain | `app.gedushop.com` | A CNAME in the shop's **Cloudflare** zone (not Hostinger — the domain's nameservers are Cloudflare's), DNS-only, pointing at Vercel, which issues the certificate. The shop's own server never sees this traffic. Full setup, and why the app is not on `gedusuite.vercel.app` any more, in [`internal/GEDUSHOP_HOSTING.md`](internal/GEDUSHOP_HOSTING.md). |
 
 **Why this is a solid choice, not just "the free option"**
 Vercel + Neon is what Next.js is built and optimized for — deployments are

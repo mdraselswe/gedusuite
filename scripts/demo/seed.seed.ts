@@ -78,7 +78,17 @@ describe("demo workspace", () => {
     });
     await prisma.workspace.update({
       where: { id: result.workspaceId },
-      data: { websiteUrl: "littlenest.example" },
+      data: {
+        websiteUrl: "littlenest.example",
+        // The shop's own wording for gift tags and the leaflet — a fictional
+        // shop, so the demo shows what a real one would fill in.
+        printProfile: {
+          facebook: "facebook.com/littlenest.bd",
+          whatsapp: "01711-000000",
+          tagline: "মায়ের ভরসা, শিশুর যত্ন",
+          headline: "শিশুর যত্নের সব দরকারি জিনিস\nএক জায়গায়",
+        },
+      },
     });
 
     const orders = await prisma.order.count({ where: { workspaceId: result.workspaceId } });
