@@ -277,3 +277,18 @@ product (same wire contract); one-off production scripts moved to
 Verification: 627 unit + 61 integration tests green, Golden Master unchanged,
 `tsc` clean (app and tests), production `next build` succeeds, gift tag and
 leaflet rendered from the demo workspace's own settings.
+
+## Vivid theme & motion ✅ (presentation only)
+
+- **Colour as wayfinding**: each section has its own hue — gradient chip in the
+  sidebar, a soft glow behind that page's title, a coloured edge on its stat
+  tiles, a coloured empty state. Vivid violet–blue primary with a brand gradient;
+  deep indigo sidebar; two soft colour pools behind the content; glass header.
+- **Motion**: pages rise in block by block, tile grids stagger, linked cards lift
+  on hover, buttons press and carry a sheen, table rows light up, skeletons
+  shimmer, header glows drift slowly. Everything stands down for
+  `prefers-reduced-motion`.
+- Landing page: drifting colour pools, gradient headline, coloured steps,
+  gradient featured plan.
+- No logic, no data, no financial code touched; Golden Master unaffected.
+  22 screens × desktop/phone still load with no errors; production build passes.

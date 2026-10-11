@@ -174,14 +174,14 @@ html[lang="bn"] {
 /* ── Phase 7: color presets (set via html[data-preset]) ───────────── */
 /* "indigo" is the stored key of the default preset; it is the brand teal. */
 [data-preset="indigo"] {
-  --primary: oklch(0.54 0.088 197);
+  --primary: oklch(0.55 0.22 275);
   --primary-foreground: oklch(0.985 0 0);
-  --ring: oklch(0.54 0.088 197);
+  --ring: oklch(0.55 0.22 275);
 }
 .dark[data-preset="indigo"], .dark [data-preset="indigo"] {
-  --primary: oklch(0.72 0.11 195);
-  --primary-foreground: oklch(0.2 0.04 255);
-  --ring: oklch(0.72 0.11 195);
+  --primary: oklch(0.72 0.16 278);
+  --primary-foreground: oklch(0.18 0.05 275);
+  --ring: oklch(0.72 0.16 278);
 }
 [data-preset="green"] {
   --primary: oklch(0.60 0.17 150);
@@ -341,4 +341,226 @@ button:focus-visible,
   outline: none;
   box-shadow: 0 0 0 3px color-mix(in oklch, var(--ring) 45%, transparent);
   border-radius: var(--radius-sm);
+}
+
+/* ══ Vivid theme & motion ═════════════════════════════════════════════
+   Colour is wayfinding: every section of the business has its own hue (see
+   lib/section-colors), carried by the sidebar chip, the page's header glow and
+   its stat tiles. Motion answers what the person did — a page arriving, a card
+   they can press, a row they are on — and stands down entirely for anyone who
+   has asked their system for reduced motion. */
+
+:root {
+  --brand-gradient: linear-gradient(
+    135deg,
+    oklch(0.6 0.22 295) 0%,
+    oklch(0.58 0.21 262) 50%,
+    oklch(0.68 0.15 215) 100%
+  );
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+::selection {
+  background: oklch(0.75 0.14 290 / 35%);
+}
+
+.bg-brand-gradient {
+  background-image: var(--brand-gradient);
+}
+.text-brand-gradient {
+  background-image: var(--brand-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* The page behind the content: two soft colour pools, fixed, so scrolling
+   moves content over them rather than dragging them along. */
+.app-canvas {
+  background-color: var(--background);
+  background-image:
+    radial-gradient(60rem 28rem at -5% -8%, oklch(0.78 0.12 295 / 22%), transparent 60%),
+    radial-gradient(48rem 26rem at 105% -4%, oklch(0.8 0.1 205 / 20%), transparent 60%),
+    radial-gradient(40rem 24rem at 60% 108%, oklch(0.82 0.1 15 / 12%), transparent 60%);
+  background-attachment: fixed;
+}
+.dark .app-canvas {
+  background-image:
+    radial-gradient(60rem 28rem at -5% -8%, oklch(0.45 0.16 295 / 28%), transparent 60%),
+    radial-gradient(48rem 26rem at 105% -4%, oklch(0.5 0.12 215 / 22%), transparent 60%),
+    radial-gradient(40rem 24rem at 60% 108%, oklch(0.45 0.14 15 / 14%), transparent 60%);
+}
+
+/* Cards read as lifted paper over the colour behind them. */
+[data-slot="card"] {
+  box-shadow:
+    0 1px 2px oklch(0.25 0.05 270 / 5%),
+    0 8px 24px -12px oklch(0.4 0.1 275 / 14%);
+  transition:
+    box-shadow 0.25s var(--ease-out),
+    transform 0.25s var(--ease-out),
+    border-color 0.2s;
+}
+a:hover > [data-slot="card"],
+[data-slot="card"].card-lift:hover {
+  transform: translateY(-3px);
+  box-shadow:
+    0 2px 4px oklch(0.25 0.05 270 / 6%),
+    0 18px 36px -14px oklch(0.5 0.16 280 / 30%);
+}
+
+/* Anything you can press responds on the way in and on the way out. */
+a,
+button,
+[role="button"],
+[data-slot="input"],
+[data-slot="select-trigger"],
+[data-slot="textarea"] {
+  transition:
+    color 0.18s ease,
+    background-color 0.18s ease,
+    border-color 0.18s ease,
+    box-shadow 0.22s var(--ease-out),
+    transform 0.18s var(--ease-out),
+    opacity 0.18s ease;
+}
+[data-slot="input"]:focus-visible,
+[data-slot="textarea"]:focus-visible,
+[data-slot="select-trigger"]:focus-visible {
+  box-shadow: 0 0 0 4px oklch(0.6 0.2 275 / 18%);
+}
+
+/* Tables: the row you are on lights up. */
+tbody tr {
+  transition: background-color 0.15s ease;
+}
+tbody tr:hover {
+  background-color: oklch(0.6 0.15 275 / 6%);
+}
+
+/* Skeletons shimmer rather than blink. */
+[data-slot="skeleton"] {
+  animation: none;
+  background-image: linear-gradient(
+    100deg,
+    transparent 20%,
+    oklch(1 0 0 / 55%) 50%,
+    transparent 80%
+  );
+  background-size: 200% 100%;
+  background-repeat: no-repeat;
+  animation: shimmer 1.4s linear infinite;
+}
+.dark [data-slot="skeleton"] {
+  background-image: linear-gradient(
+    100deg,
+    transparent 20%,
+    oklch(1 0 0 / 8%) 50%,
+    transparent 80%
+  );
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes float-slow {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0.6deg);
+  }
+  50% {
+    transform: translateY(-8px) rotate(-0.4deg);
+  }
+}
+@keyframes drift {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(2%, 4%, 0) scale(1.08);
+  }
+}
+@keyframes sheen {
+  from {
+    transform: translateX(-120%) skewX(-18deg);
+  }
+  to {
+    transform: translateX(220%) skewX(-18deg);
+  }
+}
+
+/* A page arriving: its blocks rise in one after another. Applied to the page
+   wrapper by the shell, so no page has to opt in. */
+.page-enter > div > * {
+  animation: rise 0.55s var(--ease-out) both;
+}
+.page-enter > div > *:nth-child(2) { animation-delay: 0.05s; }
+.page-enter > div > *:nth-child(3) { animation-delay: 0.1s; }
+.page-enter > div > *:nth-child(4) { animation-delay: 0.15s; }
+.page-enter > div > *:nth-child(5) { animation-delay: 0.2s; }
+.page-enter > div > *:nth-child(6) { animation-delay: 0.25s; }
+.page-enter > div > *:nth-child(n + 7) { animation-delay: 0.3s; }
+
+/* Grids of tiles: each one a beat after the last. */
+.stagger > * {
+  animation: rise 0.6s var(--ease-out) both;
+}
+.stagger > *:nth-child(2) { animation-delay: 0.06s; }
+.stagger > *:nth-child(3) { animation-delay: 0.12s; }
+.stagger > *:nth-child(4) { animation-delay: 0.18s; }
+.stagger > *:nth-child(5) { animation-delay: 0.24s; }
+.stagger > *:nth-child(6) { animation-delay: 0.3s; }
+.stagger > *:nth-child(7) { animation-delay: 0.36s; }
+.stagger > *:nth-child(n + 8) { animation-delay: 0.42s; }
+
+/* The primary button carries a slow sheen on hover. */
+.btn-sheen {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+.btn-sheen::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 40%;
+  background: linear-gradient(90deg, transparent, oklch(1 0 0 / 38%), transparent);
+  transform: translateX(-120%) skewX(-18deg);
+  pointer-events: none;
+}
+.btn-sheen:hover::after {
+  animation: sheen 0.9s var(--ease-out);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0.001ms !important;
+  }
 }

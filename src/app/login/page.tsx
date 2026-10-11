@@ -106,7 +106,7 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-4 p-4">
+    <main className="app-canvas flex min-h-screen flex-col items-center justify-center gap-4 p-4">
       <LoginIllustration className="h-32 w-40 animate-in fade-in-0 zoom-in-95 duration-500" />
       <Suspense>
         <LoginForm />

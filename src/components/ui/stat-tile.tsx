@@ -4,7 +4,11 @@ import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Money } from "@/components/ui/money";
 import type { MoneyTone } from "@/lib/money";
-import { sectionColorClasses, type SectionColor } from "@/lib/section-colors";
+import {
+  sectionBarClasses,
+  sectionSolidClasses,
+  type SectionColor,
+} from "@/lib/section-colors";
 
 /**
  * One headline figure, said once.
@@ -47,17 +51,26 @@ export function StatTile({
   const body = (
     <Card
       className={cn(
-        "h-full gap-3",
-        href && "transition-colors hover:border-primary/40 hover:bg-muted/30",
+        "relative h-full gap-3 overflow-hidden",
+        href && "hover:border-primary/40",
         className,
       )}
     >
+      {color ? (
+        <span
+          aria-hidden
+          className={cn(
+            "absolute inset-x-0 top-0 h-1 bg-gradient-to-r",
+            sectionBarClasses[color],
+          )}
+        />
+      ) : null}
       <CardHeader className="flex flex-row items-center gap-2 space-y-0 pb-0">
         {icon && (
           <span
             className={cn(
-              "flex size-7 shrink-0 items-center justify-center rounded-md [&_svg]:size-3.5",
-              color ? sectionColorClasses[color] : "bg-muted text-muted-foreground",
+              "flex size-8 shrink-0 items-center justify-center rounded-lg shadow-md [&_svg]:size-4",
+              color ? sectionSolidClasses[color] : "bg-muted text-muted-foreground",
             )}
           >
             {icon}
@@ -92,7 +105,7 @@ export function StatTile({
 export function StatGrid({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
-      className={cn("grid gap-4 sm:grid-cols-2 lg:grid-cols-4", className)}
+      className={cn("stagger grid gap-4 sm:grid-cols-2 lg:grid-cols-4", className)}
       {...props}
     />
   );

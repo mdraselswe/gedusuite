@@ -37,6 +37,23 @@ const MONEY_PATH = [
   },
 ];
 
+const STEP_COLORS = [
+  "border-violet-500",
+  "border-sky-500",
+  "border-amber-500",
+  "border-emerald-500",
+  "border-pink-500",
+];
+
+const DOT_COLORS = [
+  "bg-violet-400",
+  "bg-sky-400",
+  "bg-amber-400",
+  "bg-emerald-400",
+  "bg-pink-400",
+  "bg-cyan-400",
+];
+
 const FOR_SHOPS = [
   {
     term: "Cash on delivery, done properly",
@@ -98,9 +115,25 @@ export function Landing({ signedIn = false }: { signedIn?: boolean }) {
 
       <main>
         {/* Hero: the claim, and the proof next to it. */}
-        <section className="mx-auto grid max-w-6xl gap-12 px-5 pb-20 pt-14 md:grid-cols-[1.05fr_0.95fr] md:items-center md:pt-20">
-          <div>
-            <h1 className="font-display text-5xl font-bold leading-[1.02] tracking-tight sm:text-6xl">
+        <div className="relative overflow-hidden">
+          <span
+            aria-hidden
+            className="pointer-events-none absolute -top-24 -left-24 size-[28rem] rounded-full bg-violet-400/30 blur-3xl"
+            style={{ animation: "drift 16s ease-in-out infinite" }}
+          />
+          <span
+            aria-hidden
+            className="pointer-events-none absolute top-10 right-[-6rem] size-[26rem] rounded-full bg-cyan-300/30 blur-3xl"
+            style={{ animation: "drift 19s ease-in-out infinite reverse" }}
+          />
+          <span
+            aria-hidden
+            className="pointer-events-none absolute bottom-[-8rem] left-1/3 size-[22rem] rounded-full bg-pink-300/25 blur-3xl"
+            style={{ animation: "drift 22s ease-in-out infinite" }}
+          />
+        <section className="relative mx-auto grid max-w-6xl gap-12 px-5 pb-20 pt-14 md:grid-cols-[1.05fr_0.95fr] md:items-center md:pt-20">
+          <div className="stagger">
+            <h1 className="text-brand-gradient font-display text-5xl font-bold leading-[1.02] tracking-tight sm:text-6xl">
               Every order, down to the last taka.
             </h1>
             <p className="mt-6 max-w-xl text-lg leading-8 text-ink/75">
@@ -110,7 +143,7 @@ export function Landing({ signedIn = false }: { signedIn?: boolean }) {
             <div className="mt-8 flex flex-wrap items-center gap-3">
               <Link
                 href={signedIn ? "/" : "/register"}
-                className="rounded-md bg-ink px-5 py-3 font-medium text-paper hover:bg-ink/90"
+                className="btn-sheen rounded-lg bg-brand-gradient px-5 py-3 font-semibold text-white shadow-lg shadow-violet-500/40 transition hover:-translate-y-0.5 hover:brightness-110 active:scale-[0.97]"
               >
                 {signedIn ? "Open my workspaces" : `Start your ${TRIAL_DAYS}-day free trial`}
               </Link>
@@ -125,10 +158,14 @@ export function Landing({ signedIn = false }: { signedIn?: boolean }) {
               No card needed. Built by a working online shop in Bangladesh.
             </p>
           </div>
-          <div className="flex justify-center md:justify-end">
+          <div
+            className="flex justify-center md:justify-end"
+            style={{ animation: "float-slow 7s ease-in-out infinite" }}
+          >
             <OrderSlip />
           </div>
         </section>
+        </div>
 
         {/* What it replaces. */}
         <section className="border-y border-ink/10 bg-white">
@@ -167,7 +204,10 @@ export function Landing({ signedIn = false }: { signedIn?: boolean }) {
           </h2>
           <ol className="mt-10 grid gap-x-6 gap-y-8 md:grid-cols-5">
             {MONEY_PATH.map((s, i) => (
-              <li key={s.title} className="relative border-t-2 border-ink pt-4">
+              <li
+                key={s.title}
+                className={`group relative border-t-4 pt-4 transition-transform duration-300 hover:-translate-y-1 ${STEP_COLORS[i]}`}
+              >
                 <span className="font-display text-sm font-semibold text-ink/55">Step {i + 1}</span>
                 <h3 className="mt-1 font-display text-lg font-semibold leading-snug">{s.title}</h3>
                 <p className="mt-2 text-sm leading-6 text-ink/70">{s.body}</p>
@@ -177,15 +217,21 @@ export function Landing({ signedIn = false }: { signedIn?: boolean }) {
         </section>
 
         {/* What is specific to how small shops here actually sell. */}
-        <section className="bg-ink text-paper">
+        <section className="bg-[linear-gradient(135deg,oklch(0.24_0.08_285),oklch(0.2_0.06_255))] text-paper">
           <div className="mx-auto max-w-6xl px-5 py-20">
             <h2 className="max-w-2xl font-display text-3xl font-semibold tracking-tight">
               Made for shops that sell on Facebook, WhatsApp and a small website
             </h2>
             <dl className="mt-10 grid gap-x-12 gap-y-8 md:grid-cols-2">
-              {FOR_SHOPS.map((f) => (
-                <div key={f.term} className="border-t border-paper/20 pt-4">
-                  <dt className="font-display text-lg font-semibold">{f.term}</dt>
+              {FOR_SHOPS.map((f, i) => (
+                <div
+                  key={f.term}
+                  className="border-t border-paper/20 pt-4 transition-transform duration-300 hover:translate-x-1"
+                >
+                  <dt className="flex items-center gap-2.5 font-display text-lg font-semibold">
+                    <span aria-hidden className={`size-2.5 rounded-full ${DOT_COLORS[i % DOT_COLORS.length]}`} />
+                    {f.term}
+                  </dt>
                   <dd className="mt-1.5 leading-7 text-paper/75">{f.text}</dd>
                 </div>
               ))}

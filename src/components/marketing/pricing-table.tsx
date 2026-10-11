@@ -46,8 +46,10 @@ export function PricingTable({ plans, trialDays }: { plans: PlanCard[]; trialDay
         {plans.map((p) => (
           <section
             key={p.key}
-            className={`flex flex-col border bg-white p-6 ${
-              p.featured ? "border-ink md:-mt-3 md:pb-9" : "border-ink/15"
+            className={`flex flex-col rounded-xl border bg-white p-6 transition duration-300 hover:-translate-y-1 hover:shadow-xl ${
+              p.featured
+                ? "border-violet-400 shadow-lg shadow-violet-500/20 ring-2 ring-violet-400/40 md:-mt-3 md:pb-9"
+                : "border-ink/15"
             }`}
           >
             <h3 className="font-display text-xl font-semibold">{p.name}</h3>
@@ -68,7 +70,7 @@ export function PricingTable({ plans, trialDays }: { plans: PlanCard[]; trialDay
             <ul className="mt-5 flex-1 space-y-2 text-sm">
               {p.highlights.map((h) => (
                 <li key={h} className="flex gap-2">
-                  <span aria-hidden className="mt-1.5 size-1.5 shrink-0 bg-teal" />
+                  <span aria-hidden className="mt-1.5 size-1.5 shrink-0 rounded-full bg-violet-500" />
                   {h}
                 </li>
               ))}
@@ -77,8 +79,8 @@ export function PricingTable({ plans, trialDays }: { plans: PlanCard[]; trialDay
               href="/register"
               className={`mt-6 block rounded-md px-4 py-2.5 text-center text-sm font-medium ${
                 p.featured
-                  ? "bg-ink text-paper hover:bg-ink/90"
-                  : "border border-ink/30 hover:border-ink"
+                  ? "btn-sheen bg-brand-gradient text-white shadow-md shadow-violet-500/40 hover:brightness-110"
+                  : "border border-ink/30 hover:border-ink hover:bg-ink/5"
               }`}
             >
               Try {p.name} free for {trialDays} days

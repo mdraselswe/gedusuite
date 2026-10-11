@@ -7,7 +7,7 @@ import { Bell, Menu } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { SignOutButton } from "@/components/sign-out-button";
 import { cn } from "@/lib/utils";
-import { sectionColorClasses, type SectionColor } from "@/lib/section-colors";
+import { sectionSolidClasses, type SectionColor } from "@/lib/section-colors";
 
 export type NavItem = {
   href: string;
@@ -66,13 +66,14 @@ function NavLink({
       {active && (
         <span
           aria-hidden
-          className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-sidebar-primary"
+          className="absolute inset-y-1.5 left-0 w-1 rounded-full bg-brand-gradient"
         />
       )}
       <span
         className={cn(
-          "flex size-7 shrink-0 items-center justify-center rounded-md",
-          active ? "bg-sidebar-primary/20 text-sidebar-primary" : "bg-white/5 text-sidebar-foreground/80",
+          "flex size-7 shrink-0 items-center justify-center rounded-lg shadow-md transition-transform duration-200 group-hover:scale-110",
+          sectionSolidClasses[item.color],
+          active ? "scale-105 ring-2 ring-white/30" : "opacity-90",
         )}
       >
         {item.icon}
@@ -114,9 +115,9 @@ export function AppShell({
   );
 
   return (
-    <div className="flex min-h-screen">
+    <div className="app-canvas flex min-h-screen">
       {/* Desktop sidebar */}
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground md:flex print:hidden">
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-sidebar-border bg-[linear-gradient(180deg,oklch(0.26_0.09_285),oklch(0.19_0.06_262))] text-sidebar-foreground md:flex print:hidden">
         <Link
           href={`/${slug}/dashboard`}
           className="flex h-16 shrink-0 items-center gap-2 border-b border-sidebar-border px-4 font-display text-lg font-bold tracking-tight"
@@ -148,7 +149,7 @@ export function AppShell({
           scroll looks like a broken header rather than a wide table. */}
       <div className="flex min-w-0 flex-1 flex-col overflow-x-hidden md:pl-64">
         {/* Top bar: full nav trigger on mobile, just the bell on desktop */}
-        <header className="sticky top-0 z-20 flex items-center justify-between gap-2 border-b bg-background px-4 py-3 md:justify-end print:hidden">
+        <header className="sticky top-0 z-20 flex items-center justify-between gap-2 border-b bg-background/70 px-4 py-3 backdrop-blur-xl md:justify-end print:hidden">
           <div className="flex items-center gap-1 md:hidden">
             <button
               type="button"
@@ -176,7 +177,7 @@ export function AppShell({
               animation re-triggers per page instead of firing only once. */}
           <div
             key={pathname}
-            className="min-w-0 animate-in fade-in-0 slide-in-from-bottom-1 duration-200"
+            className="page-enter min-w-0"
           >
             {children}
           </div>

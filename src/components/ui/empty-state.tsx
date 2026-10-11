@@ -1,7 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import { Inbox } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { sectionColorClasses, type SectionColor } from "@/lib/section-colors";
+import { sectionSolidClasses, type SectionColor } from "@/lib/section-colors";
 
 export function EmptyState({
   icon: Icon = Inbox,
@@ -20,8 +20,8 @@ export function EmptyState({
     <div className="flex animate-in flex-col items-center justify-center gap-3 rounded-lg border border-dashed px-6 py-12 text-center fade-in-0 zoom-in-95 duration-300">
       <div
         className={cn(
-          "flex size-14 items-center justify-center rounded-full",
-          sectionColorClasses[color],
+          "flex size-16 items-center justify-center rounded-2xl shadow-xl",
+          sectionSolidClasses[color],
         )}
       >
         <Icon className="size-7" aria-hidden />

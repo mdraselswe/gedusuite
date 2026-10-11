@@ -21,7 +21,7 @@ export default function VerifyEmailPage({ params }: { params: Promise<{ token: s
   }
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-4 p-4">
+    <main className="app-canvas flex min-h-screen flex-col items-center justify-center gap-4 p-4">
       <Card className="w-full max-w-sm">
         <CardHeader>
           <CardTitle className="text-2xl">Confirm your email</CardTitle>
