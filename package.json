@@ -18,6 +18,7 @@
     "db:studio": "dotenv -e .env.local -- prisma studio",
     "db:local": "node scripts/dev/db.mjs start",
     "local:migrate": "dotenv -e .env.saas.local -- prisma migrate deploy",
+    "local:unlock": "dotenv -e .env.saas.local -- node scripts/dev/unlock.mjs",
     "local:start": "dotenv -e .env.saas.local -- next start -p 3000",
     "local:dev": "dotenv -e .env.saas.local -- next dev --webpack",
     "local:studio": "dotenv -e .env.saas.local -- prisma studio",

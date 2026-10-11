@@ -51,11 +51,17 @@ export const authOptions: NextAuthOptions = {
         // password clears the account counter, so honest typos never add up.
         const emailKey = `login:email:${email}`;
         const ipKey = `login:ip:${clientIp(req?.headers as Record<string, string | string[] | undefined> | undefined)}`;
-        const [byEmail, byIp] = await Promise.all([
-          rateLimit(emailKey, 10, 15 * 60),
-          rateLimit(ipKey, 60, 15 * 60),
-        ]);
-        if (!byEmail.allowed || !byIp.allowed) return null;
+        // Not in `next dev`: the first sign-in there takes ~20s while the route
+        // compiles, people click again, and the counter then locks the demo
+        // login out of a machine nobody is attacking. Tests run as "test" and
+        // production as "production", so the throttle is exercised in both.
+        if (process.env.NODE_ENV !== "development") {
+          const [byEmail, byIp] = await Promise.all([
+            rateLimit(emailKey, 10, 15 * 60),
+            rateLimit(ipKey, 60, 15 * 60),
+          ]);
+          if (!byEmail.allowed || !byIp.allowed) return null;
+        }
 
         const user = await prisma.user.findUnique({ where: { email } });
         if (!user?.passwordHash) return null;
