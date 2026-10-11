@@ -28,9 +28,17 @@ function ymd(offset: number): string {
 describe("demo workspace", () => {
   it("is built", async () => {
     // Remove a previous run, and nothing else.
+    // The five demo logins are the only users this script ever creates, so
+    // they are the only ones it removes.
+    const DEMO_EMAILS = [
+      "demo@gedusuite.test",
+      "partner.demo@gedusuite.test",
+      "partner2.demo@gedusuite.test",
+      "manager.demo@gedusuite.test",
+      "staff.demo@gedusuite.test",
+    ];
     await prisma.workspace.deleteMany({ where: { slug: SLUG } });
-    await prisma.user.deleteMany({ where: { email: { endsWith: "@demo.gedusuite.test" } } });
-    await prisma.user.deleteMany({ where: { email: "demo@gedusuite.test" } });
+    await prisma.user.deleteMany({ where: { email: { in: DEMO_EMAILS } } });
 
     const result = await buildDataset({
       slug: SLUG,
@@ -41,11 +49,11 @@ describe("demo workspace", () => {
       ordersPerDay: 3,
       password: PASSWORD,
       emails: {
-        owner: "demo@gedusuite.test",
-        partnerA: "partner.demo@gedusuite.test",
-        partnerB: "partner2.demo@gedusuite.test",
-        manager: "manager.demo@gedusuite.test",
-        staff: "staff.demo@gedusuite.test",
+        owner: DEMO_EMAILS[0],
+        partnerA: DEMO_EMAILS[1],
+        partnerB: DEMO_EMAILS[2],
+        manager: DEMO_EMAILS[3],
+        staff: DEMO_EMAILS[4],
       },
     });
     await addDemoExtras(result);
