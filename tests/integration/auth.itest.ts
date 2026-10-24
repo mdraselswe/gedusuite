@@ -233,3 +233,26 @@ describe("account deletion", () => {
     expect(await prisma.workspace.findUnique({ where: { id: ws.id } })).not.toBeNull();
   });
 });
+
+describe("new Google accounts", () => {
+  it("are marked verified when the Google account is linked", async () => {
+    const u = await prisma.user.create({ data: { email: "newgoogle@example.com", name: "New G" } });
+    expect(u.emailVerified).toBeNull();
+    await authOptions.events!.linkAccount!({
+      user: { id: u.id, email: u.email },
+      account: { provider: "google", type: "oauth", providerAccountId: "g-new", userId: u.id },
+      profile: { email: "newgoogle@example.com", email_verified: true },
+    } as never);
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: u.id } })).emailVerified).not.toBeNull();
+  });
+
+  it("are not marked verified when Google says the address is unverified", async () => {
+    const u = await prisma.user.create({ data: { email: "unverifiedg@example.com", name: "U G" } });
+    await authOptions.events!.linkAccount!({
+      user: { id: u.id, email: u.email },
+      account: { provider: "google", type: "oauth", providerAccountId: "g-unv", userId: u.id },
+      profile: { email: "unverifiedg@example.com", email_verified: false },
+    } as never);
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: u.id } })).emailVerified).toBeNull();
+  });
+});

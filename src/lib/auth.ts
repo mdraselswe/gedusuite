@@ -72,6 +72,24 @@ export const authOptions: NextAuthOptions = {
       },
     }),
   ],
+  events: {
+    /**
+     * A brand-new Google account is created by the adapter with
+     * emailVerified = null — NextAuth only stamps it for its own email
+     * provider. Google has already proved the address, so record that;
+     * otherwise every Google sign-up would be asked to confirm an email it
+     * already confirmed, and could not create a workspace until it did.
+     */
+    async linkAccount({ user, account, profile }) {
+      if (account.provider !== "google") return;
+      const p = profile as { email_verified?: boolean } | undefined;
+      if (p?.email_verified === false) return;
+      await prisma.user.updateMany({
+        where: { id: user.id, emailVerified: null },
+        data: { emailVerified: new Date() },
+      });
+    },
+  },
   callbacks: {
     /**
      * Google sign-in may attach to an existing account with the same email
