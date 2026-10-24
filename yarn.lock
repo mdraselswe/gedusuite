@@ -318,46 +318,6 @@
   resolved "https://registry.yarnpkg.com/@dotenvx/primitives/-/primitives-0.8.0.tgz#25f3af8f876717deb00b21c64df8a7ba05d16b2c"
   integrity sha512-VYJy0uhFm9zTJ1TxBaW/pA8bjbOM/OttaNMwZ1RHG4JKyRG7DhSdiqD1ipQoAyoD22olUtxbP78W9xY3Wd11bg==
 
-"@embedded-postgres/darwin-arm64@^18.4.0-beta.17":
-  version "18.4.0-beta.17"
-  resolved "https://registry.yarnpkg.com/@embedded-postgres/darwin-arm64/-/darwin-arm64-18.4.0-beta.17.tgz#75812aea93f42c71e5b32d4a7dc363b87695c0ed"
-  integrity sha512-Kg1ZMNFzkVIJs3g4V2UYEc5X005km9rGinxFBH8R1sOU2Rblvz4pt2Uf93Pu8Rk273Ue9HIdrbMPpgUqwjUi0Q==
-
-"@embedded-postgres/darwin-x64@^18.4.0-beta.17":
-  version "18.4.0-beta.17"
-  resolved "https://registry.yarnpkg.com/@embedded-postgres/darwin-x64/-/darwin-x64-18.4.0-beta.17.tgz#e73b8944f364199f51f54e407945fa094b1b16de"
-  integrity sha512-4tShSYWMxUQTSWoQAdLnHISvRj6L9gTch9/31ASJPg6wgyN64LDRwMcOINEWybM7N0ropJ3nTYhFT3UX1bKY5Q==
-
-"@embedded-postgres/linux-arm64@^18.4.0-beta.17":
-  version "18.4.0-beta.17"
-  resolved "https://registry.yarnpkg.com/@embedded-postgres/linux-arm64/-/linux-arm64-18.4.0-beta.17.tgz#1be84fe7fd70594f3e7bd124ed028c07d5d37823"
-  integrity sha512-TIzjtGnDGSD/LbdW0OWCEcbI+YVT0WKSfSr20TCkkP4UR8zeKe+QCZbO0/CM4hS9EWyZ4cDebjRvpRc3iMi6wg==
-
-"@embedded-postgres/linux-arm@^18.4.0-beta.17":
-  version "18.4.0-beta.17"
-  resolved "https://registry.yarnpkg.com/@embedded-postgres/linux-arm/-/linux-arm-18.4.0-beta.17.tgz#11c50c8802b91f96cfe09b9e914add319df71a19"
-  integrity sha512-VuD1nFasN7yG57zpJcp6MBXM0nXqGfb8GBQV+f1FGJ17+VMNYLIFLhFp99UlY4xnWG74FQC4NPYw8eCwSTJ6qg==
-
-"@embedded-postgres/linux-ia32@^18.4.0-beta.17":
-  version "18.4.0-beta.17"
-  resolved "https://registry.yarnpkg.com/@embedded-postgres/linux-ia32/-/linux-ia32-18.4.0-beta.17.tgz#bd74feb11be715097a52ef97d936fcb60a5c7063"
-  integrity sha512-aSRe4kknqRHuedtpo/rDIaqa8r9VrKIgW9p5FkJyIFqUUkIkxRqND1dg8xrDRREcSUXRJKS0x+j/AuxflgYIfg==
-
-"@embedded-postgres/linux-ppc64@^18.4.0-beta.17":
-  version "18.4.0-beta.17"
-  resolved "https://registry.yarnpkg.com/@embedded-postgres/linux-ppc64/-/linux-ppc64-18.4.0-beta.17.tgz#35be783745e81da4576e90298c25a2b100086518"
-  integrity sha512-zO2RRUFdKRPplrdhmglG39VXJZzDXu3P3ONAG1sFPhGh89vbk24Btd5P7uOmQLIpWehzL0s+UqUWoeE/ZUKvgw==
-
-"@embedded-postgres/linux-x64@^18.4.0-beta.17":
-  version "18.4.0-beta.17"
-  resolved "https://registry.yarnpkg.com/@embedded-postgres/linux-x64/-/linux-x64-18.4.0-beta.17.tgz#93ec75a1247b30f1a0a43c14328356cadbc7569d"
-  integrity sha512-jVw/MdDtIX/vICH/DKIe6/mHpiCggdx6QVyza4vt/NbcZFsL0KhwglF6F1Koqx3gRBZ9XtN+vi63EsqSyqOSxA==
-
-"@embedded-postgres/windows-x64@^18.4.0-beta.17":
-  version "18.4.0-beta.17"
-  resolved "https://registry.yarnpkg.com/@embedded-postgres/windows-x64/-/windows-x64-18.4.0-beta.17.tgz#a2b4f70e310805d0c18df8101e94c55337406726"
-  integrity sha512-AwRerliA4IGWyW5jWBvHt5vidVUSB0QQW9Tt2y7ScnmifnCb/awfxZr4BkBSTv+gNt8Djcddqs+xSF5Z6/CkTg==
-
 "@emnapi/core@^1.11.1":
   version "1.11.2"
   resolved "https://registry.yarnpkg.com/@emnapi/core/-/core-1.11.2.tgz#fab0a0f3c492d11f5a9ac9065d0d73955ee1c1c9"
@@ -1389,11 +1349,6 @@ ast-types@^0.16.1:
   dependencies:
     tslib "^2.0.1"
 
-async-exit-hook@^2.0.1:
-  version "2.0.1"
-  resolved "https://registry.yarnpkg.com/async-exit-hook/-/async-exit-hook-2.0.1.tgz#8bd8b024b0ec9b1c01cccb9af9db29bd717dfaf3"
-  integrity sha512-NW2cX8m1Q7KPA7a5M2ULQeZ2wR5qI5PAbw5L0UOMxdioVk9PMZ0h1TmyZEkPYrCvYjDlFICusOu1dlEKAAeXBw==
-
 atomically@^1.7.0:
   version "1.7.0"
   resolved "https://registry.yarnpkg.com/atomically/-/atomically-1.7.0.tgz#c07a0458432ea6dbc9a3506fffa424b48bccaafe"
@@ -2041,23 +1996,6 @@ electron-to-chromium@^1.5.328, electron-to-chromium@^1.5.389:
   version "1.5.393"
   resolved "https://registry.yarnpkg.com/electron-to-chromium/-/electron-to-chromium-1.5.393.tgz#aec971df2a6f4f7e51fbacb200d66cebfc7d3c17"
   integrity sha512-kiDJdIUawuEIcp9XoICKp1iTYDEbgguIPq526N1Q7jIQDeQ3CqoMx71025PI/7E48Ddtw2HuWsVjY7afEgNxmg==
-
-embedded-postgres@^18.4.0-beta.17:
-  version "18.4.0-beta.17"
-  resolved "https://registry.yarnpkg.com/embedded-postgres/-/embedded-postgres-18.4.0-beta.17.tgz#77f699eb8212e4ee8bbf6a04af798101ef39abf3"
-  integrity sha512-ORT/A1YiO6ecpRHpyIIBgyCR/8ASqqYZuFw11aX9PkqTX3FUM5+9sNOXY1mGIixxsm2TWSIA5WghJEk7A5ZxVw==
-  dependencies:
-    async-exit-hook "^2.0.1"
-    pg "^8.7.3"
-  optionalDependencies:
-    "@embedded-postgres/darwin-arm64" "^18.4.0-beta.17"
-    "@embedded-postgres/darwin-x64" "^18.4.0-beta.17"
-    "@embedded-postgres/linux-arm" "^18.4.0-beta.17"
-    "@embedded-postgres/linux-arm64" "^18.4.0-beta.17"
-    "@embedded-postgres/linux-ia32" "^18.4.0-beta.17"
-    "@embedded-postgres/linux-ppc64" "^18.4.0-beta.17"
-    "@embedded-postgres/linux-x64" "^18.4.0-beta.17"
-    "@embedded-postgres/windows-x64" "^18.4.0-beta.17"
 
 emoji-regex@^10.3.0:
   version "10.6.0"
@@ -3700,7 +3638,7 @@ pg-types@2.2.0, pg-types@^2.2.0:
     postgres-date "~1.0.4"
     postgres-interval "^1.1.0"
 
-pg@^8.11.3, pg@^8.23.1, pg@^8.7.3:
+pg@^8.11.3, pg@^8.23.1:
   version "8.23.1"
   resolved "https://registry.yarnpkg.com/pg/-/pg-8.23.1.tgz#e4848051a04aa2f968fd5671d075f89e5e7918b9"
   integrity sha512-aL96AHANtWjPLDOLqnhx+ngp9+UK7ETEU8VJrDCGvsSSi/mGLcWYsS6Herg7lmaBJe4uwrfqsa7gTEFaSizDoQ==

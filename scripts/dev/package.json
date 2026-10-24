@@ -1,0 +1,9 @@
+{
+  "name": "gedusuite-local-db",
+  "private": true,
+  "description": "Local-only tooling. Kept out of the app's package.json so a production install never downloads a Postgres server.",
+  "type": "module",
+  "dependencies": {
+    "embedded-postgres": "18.4.0-beta.17"
+  }
+}
