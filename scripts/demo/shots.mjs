@@ -12,9 +12,10 @@ import { join } from "node:path";
 
 const BASE = process.argv[2] ?? "http://localhost:3000";
 const OUT = process.argv[3] ?? "demo-assets/shots";
-const SLUG = "little-nest";
-const EMAIL = "demo@gedusuite.test";
-const PASSWORD = "Demo#2026";
+// Defaults walk the demo shop; the env can point it at another local workspace.
+const SLUG = process.env.SHOTS_SLUG ?? "little-nest";
+const EMAIL = process.env.SHOTS_EMAIL ?? "demo@gedusuite.test";
+const PASSWORD = process.env.SHOTS_PASSWORD ?? "Demo#2026";
 
 if (!/^https?:\/\/(localhost|127\.0\.0\.1)/.test(BASE)) {
   throw new Error(`Refusing to run against ${BASE}: the demo login only exists locally.`);

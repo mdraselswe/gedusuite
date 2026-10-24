@@ -26,8 +26,12 @@ export type NavItem = {
 function BrandMark({ logoUrl, name }: { logoUrl: string | null; name: string }) {
   if (!logoUrl) return <span className="truncate">{name}</span>;
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img src={logoUrl} alt={name} className="h-8 w-auto max-w-32 shrink-0 object-contain" />
+    // On a light pad: shops' logos are drawn for white paper, and most of them
+    // vanish against the dark sidebar without one.
+    <span className="inline-flex shrink-0 items-center rounded-lg bg-white px-2 py-1 shadow-sm">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={logoUrl} alt={name} className="h-7 w-auto max-w-28 object-contain" />
+    </span>
   );
 }
 

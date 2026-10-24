@@ -41,3 +41,6 @@ tsconfig.tsbuildinfo
 
 # Generated demo screenshots and video
 demo-assets/
+
+# Local copies of production data — never commit
+backups/
