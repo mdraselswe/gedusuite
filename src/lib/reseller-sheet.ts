@@ -28,9 +28,14 @@ const FIRST_DATA_ROW = HEADER_ROW + 1;
  * A image, B key, C product, D variant, E SKU, F category, G retail, H the
  * reseller prices. Bands differ from product to product, so H holds a row's
  * own bands one per line ("1 pc: ৳900") rather than a column per band.
+ * I, hidden, is the row's place in the app's order: sorting on it keeps the
+ * app's rules (uncategorised last) where a sort on the text columns would put
+ * empty categories first.
  */
-const HEADERS = ["Image", "ID", "Product", "Variant", "SKU", "Category", "Retail price (sell at least)", "Reseller price"];
+const HEADERS = ["Image", "ID", "Product", "Variant", "SKU", "Category", "Retail price (sell at least)", "Reseller price", "Order"];
 const RETAIL_COL = 6;
+const PRICE_COL = 7;
+const ORDER_COL = 8;
 const WIDTH = HEADERS.length;
 /** Sheets made before bands moved into one column had one per band, out to here. */
 const MAX_COL = "Z";
@@ -64,8 +69,8 @@ export type SheetContent = {
 
 const taka = (v: number) => `৳${v.toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
 
-function rowValues(r: ResellerRow): (string | number)[] {
-  return [r.key, r.product, r.variant, r.sku, r.category, r.retail, bandLines(r, taka).join("\n")];
+function rowValues(r: ResellerRow, order: number): (string | number)[] {
+  return [r.key, r.product, r.variant, r.sku, r.category, r.retail, bandLines(r, taka).join("\n"), order];
 }
 
 /**
@@ -129,6 +134,7 @@ export async function writeResellerSheet(auth: Auth, sheetId: string, content: S
   });
   const existing = (keyRes.data.values ?? []).map((r) => String(r?.[0] ?? ""));
   const wanted = new Map(content.rows.map((r) => [r.key, r]));
+  const order = new Map(content.rows.map((r, i) => [r.key, i + 1]));
 
   // Rows for variants no longer on the list go, bottom-up so indexes hold.
   const goneIdx = existing
@@ -167,14 +173,14 @@ export async function writeResellerSheet(auth: Auth, sheetId: string, content: S
     if (!row) return;
     placed.add(k);
     const r = FIRST_DATA_ROW + i;
-    data.push({ range: `${q(PRICE_TAB)}!B${r}:${lastCol}${r}`, values: [rowValues(row)] });
+    data.push({ range: `${q(PRICE_TAB)}!B${r}:${lastCol}${r}`, values: [rowValues(row, order.get(k)!)] });
   });
   const fresh = content.rows.filter((r) => !placed.has(r.key));
   const appendAt = FIRST_DATA_ROW + remaining.length;
   if (fresh.length) {
     data.push({
       range: `${q(PRICE_TAB)}!B${appendAt}:${lastCol}${appendAt + fresh.length - 1}`,
-      values: fresh.map(rowValues),
+      values: fresh.map((r) => rowValues(r, order.get(r.key)!)),
     });
   }
   const totalRows = remaining.length + fresh.length;
@@ -232,14 +238,14 @@ export async function writeResellerSheet(auth: Auth, sheetId: string, content: S
         fields: "userEnteredFormat(textFormat,backgroundColor,wrapStrategy,verticalAlignment)",
       },
     },
-    // The key column is the sync's bookkeeping, not something to read.
-    {
+    // The key and order columns are the sync's bookkeeping, not something to read.
+    ...[1, ORDER_COL].map((c) => ({
       updateDimensionProperties: {
-        range: { sheetId: priceTab, dimension: "COLUMNS", startIndex: 1, endIndex: 2 },
+        range: { sheetId: priceTab, dimension: "COLUMNS", startIndex: c, endIndex: c + 1 },
         properties: { hiddenByUser: true },
         fields: "hiddenByUser",
       },
-    },
+    })),
     {
       updateDimensionProperties: {
         range: { sheetId: priceTab, dimension: "COLUMNS", startIndex: 0, endIndex: 1 },
@@ -270,7 +276,7 @@ export async function writeResellerSheet(auth: Auth, sheetId: string, content: S
     },
     {
       updateDimensionProperties: {
-        range: { sheetId: priceTab, dimension: "COLUMNS", startIndex: RETAIL_COL + 1, endIndex: width },
+        range: { sheetId: priceTab, dimension: "COLUMNS", startIndex: PRICE_COL, endIndex: PRICE_COL + 1 },
         properties: { pixelSize: 190 },
         fields: "pixelSize",
       },
@@ -294,11 +300,7 @@ export async function writeResellerSheet(auth: Auth, sheetId: string, content: S
       {
         sortRange: {
           range: { ...dataRange, startColumnIndex: 0, endColumnIndex: width },
-          sortSpecs: [
-            { dimensionIndex: 5, sortOrder: "ASCENDING" },
-            { dimensionIndex: 2, sortOrder: "ASCENDING" },
-            { dimensionIndex: 3, sortOrder: "ASCENDING" },
-          ],
+          sortSpecs: [{ dimensionIndex: ORDER_COL, sortOrder: "ASCENDING" }],
         },
       },
       {
@@ -313,6 +315,13 @@ export async function writeResellerSheet(auth: Auth, sheetId: string, content: S
           range: { ...dataRange, startColumnIndex: 2, endColumnIndex: width },
           cell: { userEnteredFormat: { verticalAlignment: "MIDDLE", wrapStrategy: "WRAP" } },
           fields: "userEnteredFormat(verticalAlignment,wrapStrategy)",
+        },
+      },
+      {
+        repeatCell: {
+          range: { ...dataRange, startColumnIndex: PRICE_COL, endColumnIndex: PRICE_COL + 1 },
+          cell: { userEnteredFormat: { horizontalAlignment: "LEFT" } },
+          fields: "userEnteredFormat.horizontalAlignment",
         },
       },
       // Tall enough for a product picture in column A to be worth looking at,
