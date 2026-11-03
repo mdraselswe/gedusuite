@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { loadResellerList } from "@/lib/reseller-list";
 import { formatMoney } from "@/lib/money";
 import { formatDhakaDate } from "@/lib/dhaka-time";
+import { facebookContact, parsePrintProfile, websiteContact, whatsappContact } from "@/lib/print-profile";
 import type { ResellerRow } from "@/lib/reseller-pricing";
 import { PrintSheetView } from "@/components/ui/print-sheet-view";
 
@@ -77,12 +78,18 @@ export default async function ResellerPdfPage({ params }: { params: Promise<{ wo
     loadResellerList(access.workspaceId),
     prisma.workspace.findUniqueOrThrow({
       where: { id: access.workspaceId },
-      select: { name: true, logoUrl: true, websiteUrl: true },
+      select: { name: true, logoUrl: true, websiteUrl: true, printProfile: true },
     }),
   ]);
   const pages = paginate(resellerRows);
   const date = formatDhakaDate(new Date());
   const notes = settings.notes.trim();
+  const profile = parsePrintProfile(ws.printProfile);
+  const contacts = [
+    websiteContact(ws.websiteUrl)?.display,
+    whatsappContact(profile.whatsapp) && `WhatsApp: ${whatsappContact(profile.whatsapp)!.display}`,
+    facebookContact(profile.facebook)?.display,
+  ].filter(Boolean);
   const cols = 5;
   const money = (v: number) => formatMoney(v);
 
@@ -116,7 +123,9 @@ export default async function ResellerPdfPage({ params }: { params: Promise<{ wo
                   </div>
                   <div style={{ textAlign: "right", fontSize: "8.5pt", color: "#5b587a" }}>
                     <div>Prices as of {date}</div>
-                    {ws.websiteUrl ? <div>{ws.websiteUrl.replace(/^https?:\/\//, "")}</div> : null}
+                    {contacts.map((c) => (
+                      <div key={c}>{c}</div>
+                    ))}
                   </div>
                 </div>
               ) : (

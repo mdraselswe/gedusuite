@@ -60,12 +60,38 @@ function q(tab: string): string {
   return `'${tab.replace(/'/g, "''")}'`;
 }
 
+export type SheetContact = { label: string; display: string; url: string };
+
 export type SheetContent = {
   title: string;
   updatedLine: string;
   rows: ResellerRow[];
   notes: string;
+  /** A URL Google can fetch, for =IMAGE() in the top-left corner. */
+  logoUrl: string | null;
+  /** Website, WhatsApp, Facebook: shown under the title, each a link. */
+  contacts: SheetContact[];
 };
+
+const CONTACT_SEP = "   ·   ";
+
+/** "Website: gedushop.com   ·   WhatsApp: 017…" and where each link sits in it. */
+function contactCell(contacts: SheetContact[]) {
+  let text = "";
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const runs: any[] = [];
+  contacts.forEach((c, i) => {
+    if (i > 0) text += CONTACT_SEP;
+    runs.push({ startIndex: text.length, format: { bold: true } });
+    text += `${c.label}: `;
+    runs.push({ startIndex: text.length, format: { link: { uri: c.url } } });
+    text += c.display;
+    runs.push({ startIndex: text.length, format: {} });
+  });
+  // A run may not start at the very end of the text.
+  if (runs.length && runs[runs.length - 1].startIndex >= text.length) runs.pop();
+  return { text, runs };
+}
 
 const taka = (v: number) => `৳${v.toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
 
@@ -164,7 +190,7 @@ export async function writeResellerSheet(auth: Auth, sheetId: string, content: S
   const width = WIDTH;
   const lastCol = colLetter(width - 1);
   const data: { range: string; values: (string | number)[][] }[] = [
-    { range: `${q(PRICE_TAB)}!A1:C2`, values: [["", "", content.title], ["", "", content.updatedLine]] },
+    { range: `${q(PRICE_TAB)}!B1:C2`, values: [["", content.title], ["", content.updatedLine]] },
     { range: `${q(PRICE_TAB)}!A${HEADER_ROW}:${lastCol}${HEADER_ROW}`, values: [HEADERS] },
   ];
   const placed = new Set<string>();
@@ -205,12 +231,66 @@ export async function writeResellerSheet(auth: Auth, sheetId: string, content: S
     spreadsheetId: sheetId,
     range: `${q(TERMS_TAB)}!A1`,
     valueInputOption: "RAW",
-    requestBody: { values: [[content.title], [content.updatedLine], [], ...termLines] },
+    requestBody: {
+      values: [
+        [content.title],
+        [content.updatedLine],
+        ...content.contacts.map((c) => [`${c.label}: ${c.display}`]),
+        [],
+        ...termLines,
+      ],
+    },
   });
 
   // ── Order and look ──
+  const contact = contactCell(content.contacts);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const requests: any[] = [
+    // The logo fills A1:A3, beside the title, the date and the contacts.
+    { unmergeCells: { range: { sheetId: priceTab, startRowIndex: 0, endRowIndex: 3, startColumnIndex: 0, endColumnIndex: 1 } } },
+    {
+      mergeCells: {
+        range: { sheetId: priceTab, startRowIndex: 0, endRowIndex: 3, startColumnIndex: 0, endColumnIndex: 1 },
+        mergeType: "MERGE_ALL",
+      },
+    },
+    {
+      updateCells: {
+        range: { sheetId: priceTab, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 0, endColumnIndex: 1 },
+        rows: [
+          {
+            values: [
+              content.logoUrl
+                ? { userEnteredValue: { formulaValue: `=IMAGE("${content.logoUrl.replace(/"/g, "%22")}")` } }
+                : {},
+            ],
+          },
+        ],
+        fields: "userEnteredValue",
+      },
+    },
+    {
+      updateCells: {
+        range: { sheetId: priceTab, startRowIndex: 2, endRowIndex: 3, startColumnIndex: 2, endColumnIndex: 3 },
+        rows: [
+          {
+            values: [
+              contact.text
+                ? { userEnteredValue: { stringValue: contact.text }, textFormatRuns: contact.runs }
+                : {},
+            ],
+          },
+        ],
+        fields: "userEnteredValue,textFormatRuns",
+      },
+    },
+    {
+      updateDimensionProperties: {
+        range: { sheetId: priceTab, dimension: "ROWS", startIndex: 0, endIndex: 3 },
+        properties: { pixelSize: 26 },
+        fields: "pixelSize",
+      },
+    },
     {
       updateSheetProperties: {
         properties: { sheetId: priceTab, gridProperties: { frozenRowCount: HEADER_ROW } },

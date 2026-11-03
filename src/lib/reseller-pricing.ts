@@ -11,10 +11,14 @@ import { round2 } from "@/lib/money";
 
 export type ResellerTier = { minQty: number; discountPct: number };
 
+/**
+ * One piece gets only a token discount: anyone can call themselves a reseller
+ * to buy a single item cheap. The real discount starts at two.
+ */
 export const DEFAULT_TIERS: ResellerTier[] = [
-  { minQty: 1, discountPct: 10 },
-  { minQty: 5, discountPct: 15 },
-  { minQty: 10, discountPct: 20 },
+  { minQty: 1, discountPct: 5 },
+  { minQty: 2, discountPct: 15 },
+  { minQty: 6, discountPct: 20 },
 ];
 
 /**
@@ -42,7 +46,7 @@ export function parseTiers(raw: unknown): ResellerTier[] {
   return tiers;
 }
 
-/** "1–4 pcs", "5–9 pcs", "10+ pcs". */
+/** "1 pc", "2–5 pcs", "6+ pcs". */
 export function tierLabel(tiers: ResellerTier[], i: number): string {
   const from = tiers[i].minQty;
   const next = tiers[i + 1]?.minQty;

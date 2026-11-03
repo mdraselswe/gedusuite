@@ -1734,7 +1734,7 @@ model ResellerPriceList {
    * price is the variant's retail price less its discount, unless the variant
    * has a price of its own for that band (ResellerVariantPrice).
    */
-  tiers        Json    @default("[{\"minQty\":1,\"discountPct\":10},{\"minQty\":5,\"discountPct\":15},{\"minQty\":10,\"discountPct\":20}]")
+  tiers        Json    @default("[{\"minQty\":1,\"discountPct\":5},{\"minQty\":2,\"discountPct\":15},{\"minQty\":6,\"discountPct\":20}]")
   /**
    * Least profit over cost, in percent, a calculated price may fall to.
    */

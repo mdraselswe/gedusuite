@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { after } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { decrypt, encrypt } from "@/lib/crypto";
@@ -5,6 +6,8 @@ import { oauthClient } from "@/lib/google-personal";
 import { loadResellerList } from "@/lib/reseller-list";
 import { createResellerSheet, sheetExists, writeResellerSheet, addSheetViewer, setSheetPublic } from "@/lib/reseller-sheet";
 import { dhakaStampLine } from "@/lib/dhaka-time";
+import { appUrl } from "@/lib/mailer";
+import { facebookContact, parsePrintProfile, websiteContact, whatsappContact } from "@/lib/print-profile";
 
 /**
  * Keeping the reseller sheet in step with the app.
@@ -63,6 +66,27 @@ function googleError(e: unknown): string {
   return msg;
 }
 
+/** The shop's logo and how to reach it, as the sheet shows them. */
+function brand(ws: { slug: string; logoUrl: string | null; websiteUrl: string | null; printProfile: unknown }) {
+  const p = parsePrintProfile(ws.printProfile);
+  const contacts = [
+    ["Website", websiteContact(ws.websiteUrl)],
+    ["WhatsApp", whatsappContact(p.whatsapp)],
+    ["Facebook", facebookContact(p.facebook)],
+  ] as const;
+  const base = appUrl();
+  // Google fetches the image itself, so a local address is no use to it. The
+  // version makes it fetch again when the logo changes.
+  const logoUrl =
+    ws.logoUrl && !/localhost|127\.0\.0\.1/.test(base)
+      ? `${base}/api/brand/${ws.slug}/logo?v=${createHash("sha1").update(ws.logoUrl).digest("hex").slice(0, 8)}`
+      : null;
+  return {
+    logoUrl,
+    contacts: contacts.flatMap(([label, c]) => (c ? [{ label, display: c.display, url: c.url }] : [])),
+  };
+}
+
 /**
  * Write the sheet once. Creates it first when `create` is set and there is none
  * (or the old one was deleted), sharing it again with everyone on the list.
@@ -70,7 +94,7 @@ function googleError(e: unknown): string {
 async function writeOnce(workspaceId: string, create: boolean): Promise<string> {
   const list = await prisma.resellerPriceList.findUnique({
     where: { workspaceId },
-    include: { workspace: { select: { name: true } } },
+    include: { workspace: { select: { name: true, slug: true, logoUrl: true, websiteUrl: true, printProfile: true } } },
   });
   const client = list && resellerGoogleClient(list);
   if (!list || !client) throw new Error("Connect a Google account first.");
@@ -93,6 +117,7 @@ async function writeOnce(workspaceId: string, create: boolean): Promise<string> 
     updatedLine: `Updated ${dhakaStampLine(new Date())}`,
     rows: resellerRows,
     notes: settings.notes,
+    ...brand(list.workspace),
   });
   await persistResellerTokens(workspaceId, client);
   return sheetId;

@@ -21,6 +21,7 @@ const PUBLIC_PREFIXES = [
   "/invite",
   "/api/auth",
   "/api/cron",
+  "/api/brand",
   "/offline",
 ];
 // Top-level app routes that need auth but aren't workspace-scoped.

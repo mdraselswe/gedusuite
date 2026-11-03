@@ -34,9 +34,10 @@ beforeAll(async () => {
 describe("reseller price list", () => {
   it("prices every band from retail, held above cost plus the minimum margin", async () => {
     const { rows, resellerRows, tierLabels } = await loadResellerList(ws);
-    expect(tierLabels).toEqual(["1–4 pcs", "5–9 pcs", "10+ pcs"]);
+    // Defaults: one piece −5%, 2–5 −15%, 6+ −20%.
+    expect(tierLabels).toEqual(["1 pc", "2–5 pcs", "6+ pcs"]);
     const t = rows.find((r) => r.variantId === teether)!;
-    expect(t.priced!.tiers.map((x) => x.price)).toEqual([900, 850, 800]);
+    expect(t.priced!.tiers.map((x) => x.price)).toEqual([950, 850, 800]);
     const b = rows.find((r) => r.variantId === blanket)!;
     // 20% off 500 = 400 is under 380 + 10%; held at 420.
     expect(b.priced!.tiers[2]).toMatchObject({ price: 420, raisedToFloor: true });

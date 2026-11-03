@@ -13,7 +13,13 @@ import {
   tiersForBands,
 } from "@/lib/reseller-pricing";
 
-const settings = { tiers: DEFAULT_TIERS, minMarginPct: 10, roundTo: 5 };
+/** The bands the sums below are worked in: 1+ −10%, 5+ −15%, 10+ −20%. */
+const TIERS = [
+  { minQty: 1, discountPct: 10 },
+  { minQty: 5, discountPct: 15 },
+  { minQty: 10, discountPct: 20 },
+];
+const settings = { tiers: TIERS, minMarginPct: 10, roundTo: 5 };
 
 describe("parseTiers", () => {
   it("sorts bands and always starts at one piece", () => {
@@ -35,7 +41,8 @@ describe("parseTiers", () => {
 
 describe("tierLabel", () => {
   it("names each band by the quantities it covers", () => {
-    expect(DEFAULT_TIERS.map((_, i) => tierLabel(DEFAULT_TIERS, i))).toEqual(["1–4 pcs", "5–9 pcs", "10+ pcs"]);
+    expect(TIERS.map((_, i) => tierLabel(TIERS, i))).toEqual(["1–4 pcs", "5–9 pcs", "10+ pcs"]);
+    expect(DEFAULT_TIERS.map((_, i) => tierLabel(DEFAULT_TIERS, i))).toEqual(["1 pc", "2–5 pcs", "6+ pcs"]);
     const tight = [{ minQty: 1, discountPct: 5 }, { minQty: 2, discountPct: 10 }];
     expect(tierLabel(tight, 0)).toBe("1 pc");
   });
@@ -51,16 +58,16 @@ describe("a product's own bands", () => {
 
   it("takes each band's discount from the list band its first quantity falls in", () => {
     // List: 1+ −10%, 5+ −15%, 10+ −20%.
-    expect(tiersForBands(DEFAULT_TIERS, [1, 2, 6])).toEqual([
+    expect(tiersForBands(TIERS, [1, 2, 6])).toEqual([
       { minQty: 1, discountPct: 10 },
       { minQty: 2, discountPct: 10 },
       { minQty: 6, discountPct: 15 },
     ]);
-    expect(tiersForBands(DEFAULT_TIERS, null)).toBe(DEFAULT_TIERS);
+    expect(tiersForBands(TIERS, null)).toBe(TIERS);
   });
 
   it("labels and prices the product's bands, not the list's", () => {
-    const tiers = tiersForBands(DEFAULT_TIERS, [1, 2, 6]);
+    const tiers = tiersForBands(TIERS, [1, 2, 6]);
     const p = priceVariant({ cost: 600, retail: 1000, overrides: { 2: 870 } }, { ...settings, tiers });
     expect(p.tiers.map((t) => [t.label, t.price])).toEqual([
       ["1 pc", 900],
