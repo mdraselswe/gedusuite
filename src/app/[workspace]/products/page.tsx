@@ -23,7 +23,9 @@ import { ComboManager, type ComboRow } from "@/components/products/combo-manager
 import { listProductCategories } from "@/server/actions/product-categories";
 import { Pagination, parsePage } from "@/components/ui/pagination";
 import { PageHeader } from "@/components/ui/page-header";
-import { Package } from "lucide-react";
+import Link from "next/link";
+import { Package, Tags } from "lucide-react";
+import { buttonVariants } from "@/components/ui/button";
 import { dhakaRecordStamp } from "@/lib/dhaka-time";
 
 const PAGE_SIZE = 50;
@@ -190,7 +192,19 @@ export default async function ProductsPage({
           could only ever describe one of the four tabs below it, and stayed
           on screen (unchanged, and wrong) no matter which tab was open. Each
           tab now carries its own. */}
-      <PageHeader icon={<Package />} color="violet" title={(await serverT())("productsSuppliers")} />
+      <PageHeader
+        icon={<Package />}
+        color="violet"
+        title={(await serverT())("productsSuppliers")}
+        action={
+          // The reseller list shows cost and profit, so it needs the reports gate too.
+          can(access.role, "reports", "view", access.permissions) ? (
+            <Link href={`/${slug}/products/reseller`} className={buttonVariants({ variant: "outline", size: "sm" })}>
+              <Tags className="size-4" /> Reseller price list
+            </Link>
+          ) : undefined
+        }
+      />
       <Tabs defaultValue={page > 1 ? "adjustments" : "products"}>
         <TabsList className="w-full sm:w-fit">
           <TabsTrigger value="products">

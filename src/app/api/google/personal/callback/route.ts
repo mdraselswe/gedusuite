@@ -4,6 +4,7 @@ import { auth } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { exchangeCode } from "@/lib/google-personal";
 import { encrypt } from "@/lib/crypto";
+import { connectResellerGoogle } from "@/lib/reseller-connect";
 
 // OAuth callback — stores the user's encrypted tokens, then returns to Settings.
 export async function GET(req: NextRequest) {
@@ -14,12 +15,24 @@ export async function GET(req: NextRequest) {
   const stateRaw = req.nextUrl.searchParams.get("state");
   let slug = "";
   let uid = "";
+  let purpose = "";
   try {
     const parsed = JSON.parse(Buffer.from(stateRaw ?? "", "base64url").toString());
     slug = parsed.slug ?? "";
     uid = parsed.uid ?? "";
+    purpose = parsed.purpose ?? "";
   } catch {
     /* ignore */
+  }
+
+  if (purpose === "reseller") {
+    const resellerBack = slug ? `/${slug}/products/reseller` : "/";
+    if (!code || !slug || uid !== session.user.id) {
+      return NextResponse.redirect(new URL(`${resellerBack}?google=error`, req.url));
+    }
+    const res = await connectResellerGoogle(slug, code);
+    const q = res.ok ? "google=connected" : `google=error&reason=${encodeURIComponent(res.error)}`;
+    return NextResponse.redirect(new URL(`${resellerBack}?${q}`, req.url));
   }
 
   const back = slug ? `/${slug}/settings/backup` : "/";

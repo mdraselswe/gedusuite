@@ -72,6 +72,8 @@ model Workspace {
   integration           WorkspaceIntegration?
   subscription          Subscription?
   billingInvoices       BillingInvoice[]
+  resellerPriceList     ResellerPriceList?
+  resellerPrices        ResellerVariantPrice[]
 }
 
 model User {
@@ -378,6 +380,7 @@ model ProductVariant {
   orderGifts  OrderGift[]
   adjustments StockAdjustment[]
   comboItems  ComboItem[]
+  resellerPrice ResellerVariantPrice?
 
   @@index([productId])
   @@index([wooProductId])
@@ -1713,4 +1716,92 @@ enum ActivityAction {
   CREATE
   UPDATE
   DELETE
+}
+
+// ── Reseller price list ─────────────────────────────────────────────
+//
+// Resellers never sign in here. The shop works out its reseller prices on one
+// page (cost, margin and all), and what leaves the building is a Google Sheet
+// and a PDF holding only the prices on offer. See lib/reseller-pricing.
+
+model ResellerPriceList {
+  id           String  @id @default(cuid())
+  workspaceId  String  @unique
+  title        String  @default("Reseller price list")
+  /**
+   * Quantity bands, ascending by minQty: [{ minQty, discountPct }]. The first
+   * band always starts at 1 — that is the single-piece price. Each band's
+   * price is the variant's retail price less its discount, unless the variant
+   * has a price of its own for that band (ResellerVariantPrice).
+   */
+  tiers        Json    @default("[{\"minQty\":1,\"discountPct\":10},{\"minQty\":5,\"discountPct\":15},{\"minQty\":10,\"discountPct\":20}]")
+  /**
+   * Least profit over cost, in percent, a calculated price may fall to.
+   */
+  minMarginPct Decimal @default(10) @db.Decimal(6, 2)
+  /**
+   * Calculated prices are rounded up to a multiple of this (1, 5, 10…).
+   */
+  roundTo      Int     @default(5)
+  /**
+   * Terms printed under the list: minimum resale price, delivery, payment.
+   */
+  notes        String? @db.Text
+
+  // The Google account the sheet lives in — the shop's, not whoever happens to
+  // be signed in. Tokens encrypted like UserGoogleConnection's.
+  googleEmail        String?
+  googleAccessToken  String?   @db.Text
+  googleRefreshToken String?   @db.Text
+  googleExpiryDate   BigInt?
+  sheetId            String?
+  /**
+   * Reseller emails given view-only access to the sheet.
+   */
+  viewers            Json      @default("[]")
+  /**
+   * Anyone with the link can view (off unless the owner turns it on).
+   */
+  publicLink         Boolean   @default(false)
+  lastSyncedAt       DateTime?
+  lastSyncError      String?   @db.Text
+  /**
+   * A sync in progress holds the sheet until this instant, so two saves in a
+   * row cannot both append the same new rows. A save that finds it held sets
+   * syncPending, and the running sync goes round once more before letting go.
+   */
+  syncLockedUntil    DateTime?
+  syncPending        Boolean   @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+/**
+ * One variant's place on the reseller list, when it differs from the defaults.
+ */
+model ResellerVariantPrice {
+  id               String  @id @default(cuid())
+  workspaceId      String
+  productVariantId String  @unique
+  /**
+   * Left off the reseller sheet and PDF.
+   */
+  hidden           Boolean @default(false)
+  /**
+   * Hand-set prices by band, keyed by the band's minQty: { "1": 900, "5": 850 }.
+   */
+  prices           Json    @default("{}")
+  /**
+   * This variant's own quantity bands, as the minQty each starts at: [1, 2, 6].
+   * Null: the list's bands.
+   */
+  bands            Json?
+
+  workspace      Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  productVariant ProductVariant @relation(fields: [productVariantId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
 }

@@ -218,6 +218,8 @@ export const ENTITY_LABEL: Record<string, string> = {
   Membership: "Team member",
   Invite: "Invite",
   Workspace: "Workspace",
+  ResellerPriceList: "Reseller price list",
+  ResellerVariantPrice: "Reseller price",
 };
 
 /** Field names as a shopkeeper would read them, not as the schema spells them. */

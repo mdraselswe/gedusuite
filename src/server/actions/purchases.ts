@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { queueResellerSync } from "@/lib/reseller-sync";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAccess } from "@/lib/authz";
@@ -28,7 +29,9 @@ export type ActionResult = { ok: true } | ActionFailure;
  * a layout so the per-partner detail pages — where the derived credit shows —
  * are refreshed too, not just the list.
  */
-function revalidateAll(slug: string) {
+function revalidateAll(slug: string, workspaceId: string) {
+  // A purchase moves cost, and with it the floor under reseller prices.
+  queueResellerSync(workspaceId);
   revalidatePath(`/${slug}/purchases`);
   revalidatePath(`/${slug}/products`);
   revalidatePath(`/${slug}/treasury`);
@@ -184,7 +187,7 @@ export async function createPurchase(
     summary: `Bought ${d.quantity} × ${label} at ৳${d.unitCost} each — ৳${cost} total`,
   });
 
-  revalidateAll(slug);
+  revalidateAll(slug, workspaceId);
   return { ok: true };
 }
 
@@ -354,7 +357,7 @@ export async function updatePurchase(
     });
   }
 
-  revalidateAll(slug);
+  revalidateAll(slug, workspaceId);
   return { ok: true };
 }
 
@@ -432,6 +435,6 @@ export async function deletePurchase(
     summary: `Deleted — ${existing.quantity} piece(s) that came in on it went off the books`,
   });
 
-  revalidateAll(slug);
+  revalidateAll(slug, workspaceId);
   return { ok: true };
 }

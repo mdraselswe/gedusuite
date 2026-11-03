@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { queueResellerSync } from "@/lib/reseller-sync";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAccess } from "@/lib/authz";
@@ -204,6 +205,7 @@ export async function createProduct(
     summary: `Added — ${variantCreate.length} variant(s)`,
   });
 
+  queueResellerSync(gate.access.workspaceId);
   revalidatePath(`/${slug}/products`);
   return { ok: true };
 }
@@ -299,6 +301,7 @@ export async function updateProduct(
     });
   }
 
+  queueResellerSync(gate.access.workspaceId);
   revalidatePath(`/${slug}/products`);
   return { ok: true };
 }
@@ -362,6 +365,7 @@ export async function deleteProduct(slug: string, id: string): Promise<ActionRes
     summary: "Deleted — it had never been sold or bought",
   });
 
+  queueResellerSync(gate.access.workspaceId);
   revalidatePath(`/${slug}/products`);
   return { ok: true };
 }
@@ -402,6 +406,7 @@ export async function addVariant(
     summary: "Variant added",
   });
 
+  queueResellerSync(gate.access.workspaceId);
   revalidatePath(`/${slug}/products`);
   return { ok: true };
 }
@@ -461,6 +466,7 @@ export async function deleteVariant(
     summary: "Variant deleted — it had never been sold or bought",
   });
 
+  queueResellerSync(gate.access.workspaceId);
   revalidatePath(`/${slug}/products`);
   return { ok: true };
 }
@@ -616,6 +622,7 @@ export async function importProducts(
     { timeout: 60_000 },
   );
 
+  queueResellerSync(gate.access.workspaceId);
   revalidatePath(`/${slug}/products`);
   return { ok: true, created: toCreate.length, skipped };
 }
