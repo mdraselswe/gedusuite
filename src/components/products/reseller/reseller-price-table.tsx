@@ -31,6 +31,13 @@ import {
 import type { InternalRow } from "@/lib/reseller-list";
 import { cn } from "@/lib/utils";
 
+// Pinned cells need a solid background, or the columns scrolling under them show through.
+const HEAD = "sticky top-0 z-20 bg-card shadow-[0_1px_0_var(--border)]";
+const PIN_LEFT = "sticky left-0 shadow-[1px_0_0_var(--border)]";
+const PIN_RIGHT = "sticky right-0 shadow-[-1px_0_0_var(--border)]";
+// Same colour the row turns on hover (muted at half strength over the card).
+const CELL_BG = "bg-card group-hover:bg-[color-mix(in_oklab,var(--muted)_50%,var(--card))]";
+
 function rowName(r: InternalRow) {
   return r.variant ? `${r.product} (${r.variant})` : r.product;
 }
@@ -92,16 +99,21 @@ export function ResellerPriceTable({
           </label>
         </div>
 
-        <div className="overflow-x-auto rounded-lg border">
-          <Table>
+        {/*
+          The table scrolls inside its own box, sized to the screen, so the
+          sideways scrollbar is always in view rather than under the last row.
+          Header, product and edit button stay put while it scrolls.
+        */}
+        <div className="rounded-lg border">
+          <Table containerClassName="max-h-[min(75vh,calc(100dvh_-_14rem))] overflow-auto">
             <TableHeader>
               <TableRow>
-                <TableHead className="min-w-56">Product</TableHead>
-                <TableHead className="text-right">Cost</TableHead>
-                <TableHead className="text-right">Retail</TableHead>
-                <TableHead className="text-right">Floor</TableHead>
-                <TableHead className="min-w-96">Reseller price by quantity</TableHead>
-                {canEdit ? <TableHead /> : null}
+                <TableHead className={cn(HEAD, PIN_LEFT, "z-30 min-w-56")}>Product</TableHead>
+                <TableHead className={cn(HEAD, "text-right")}>Cost</TableHead>
+                <TableHead className={cn(HEAD, "text-right")}>Retail</TableHead>
+                <TableHead className={cn(HEAD, "text-right")}>Floor</TableHead>
+                <TableHead className={HEAD}>Reseller price by quantity</TableHead>
+                {canEdit ? <TableHead className={cn(HEAD, PIN_RIGHT, "z-30 w-12")} /> : null}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -113,9 +125,13 @@ export function ResellerPriceTable({
                 </TableRow>
               ) : (
                 visible.map((r) => (
-                  <TableRow key={r.variantId} className={cn(r.hidden && "opacity-50")}>
-                    <TableCell className="align-top">
-                      <div className="font-medium">{r.product}</div>
+                  // Fade the contents, not the row: a faded sticky cell would
+                  // show the columns scrolling behind it.
+                  <TableRow key={r.variantId} className={cn("group", r.hidden && "[&>td>*]:opacity-50")}>
+                    <TableCell className={cn(PIN_LEFT, CELL_BG, "z-10 w-64 max-w-72 align-top whitespace-normal")}>
+                      <div className="line-clamp-2 font-medium" title={r.product}>
+                        {r.product}
+                      </div>
                       <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
                         {r.variant ? <span>{r.variant}</span> : null}
                         {r.sku ? <span className="font-mono">{r.sku}</span> : null}
@@ -138,7 +154,7 @@ export function ResellerPriceTable({
                     </TableCell>
                     <TableCell className="align-top">
                       {r.priced ? (
-                        <div className="grid grid-cols-[auto_auto_1fr] items-baseline gap-x-3 gap-y-1">
+                        <div className="grid w-max grid-cols-[auto_auto_auto_auto] items-baseline gap-x-4 gap-y-1">
                           {r.priced.tiers.map((t) => (
                             <BandLine key={t.minQty} t={t} />
                           ))}
@@ -148,7 +164,7 @@ export function ResellerPriceTable({
                       )}
                     </TableCell>
                     {canEdit ? (
-                      <TableCell className="align-top">
+                      <TableCell className={cn(PIN_RIGHT, CELL_BG, "z-10 align-top")}>
                         <Button variant="ghost" size="icon-sm" aria-label={`Edit ${rowName(r)}`} onClick={() => setEditing(r)}>
                           <Pencil className="size-4" />
                         </Button>
@@ -173,13 +189,13 @@ export function ResellerPriceTable({
 function BandLine({ t }: { t: TierPrice }) {
   return (
     <>
-      <span className="text-xs text-muted-foreground">{t.label}</span>
-      <span className={cn("text-right font-semibold", t.belowFloor && "text-destructive")}>
+      <span className="text-xs whitespace-nowrap text-muted-foreground">{t.label}</span>
+      <span className={cn("text-right font-semibold whitespace-nowrap", t.belowFloor && "text-destructive")}>
         <Money value={t.price} />
         {t.manual ? <span className="ml-1 text-[10px] font-normal text-sky-600">manual</span> : null}
         {t.raisedToFloor ? <span className="ml-1 text-[10px] font-normal text-amber-600">floor</span> : null}
       </span>
-      <span className="text-xs text-muted-foreground">
+      <span className="text-xs whitespace-nowrap text-muted-foreground">
         {t.profit != null ? (
           <>
             profit <Money value={t.profit} tone={t.profit < 0 ? "negative" : "neutral"} />
@@ -188,7 +204,9 @@ function BandLine({ t }: { t: TierPrice }) {
         ) : (
           "profit —"
         )}
-        {" · "}reseller keeps <Money value={t.resellerGain} />
+      </span>
+      <span className="text-xs whitespace-nowrap text-muted-foreground">
+        reseller keeps <Money value={t.resellerGain} />
       </span>
     </>
   );
